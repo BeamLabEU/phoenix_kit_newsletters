@@ -11,20 +11,22 @@ defmodule PhoenixKit.Modules.Newsletters.List do
   @valid_statuses ["active", "archived"]
 
   schema "phoenix_kit_newsletters_lists" do
-    field :name, :string
-    field :slug, :string
-    field :description, :string
-    field :status, :string, default: "active"
-    field :is_default, :boolean, default: false
-    field :subscriber_count, :integer, default: 0
+    field(:name, :string)
+    field(:slug, :string)
+    field(:description, :string)
+    field(:status, :string, default: "active")
+    field(:is_default, :boolean, default: false)
+    field(:subscriber_count, :integer, default: 0)
 
-    has_many :members, PhoenixKit.Modules.Newsletters.ListMember,
+    has_many(:members, PhoenixKit.Modules.Newsletters.ListMember,
       foreign_key: :list_uuid,
       references: :uuid
+    )
 
-    has_many :broadcasts, PhoenixKit.Modules.Newsletters.Broadcast,
+    has_many(:broadcasts, PhoenixKit.Modules.Newsletters.Broadcast,
       foreign_key: :list_uuid,
       references: :uuid
+    )
 
     timestamps(type: :utc_datetime)
   end

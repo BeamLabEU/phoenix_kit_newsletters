@@ -11,26 +11,28 @@ defmodule PhoenixKit.Modules.Newsletters.Delivery do
   @valid_statuses ["pending", "sent", "delivered", "opened", "bounced", "failed"]
 
   schema "phoenix_kit_newsletters_deliveries" do
-    field :status, :string, default: "pending"
-    field :sent_at, :utc_datetime
-    field :delivered_at, :utc_datetime
-    field :opened_at, :utc_datetime
-    field :error, :string
-    field :message_id, :string
-    field :broadcast_uuid, UUIDv7
-    field :user_uuid, UUIDv7
+    field(:status, :string, default: "pending")
+    field(:sent_at, :utc_datetime)
+    field(:delivered_at, :utc_datetime)
+    field(:opened_at, :utc_datetime)
+    field(:error, :string)
+    field(:message_id, :string)
+    field(:broadcast_uuid, UUIDv7)
+    field(:user_uuid, UUIDv7)
 
-    belongs_to :broadcast, PhoenixKit.Modules.Newsletters.Broadcast,
+    belongs_to(:broadcast, PhoenixKit.Modules.Newsletters.Broadcast,
       foreign_key: :broadcast_uuid,
       references: :uuid,
       define_field: false,
       type: UUIDv7
+    )
 
-    belongs_to :user, PhoenixKit.Users.Auth.User,
+    belongs_to(:user, PhoenixKit.Users.Auth.User,
       foreign_key: :user_uuid,
       references: :uuid,
       define_field: false,
       type: UUIDv7
+    )
 
     timestamps(type: :utc_datetime)
   end

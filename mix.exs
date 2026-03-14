@@ -12,7 +12,8 @@ defmodule PhoenixKitNewsletters.MixProject do
       start_permanent: Mix.env() == :prod,
       deps: deps(),
       package: package(),
-      description: "Newsletters module for PhoenixKit — email broadcasts and subscription management"
+      description:
+        "Newsletters module for PhoenixKit — email broadcasts and subscription management"
     ]
   end
 

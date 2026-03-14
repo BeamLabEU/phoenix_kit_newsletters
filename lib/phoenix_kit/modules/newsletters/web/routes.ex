@@ -11,10 +11,10 @@ defmodule PhoenixKit.Modules.Newsletters.Web.Routes do
   def generate(url_prefix) do
     quote do
       scope unquote(url_prefix) do
-        pipe_through [:browser]
+        pipe_through([:browser])
 
-        get "/newsletters/unsubscribe", unquote(UnsubscribeController), :unsubscribe
-        post "/newsletters/unsubscribe", unquote(UnsubscribeController), :process_unsubscribe
+        get("/newsletters/unsubscribe", unquote(UnsubscribeController), :unsubscribe)
+        post("/newsletters/unsubscribe", unquote(UnsubscribeController), :process_unsubscribe)
       end
     end
   end

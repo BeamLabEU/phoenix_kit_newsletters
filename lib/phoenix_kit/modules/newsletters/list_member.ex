@@ -11,23 +11,25 @@ defmodule PhoenixKit.Modules.Newsletters.ListMember do
   @valid_statuses ["active", "unsubscribed"]
 
   schema "phoenix_kit_newsletters_list_members" do
-    field :status, :string, default: "active"
-    field :subscribed_at, :utc_datetime
-    field :unsubscribed_at, :utc_datetime
-    field :user_uuid, UUIDv7
-    field :list_uuid, UUIDv7
+    field(:status, :string, default: "active")
+    field(:subscribed_at, :utc_datetime)
+    field(:unsubscribed_at, :utc_datetime)
+    field(:user_uuid, UUIDv7)
+    field(:list_uuid, UUIDv7)
 
-    belongs_to :user, PhoenixKit.Users.Auth.User,
+    belongs_to(:user, PhoenixKit.Users.Auth.User,
       foreign_key: :user_uuid,
       references: :uuid,
       define_field: false,
       type: UUIDv7
+    )
 
-    belongs_to :list, PhoenixKit.Modules.Newsletters.List,
+    belongs_to(:list, PhoenixKit.Modules.Newsletters.List,
       foreign_key: :list_uuid,
       references: :uuid,
       define_field: false,
       type: UUIDv7
+    )
 
     # No timestamps — uses subscribed_at/unsubscribed_at instead
   end

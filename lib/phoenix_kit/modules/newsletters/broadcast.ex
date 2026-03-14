@@ -11,41 +11,44 @@ defmodule PhoenixKit.Modules.Newsletters.Broadcast do
   @valid_statuses ["draft", "scheduled", "sending", "sent", "cancelled"]
 
   schema "phoenix_kit_newsletters_broadcasts" do
-    field :subject, :string
-    field :markdown_body, :string
-    field :html_body, :string
-    field :text_body, :string
-    field :status, :string, default: "draft"
-    field :scheduled_at, :utc_datetime
-    field :sent_at, :utc_datetime
-    field :total_recipients, :integer, default: 0
-    field :sent_count, :integer, default: 0
-    field :delivered_count, :integer, default: 0
-    field :opened_count, :integer, default: 0
-    field :bounced_count, :integer, default: 0
-    field :template_uuid, UUIDv7
-    field :list_uuid, UUIDv7
-    field :created_by_user_uuid, UUIDv7
+    field(:subject, :string)
+    field(:markdown_body, :string)
+    field(:html_body, :string)
+    field(:text_body, :string)
+    field(:status, :string, default: "draft")
+    field(:scheduled_at, :utc_datetime)
+    field(:sent_at, :utc_datetime)
+    field(:total_recipients, :integer, default: 0)
+    field(:sent_count, :integer, default: 0)
+    field(:delivered_count, :integer, default: 0)
+    field(:opened_count, :integer, default: 0)
+    field(:bounced_count, :integer, default: 0)
+    field(:template_uuid, UUIDv7)
+    field(:list_uuid, UUIDv7)
+    field(:created_by_user_uuid, UUIDv7)
 
-    belongs_to :list, PhoenixKit.Modules.Newsletters.List,
+    belongs_to(:list, PhoenixKit.Modules.Newsletters.List,
       foreign_key: :list_uuid,
       references: :uuid,
       define_field: false,
       type: UUIDv7
+    )
 
     # belongs_to :template removed — Emails module is an optional soft dependency.
     # template_uuid field kept for DB compatibility.
     # Use Newsletters.get_broadcast_with_template!/1 for optional template loading.
 
-    belongs_to :created_by, PhoenixKit.Users.Auth.User,
+    belongs_to(:created_by, PhoenixKit.Users.Auth.User,
       foreign_key: :created_by_user_uuid,
       references: :uuid,
       define_field: false,
       type: UUIDv7
+    )
 
-    has_many :deliveries, PhoenixKit.Modules.Newsletters.Delivery,
+    has_many(:deliveries, PhoenixKit.Modules.Newsletters.Delivery,
       foreign_key: :broadcast_uuid,
       references: :uuid
+    )
 
     timestamps(type: :utc_datetime)
   end

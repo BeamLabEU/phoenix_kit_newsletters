@@ -8,6 +8,10 @@ defmodule PhoenixKit.Modules.Newsletters.Web.BroadcastEditor do
   import PhoenixKitWeb.Components.Core.AdminPageHeader
   import PhoenixKitWeb.Components.Core.Icon
 
+  # Optional soft dependencies — guarded by Code.ensure_loaded? at runtime
+  alias PhoenixKit.Modules.Emails.Template, as: EmailTemplate
+  alias PhoenixKit.Modules.Emails.Templates, as: EmailTemplates
+
   alias PhoenixKit.Modules.Newsletters
   alias PhoenixKit.Modules.Newsletters.Broadcaster
   alias PhoenixKit.Utils.Routes
@@ -145,16 +149,17 @@ defmodule PhoenixKit.Modules.Newsletters.Web.BroadcastEditor do
 
   # --- Private ---
 
+  # Guard: Emails.Templates is an optional dependency — only call if loaded
   defp load_templates do
-    if Code.ensure_loaded?(PhoenixKit.Modules.Emails.Templates) do
-      PhoenixKit.Modules.Emails.Templates.list_templates(%{status: "active"})
+    if Code.ensure_loaded?(EmailTemplates) do
+      EmailTemplates.list_templates(%{status: "active"})
     else
       []
     end
   end
 
   defp default_template_uuid do
-    if Code.ensure_loaded?(PhoenixKit.Modules.Emails.Templates) do
+    if Code.ensure_loaded?(EmailTemplates) do
       PhoenixKit.Settings.get_setting("newsletters_default_template")
     else
       nil
@@ -242,22 +247,24 @@ defmodule PhoenixKit.Modules.Newsletters.Web.BroadcastEditor do
   defp inject_into_template(html, template_uuid, templates)
        when is_binary(template_uuid) and template_uuid != "" do
     if Code.ensure_loaded?(PhoenixKit.Modules.Emails.Template) do
-      case Enum.find(templates, fn t -> t.uuid == template_uuid end) do
-        nil ->
-          html
-
-        template ->
-          html_template =
-            PhoenixKit.Modules.Emails.Template.get_translation(template.html_body, "en")
-
-          String.replace(html_template, "{{content}}", html)
-      end
+      apply_template_if_found(html, template_uuid, templates)
     else
       html
     end
   end
 
   defp inject_into_template(html, _, _), do: html
+
+  defp apply_template_if_found(html, template_uuid, templates) do
+    case Enum.find(templates, fn t -> t.uuid == template_uuid end) do
+      nil ->
+        html
+
+      tmpl ->
+        html_body = EmailTemplate.get_translation(tmpl.html_body, "en")
+        String.replace(html_body, "{{content}}", html)
+    end
+  end
 
   defp parse_datetime(str) when is_binary(str) do
     case DateTime.from_iso8601(str <> ":00Z") do

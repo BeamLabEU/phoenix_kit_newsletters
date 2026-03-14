@@ -25,6 +25,9 @@ defmodule PhoenixKit.Modules.Newsletters.Workers.DeliveryWorker do
 
   require Logger
 
+  # Optional soft dependency — guarded by Code.ensure_loaded? at runtime
+  alias PhoenixKit.Modules.Emails.Template, as: EmailTemplate
+
   alias PhoenixKit.Modules.Newsletters
   alias PhoenixKit.Modules.Newsletters.Delivery
   alias PhoenixKit.Utils.Date, as: UtilsDate
@@ -114,17 +117,22 @@ defmodule PhoenixKit.Modules.Newsletters.Workers.DeliveryWorker do
   defp maybe_apply_template(content, %{template_uuid: nil}), do: content
 
   defp maybe_apply_template(content, %{template_uuid: template_uuid}) do
+    # Guard: Emails.Template is an optional dependency
     if Code.ensure_loaded?(PhoenixKit.Modules.Emails.Template) do
-      case repo().get(PhoenixKit.Modules.Emails.Template, template_uuid) do
-        nil ->
-          content
-
-        template ->
-          html = PhoenixKit.Modules.Emails.Template.get_translation(template.html_body, "en")
-          String.replace(html, "{{content}}", content)
-      end
+      apply_email_template(content, template_uuid)
     else
       content
+    end
+  end
+
+  defp apply_email_template(content, template_uuid) do
+    case repo().get(EmailTemplate, template_uuid) do
+      nil ->
+        content
+
+      tmpl ->
+        html = EmailTemplate.get_translation(tmpl.html_body, "en")
+        String.replace(html, "{{content}}", content)
     end
   end
 
