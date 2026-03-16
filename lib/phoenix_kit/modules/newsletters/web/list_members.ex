@@ -17,31 +17,41 @@ defmodule PhoenixKit.Modules.Newsletters.Web.ListMembers do
   @impl true
   def mount(%{"id" => list_uuid}, _session, socket) do
     if Newsletters.enabled?() do
-      list = Newsletters.get_list!(list_uuid)
-      members = Newsletters.list_members(list_uuid)
+      case Ecto.UUID.cast(list_uuid) do
+        :error ->
+          {:ok, push_navigate(socket, to: Routes.path("/admin/newsletters/lists"))}
 
-      socket =
-        socket
-        |> assign(:page_title, "#{list.name} — Members")
-        |> assign(:project_title, Settings.get_project_title())
-        |> assign(:list, list)
-        |> assign(:members, members)
-        |> assign(:status_filter, "")
-        |> assign(:search_query, "")
-        |> assign(:search_results, [])
-        |> assign(:show_confirm_modal, false)
-        |> assign(:confirm_action, nil)
-        |> assign(:confirm_target, nil)
-        |> assign(:confirm_title, "")
-        |> assign(:confirm_message, "")
-
-      {:ok, socket}
+        {:ok, _valid_uuid} ->
+          mount_with_valid_uuid(list_uuid, socket)
+      end
     else
       {:ok,
        socket
        |> put_flash(:error, "Newsletters module is not enabled")
        |> push_navigate(to: Routes.path("/admin"))}
     end
+  end
+
+  defp mount_with_valid_uuid(list_uuid, socket) do
+    list = Newsletters.get_list!(list_uuid)
+    members = Newsletters.list_members(list_uuid)
+
+    socket =
+      socket
+      |> assign(:page_title, "#{list.name} — Members")
+      |> assign(:project_title, Settings.get_project_title())
+      |> assign(:list, list)
+      |> assign(:members, members)
+      |> assign(:status_filter, "")
+      |> assign(:search_query, "")
+      |> assign(:search_results, [])
+      |> assign(:show_confirm_modal, false)
+      |> assign(:confirm_action, nil)
+      |> assign(:confirm_target, nil)
+      |> assign(:confirm_title, "")
+      |> assign(:confirm_message, "")
+
+    {:ok, socket}
   end
 
   @impl true

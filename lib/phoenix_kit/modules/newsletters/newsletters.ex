@@ -73,8 +73,7 @@ defmodule PhoenixKit.Modules.Newsletters do
         group: :admin_modules,
         subtab_display: :when_active,
         highlight_with_subtabs: false,
-        subtab_indent: "pl-4",
-        live_view: {Web.Broadcasts, :index}
+        subtab_indent: "pl-4"
       ),
       Tab.new!(
         id: :admin_newsletters_broadcasts,
