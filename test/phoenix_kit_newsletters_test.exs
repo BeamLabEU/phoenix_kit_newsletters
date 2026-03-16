@@ -90,16 +90,9 @@ defmodule PhoenixKitNewslettersTest do
       assert first.label == "Newsletters"
     end
 
-    test "first tab has live_view set" do
+    test "first tab is a navigation section without live_view" do
       first = hd(Newsletters.admin_tabs())
-      assert first.live_view != nil
-    end
-
-    test "first tab live_view points to Broadcasts index" do
-      first = hd(Newsletters.admin_tabs())
-
-      assert first.live_view ==
-               {PhoenixKit.Modules.Newsletters.Web.Broadcasts, :index}
+      assert first.live_view == nil
     end
 
     test "admin tab IDs are namespaced with admin_newsletters" do
@@ -109,8 +102,10 @@ defmodule PhoenixKitNewslettersTest do
       end
     end
 
-    test "visible tabs have live_view set" do
-      for tab <- Newsletters.admin_tabs(), tab.visible != false do
+    test "visible child tabs have live_view set" do
+      [_parent | children] = Newsletters.admin_tabs()
+
+      for tab <- children, tab.visible != false do
         assert tab.live_view != nil,
                "Visible tab #{inspect(tab.id)} has no live_view — auto-routing won't work"
       end
