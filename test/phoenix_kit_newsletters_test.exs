@@ -3,59 +3,173 @@ defmodule PhoenixKitNewslettersTest do
 
   alias PhoenixKit.Modules.Newsletters
 
-  test "module_key returns newsletters" do
-    assert Newsletters.module_key() == "newsletters"
-  end
+  describe "behaviour implementation" do
+    test "implements PhoenixKit.Module" do
+      behaviours =
+        Newsletters.__info__(:attributes)
+        |> Keyword.get_values(:behaviour)
+        |> List.flatten()
 
-  test "module_name returns Newsletters" do
-    assert Newsletters.module_name() == "Newsletters"
-  end
+      assert PhoenixKit.Module in behaviours
+    end
 
-  test "required_modules includes emails" do
-    assert "emails" in Newsletters.required_modules()
-  end
-
-  test "permission_metadata key matches module_key" do
-    assert Newsletters.permission_metadata().key == Newsletters.module_key()
-  end
-
-  test "admin_tabs returns list of Tab structs" do
-    tabs = Newsletters.admin_tabs()
-    assert is_list(tabs)
-    assert tabs != []
-  end
-
-  test "admin tab IDs are namespaced with admin_newsletters" do
-    for tab <- Newsletters.admin_tabs() do
-      assert tab.id |> to_string() |> String.starts_with?("admin_newsletters"),
-             "Tab #{inspect(tab.id)} is not namespaced"
+    test "has @phoenix_kit_module attribute for auto-discovery" do
+      attrs = Newsletters.__info__(:attributes)
+      assert Keyword.get(attrs, :phoenix_kit_module) == [true]
     end
   end
 
-  test "admin tab paths use hyphens not underscores" do
-    for tab <- Newsletters.admin_tabs() do
-      path = tab.path || ""
-      # Only check the static part (before :id params)
-      static_part = path |> String.split(":") |> List.first()
+  describe "required callbacks" do
+    test "module_key/0 returns a non-empty string" do
+      key = Newsletters.module_key()
+      assert is_binary(key)
+      assert key != ""
+    end
 
-      refute String.contains?(static_part, "_"),
-             "Tab path #{path} uses underscores — use hyphens"
+    test "module_name/0 returns a non-empty string" do
+      name = Newsletters.module_name()
+      assert is_binary(name)
+      assert name != ""
+    end
+
+    test "enabled?/0 returns a boolean" do
+      assert is_boolean(Newsletters.enabled?())
+    end
+
+    test "enable_system/0 is exported" do
+      assert function_exported?(Newsletters, :enable_system, 0)
+    end
+
+    test "disable_system/0 is exported" do
+      assert function_exported?(Newsletters, :disable_system, 0)
+    end
+
+    test "required_modules includes emails" do
+      assert "emails" in Newsletters.required_modules()
     end
   end
 
-  test "enabled? returns false when DB unavailable" do
-    # Rescues when no DB is running in test
-    refute Newsletters.enabled?()
+  describe "permission_metadata/0" do
+    test "returns a map with required fields" do
+      meta = Newsletters.permission_metadata()
+      assert is_map(meta)
+      assert Map.has_key?(meta, :key)
+      assert Map.has_key?(meta, :label)
+      assert Map.has_key?(meta, :icon)
+      assert Map.has_key?(meta, :description)
+    end
+
+    test "key matches module_key" do
+      assert Newsletters.permission_metadata().key == Newsletters.module_key()
+    end
+
+    test "icon uses hero- prefix" do
+      icon = Newsletters.permission_metadata().icon
+      assert String.starts_with?(icon, "hero-")
+    end
   end
 
-  test "route_module is defined" do
-    assert Newsletters.route_module() == PhoenixKit.Modules.Newsletters.Web.Routes
+  describe "admin_tabs/0" do
+    test "returns a list of Tab structs" do
+      tabs = Newsletters.admin_tabs()
+      assert is_list(tabs)
+      assert tabs != []
+    end
+
+    test "returns 9 tabs" do
+      assert length(Newsletters.admin_tabs()) == 9
+    end
+
+    test "first tab has id :admin_newsletters" do
+      first = hd(Newsletters.admin_tabs())
+      assert first.id == :admin_newsletters
+    end
+
+    test "first tab has correct label" do
+      first = hd(Newsletters.admin_tabs())
+      assert first.label == "Newsletters"
+    end
+
+    test "first tab has live_view set" do
+      first = hd(Newsletters.admin_tabs())
+      assert first.live_view != nil
+    end
+
+    test "first tab live_view points to Broadcasts index" do
+      first = hd(Newsletters.admin_tabs())
+
+      assert first.live_view ==
+               {PhoenixKit.Modules.Newsletters.Web.Broadcasts, :index}
+    end
+
+    test "admin tab IDs are namespaced with admin_newsletters" do
+      for tab <- Newsletters.admin_tabs() do
+        assert tab.id |> to_string() |> String.starts_with?("admin_newsletters"),
+               "Tab #{inspect(tab.id)} is not namespaced"
+      end
+    end
+
+    test "visible tabs have live_view set" do
+      for tab <- Newsletters.admin_tabs(), tab.visible != false do
+        assert tab.live_view != nil,
+               "Visible tab #{inspect(tab.id)} has no live_view — auto-routing won't work"
+      end
+    end
+
+    test "tab paths use hyphens not underscores" do
+      for tab <- Newsletters.admin_tabs() do
+        path = tab.path || ""
+        static_part = path |> String.split(":") |> List.first()
+
+        refute String.contains?(static_part, "_"),
+               "Tab path #{path} uses underscores — use hyphens"
+      end
+    end
   end
 
-  test "visible tabs have live_view set" do
-    for tab <- Newsletters.admin_tabs(), tab.visible != false do
-      assert tab.live_view != nil,
-             "Visible tab #{inspect(tab.id)} has no live_view — auto-routing won't work"
+  describe "version/0" do
+    test "returns a version string" do
+      version = Newsletters.version()
+      assert is_binary(version)
+      assert version =~ ~r/^\d+\.\d+\.\d+/
+    end
+
+    test "returns 0.0.0" do
+      assert Newsletters.version() == "0.0.0"
+    end
+  end
+
+  describe "optional callbacks have defaults" do
+    test "get_config/0 returns a map" do
+      config = Newsletters.get_config()
+      assert is_map(config)
+    end
+
+    test "get_config/0 map has :enabled field" do
+      config = Newsletters.get_config()
+      assert Map.has_key?(config, :enabled)
+    end
+
+    test "settings_tabs/0 returns empty list" do
+      assert Newsletters.settings_tabs() == []
+    end
+
+    test "user_dashboard_tabs/0 returns empty list" do
+      assert Newsletters.user_dashboard_tabs() == []
+    end
+
+    test "children/0 returns empty list" do
+      assert Newsletters.children() == []
+    end
+
+    test "route_module/0 returns Newsletters.Web.Routes" do
+      assert Newsletters.route_module() == PhoenixKit.Modules.Newsletters.Web.Routes
+    end
+  end
+
+  describe "enabled?" do
+    test "returns false when DB unavailable" do
+      refute Newsletters.enabled?()
     end
   end
 end
