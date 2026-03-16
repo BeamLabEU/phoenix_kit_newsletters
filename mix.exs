@@ -7,11 +7,14 @@ defmodule PhoenixKitNewsletters.MixProject do
   def project do
     [
       app: :phoenix_kit_newsletters,
+      name: "PhoenixKitNewsletters",
       version: @version,
       elixir: "~> 1.18",
       start_permanent: Mix.env() == :prod,
       deps: deps(),
       package: package(),
+      docs: docs(),
+      dialyzer: [plt_add_apps: [:phoenix_kit]],
       description:
         "Newsletters module for PhoenixKit — email broadcasts and subscription management"
     ]
@@ -39,7 +42,15 @@ defmodule PhoenixKitNewsletters.MixProject do
     [
       licenses: ["MIT"],
       links: %{"GitHub" => @source_url},
-      files: ~w(lib mix.exs README.md)
+      files: ~w(lib .formatter.exs mix.exs README.md LICENSE)
+    ]
+  end
+
+  defp docs do
+    [
+      main: "PhoenixKit.Modules.Newsletters",
+      source_ref: "v#{@version}",
+      source_url: @source_url
     ]
   end
 end

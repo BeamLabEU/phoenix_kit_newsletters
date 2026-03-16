@@ -12,11 +12,11 @@ defmodule PhoenixKit.Modules.Newsletters.Web.UnsubscribeController do
   # Shows unsubscribe options page (per-list + global)
   def unsubscribe(conn, %{"token" => token}) do
     case Phoenix.Token.verify(
-        PhoenixKit.Config.get(:endpoint, PhoenixKitWeb.Endpoint),
-        "unsubscribe",
-        token,
-        max_age: 604_800
-      ) do
+           PhoenixKit.Config.get(:endpoint, PhoenixKitWeb.Endpoint),
+           "unsubscribe",
+           token,
+           max_age: 604_800
+         ) do
       {:ok, %{user_uuid: user_uuid, list_uuid: list_uuid}} ->
         list = Newsletters.get_list(list_uuid)
         all_lists = Newsletters.list_user_subscriptions(user_uuid)
@@ -38,11 +38,11 @@ defmodule PhoenixKit.Modules.Newsletters.Web.UnsubscribeController do
   # POST /newsletters/unsubscribe — process the choice
   def process_unsubscribe(conn, %{"token" => token, "scope" => "list"}) do
     case Phoenix.Token.verify(
-        PhoenixKit.Config.get(:endpoint, PhoenixKitWeb.Endpoint),
-        "unsubscribe",
-        token,
-        max_age: 604_800
-      ) do
+           PhoenixKit.Config.get(:endpoint, PhoenixKitWeb.Endpoint),
+           "unsubscribe",
+           token,
+           max_age: 604_800
+         ) do
       {:ok, %{user_uuid: user_uuid, list_uuid: list_uuid}} ->
         Newsletters.unsubscribe_user(list_uuid, user_uuid)
 
@@ -59,11 +59,11 @@ defmodule PhoenixKit.Modules.Newsletters.Web.UnsubscribeController do
 
   def process_unsubscribe(conn, %{"token" => token, "scope" => "all"}) do
     case Phoenix.Token.verify(
-        PhoenixKit.Config.get(:endpoint, PhoenixKitWeb.Endpoint),
-        "unsubscribe",
-        token,
-        max_age: 604_800
-      ) do
+           PhoenixKit.Config.get(:endpoint, PhoenixKitWeb.Endpoint),
+           "unsubscribe",
+           token,
+           max_age: 604_800
+         ) do
       {:ok, %{user_uuid: user_uuid}} ->
         Newsletters.unsubscribe_from_all(user_uuid)
 
