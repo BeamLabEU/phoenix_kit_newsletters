@@ -17,13 +17,11 @@ defmodule PhoenixKit.Modules.Newsletters.Web.Lists do
   @impl true
   def mount(_params, _session, socket) do
     if Newsletters.enabled?() do
-      lists = Newsletters.list_lists()
-
       socket =
         socket
         |> assign(:page_title, "Newsletters Lists")
         |> assign(:project_title, Settings.get_project_title())
-        |> assign(:lists, lists)
+        |> assign(:lists, [])
         |> assign(:show_confirm_modal, false)
         |> assign(:confirm_action, nil)
         |> assign(:confirm_target, nil)
@@ -37,6 +35,11 @@ defmodule PhoenixKit.Modules.Newsletters.Web.Lists do
        |> put_flash(:error, "Newsletters module is not enabled")
        |> push_navigate(to: Routes.path("/admin"))}
     end
+  end
+
+  @impl true
+  def handle_params(_params, _url, socket) do
+    {:noreply, assign(socket, :lists, Newsletters.list_lists())}
   end
 
   @impl true

@@ -20,20 +20,16 @@ defmodule PhoenixKit.Modules.Newsletters.Web.BroadcastEditor do
   @impl true
   def mount(_params, _session, socket) do
     if Newsletters.enabled?() do
-      lists = Newsletters.list_lists(%{status: "active"})
-      templates = load_templates()
-      default_template_uuid = default_template_uuid()
-
       socket =
         socket
         |> assign(:page_title, "New Broadcast")
         |> assign(:project_title, Settings.get_project_title())
-        |> assign(:lists, lists)
-        |> assign(:templates, templates)
+        |> assign(:lists, [])
+        |> assign(:templates, [])
         |> assign(:broadcast, nil)
         |> assign(:subject, "")
         |> assign(:list_uuid, "")
-        |> assign(:template_uuid, default_template_uuid || "")
+        |> assign(:template_uuid, "")
         |> assign(:markdown_content, "")
         |> assign(:preview_html, "")
         |> assign(:scheduled_at, "")
@@ -50,10 +46,14 @@ defmodule PhoenixKit.Modules.Newsletters.Web.BroadcastEditor do
 
   @impl true
   def handle_params(%{"id" => id}, _url, %{assigns: %{live_action: :edit}} = socket) do
+    lists = Newsletters.list_lists(%{status: "active"})
+    templates = load_templates()
     broadcast = Newsletters.get_broadcast!(id)
 
     {:noreply,
      socket
+     |> assign(:lists, lists)
+     |> assign(:templates, templates)
      |> assign(:page_title, "Edit Broadcast")
      |> assign(:broadcast, broadcast)
      |> assign(:subject, broadcast.subject || "")
@@ -62,7 +62,7 @@ defmodule PhoenixKit.Modules.Newsletters.Web.BroadcastEditor do
      |> assign(:markdown_content, broadcast.markdown_body || "")
      |> assign(
        :preview_html,
-       render_preview(broadcast.markdown_body, broadcast.template_uuid, socket.assigns.templates)
+       render_preview(broadcast.markdown_body, broadcast.template_uuid, templates)
      )}
   rescue
     Ecto.NoResultsError ->
@@ -73,7 +73,15 @@ defmodule PhoenixKit.Modules.Newsletters.Web.BroadcastEditor do
   end
 
   def handle_params(_params, _url, socket) do
-    {:noreply, socket}
+    lists = Newsletters.list_lists(%{status: "active"})
+    templates = load_templates()
+    default_template_uuid = default_template_uuid()
+
+    {:noreply,
+     socket
+     |> assign(:lists, lists)
+     |> assign(:templates, templates)
+     |> assign(:template_uuid, default_template_uuid || "")}
   end
 
   @impl true

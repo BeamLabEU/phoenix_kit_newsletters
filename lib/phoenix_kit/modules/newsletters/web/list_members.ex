@@ -15,15 +15,24 @@ defmodule PhoenixKit.Modules.Newsletters.Web.ListMembers do
   alias PhoenixKit.Utils.Routes
 
   @impl true
-  def mount(%{"id" => list_uuid}, _session, socket) do
+  def mount(_params, _session, socket) do
     if Newsletters.enabled?() do
-      case Ecto.UUID.cast(list_uuid) do
-        :error ->
-          {:ok, push_navigate(socket, to: Routes.path("/admin/newsletters/lists"))}
+      socket =
+        socket
+        |> assign(:page_title, "Members")
+        |> assign(:project_title, Settings.get_project_title())
+        |> assign(:list, nil)
+        |> assign(:members, [])
+        |> assign(:status_filter, "")
+        |> assign(:search_query, "")
+        |> assign(:search_results, [])
+        |> assign(:show_confirm_modal, false)
+        |> assign(:confirm_action, nil)
+        |> assign(:confirm_target, nil)
+        |> assign(:confirm_title, "")
+        |> assign(:confirm_message, "")
 
-        {:ok, _valid_uuid} ->
-          mount_with_valid_uuid(list_uuid, socket)
-      end
+      {:ok, socket}
     else
       {:ok,
        socket
@@ -32,26 +41,30 @@ defmodule PhoenixKit.Modules.Newsletters.Web.ListMembers do
     end
   end
 
-  defp mount_with_valid_uuid(list_uuid, socket) do
-    list = Newsletters.get_list!(list_uuid)
-    members = Newsletters.list_members(list_uuid)
+  @impl true
+  def handle_params(%{"id" => list_uuid}, _url, socket) do
+    case Ecto.UUID.cast(list_uuid) do
+      :error ->
+        {:noreply, push_navigate(socket, to: Routes.path("/admin/newsletters/lists"))}
 
-    socket =
-      socket
-      |> assign(:page_title, "#{list.name} — Members")
-      |> assign(:project_title, Settings.get_project_title())
-      |> assign(:list, list)
-      |> assign(:members, members)
-      |> assign(:status_filter, "")
-      |> assign(:search_query, "")
-      |> assign(:search_results, [])
-      |> assign(:show_confirm_modal, false)
-      |> assign(:confirm_action, nil)
-      |> assign(:confirm_target, nil)
-      |> assign(:confirm_title, "")
-      |> assign(:confirm_message, "")
+      {:ok, _valid_uuid} ->
+        case Newsletters.get_list(list_uuid) do
+          nil ->
+            {:noreply,
+             socket
+             |> put_flash(:error, "List not found")
+             |> push_navigate(to: Routes.path("/admin/newsletters/lists"))}
 
-    {:ok, socket}
+          list ->
+            members = Newsletters.list_members(list_uuid)
+
+            {:noreply,
+             socket
+             |> assign(:page_title, "#{list.name} — Members")
+             |> assign(:list, list)
+             |> assign(:members, members)}
+        end
+    end
   end
 
   @impl true

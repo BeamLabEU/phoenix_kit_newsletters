@@ -15,11 +15,11 @@ defmodule PhoenixKit.Modules.Newsletters.Web.BroadcastDetails do
   alias PhoenixKit.Utils.Routes
 
   @impl true
-  def mount(%{"id" => id}, _session, socket) do
+  def mount(_params, _session, socket) do
     if Newsletters.enabled?() do
       socket =
         socket
-        |> assign(:broadcast_id, id)
+        |> assign(:broadcast_id, nil)
         |> assign(:project_title, Settings.get_project_title())
         |> assign(:broadcast, nil)
         |> assign(:deliveries, [])
@@ -30,7 +30,6 @@ defmodule PhoenixKit.Modules.Newsletters.Web.BroadcastDetails do
         |> assign(:confirm_target, nil)
         |> assign(:confirm_title, "")
         |> assign(:confirm_message, "")
-        |> load_broadcast_data()
 
       {:ok, socket}
     else
@@ -39,6 +38,15 @@ defmodule PhoenixKit.Modules.Newsletters.Web.BroadcastDetails do
        |> put_flash(:error, "Newsletters module is not enabled")
        |> push_navigate(to: Routes.path("/admin"))}
     end
+  end
+
+  @impl true
+  def handle_params(%{"id" => id}, _url, socket) do
+    {:noreply,
+     socket
+     |> assign(:broadcast_id, id)
+     |> assign(:loading, true)
+     |> load_broadcast_data()}
   end
 
   @impl true
