@@ -11,6 +11,7 @@ defmodule PhoenixKit.Modules.Newsletters.Web.BroadcastDetails do
   import PhoenixKitWeb.Components.Core.TableDefault
 
   alias PhoenixKit.Modules.Newsletters
+  alias PhoenixKit.Settings
   alias PhoenixKit.Utils.Routes
 
   @impl true
@@ -19,6 +20,7 @@ defmodule PhoenixKit.Modules.Newsletters.Web.BroadcastDetails do
       socket =
         socket
         |> assign(:broadcast_id, id)
+        |> assign(:project_title, Settings.get_project_title())
         |> assign(:broadcast, nil)
         |> assign(:deliveries, [])
         |> assign(:delivery_stats, %{})

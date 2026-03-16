@@ -12,6 +12,7 @@ defmodule PhoenixKit.Modules.Newsletters.Web.ListEditor do
 
   alias PhoenixKit.Modules.Newsletters
   alias PhoenixKit.Modules.Newsletters.List
+  alias PhoenixKit.Settings
   alias PhoenixKit.Utils.Routes
 
   @impl true
@@ -20,6 +21,7 @@ defmodule PhoenixKit.Modules.Newsletters.Web.ListEditor do
       socket =
         socket
         |> assign(:list, nil)
+        |> assign(:project_title, Settings.get_project_title())
 
       {:ok, socket}
     else

@@ -14,6 +14,7 @@ defmodule PhoenixKit.Modules.Newsletters.Web.BroadcastEditor do
 
   alias PhoenixKit.Modules.Newsletters
   alias PhoenixKit.Modules.Newsletters.Broadcaster
+  alias PhoenixKit.Settings
   alias PhoenixKit.Utils.Routes
 
   @impl true
@@ -26,6 +27,7 @@ defmodule PhoenixKit.Modules.Newsletters.Web.BroadcastEditor do
       socket =
         socket
         |> assign(:page_title, "New Broadcast")
+        |> assign(:project_title, Settings.get_project_title())
         |> assign(:lists, lists)
         |> assign(:templates, templates)
         |> assign(:broadcast, nil)

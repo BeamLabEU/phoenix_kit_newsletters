@@ -10,6 +10,7 @@ defmodule PhoenixKit.Modules.Newsletters.Web.ListMembers do
   import PhoenixKitWeb.Components.Core.TableDefault
 
   alias PhoenixKit.Modules.Newsletters
+  alias PhoenixKit.Settings
   alias PhoenixKit.Users.Auth
   alias PhoenixKit.Utils.Routes
 
@@ -22,6 +23,7 @@ defmodule PhoenixKit.Modules.Newsletters.Web.ListMembers do
       socket =
         socket
         |> assign(:page_title, "#{list.name} — Members")
+        |> assign(:project_title, Settings.get_project_title())
         |> assign(:list, list)
         |> assign(:members, members)
         |> assign(:status_filter, "")
