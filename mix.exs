@@ -26,7 +26,7 @@ defmodule PhoenixKitNewsletters.MixProject do
 
   defp deps do
     [
-      {:phoenix_kit, "~> 1.7.73"},
+      {:phoenix_kit, "~> 1.7.73", path: "/app", override: true},
       {:phoenix_live_view, "~> 1.1"},
       {:oban, "~> 2.20"},
       {:earmark, "~> 1.4"},
