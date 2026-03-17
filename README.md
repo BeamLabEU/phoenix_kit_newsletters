@@ -108,7 +108,7 @@ All schemas use UUIDv7 primary keys.
 Unsubscribe tokens are signed with `Phoenix.Token` using the `"unsubscribe"` salt.
 
 - **Max age**: 7 days
-- **Payload**: `{user_uuid, list_uuid}`
+- **Payload**: `%{user_uuid: uuid, list_uuid: uuid}`
 - **Single list**: `GET /newsletters/unsubscribe/:token` — unsubscribes from one list
 - **All lists**: token with `list_uuid: :all` — calls `unsubscribe_from_all/1`
 

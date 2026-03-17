@@ -54,7 +54,7 @@ defmodule PhoenixKit.Newsletters do
     %{
       key: "newsletters",
       label: "Newsletters",
-      icon: "hero-megaphone",
+      icon: "📨",
       description: "Email broadcasts and subscription management"
     }
   end

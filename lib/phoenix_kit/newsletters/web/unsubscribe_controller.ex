@@ -83,4 +83,10 @@ defmodule PhoenixKit.Newsletters.Web.UnsubscribeController do
         |> redirect(to: Routes.path("/"))
     end
   end
+
+  def process_unsubscribe(conn, _params) do
+    conn
+    |> put_flash(:error, "Invalid or expired unsubscribe link.")
+    |> redirect(to: Routes.path("/"))
+  end
 end

@@ -61,9 +61,10 @@ defmodule PhoenixKitNewslettersTest do
       assert Newsletters.permission_metadata().key == Newsletters.module_key()
     end
 
-    test "icon uses hero- prefix" do
+    test "icon is a non-empty string" do
       icon = Newsletters.permission_metadata().icon
-      assert String.starts_with?(icon, "hero-")
+      assert is_binary(icon)
+      assert icon != ""
     end
   end
 
