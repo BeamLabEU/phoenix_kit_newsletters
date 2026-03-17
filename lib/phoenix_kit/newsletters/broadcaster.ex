@@ -9,7 +9,7 @@ defmodule PhoenixKit.Newsletters.Broadcaster do
   import Ecto.Query
 
   alias PhoenixKit.Newsletters
-  alias PhoenixKit.Newsletters.{Broadcast, Delivery, ListMember}
+  alias PhoenixKit.Newsletters.{Broadcast, Content, Delivery, ListMember}
   alias PhoenixKit.Newsletters.Workers.DeliveryWorker
   alias PhoenixKit.Utils.Date, as: UtilsDate
 
@@ -34,14 +34,9 @@ defmodule PhoenixKit.Newsletters.Broadcaster do
   defp do_send(broadcast) do
     repo = repo()
 
-    # Render markdown to HTML before sending
-    html =
-      case Earmark.as_html(broadcast.markdown_body || "") do
-        {:ok, html, _warnings} -> html
-        {:error, html, _errors} -> html
-      end
-
-    text = strip_html(html)
+    # Render markdown to HTML and plain text before sending
+    html = Content.render_markdown(broadcast.markdown_body)
+    text = Content.strip_html(html)
 
     {:ok, broadcast} =
       Newsletters.update_broadcast(broadcast, %{
@@ -106,14 +101,6 @@ defmodule PhoenixKit.Newsletters.Broadcaster do
       end)
 
     Oban.insert_all(jobs)
-  end
-
-  defp strip_html(html) do
-    html
-    |> String.replace(~r/<br\s*\/?>/, "\n")
-    |> String.replace(~r/<\/p>/, "\n\n")
-    |> String.replace(~r/<[^>]+>/, "")
-    |> String.trim()
   end
 
   defp repo, do: PhoenixKit.RepoHelper.repo()

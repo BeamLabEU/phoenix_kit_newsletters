@@ -172,7 +172,7 @@ defmodule PhoenixKit.Newsletters do
   # Lists
   # ============================================================================
 
-  alias PhoenixKit.Newsletters.{Broadcast, Broadcaster, Delivery, List, ListMember}
+  alias PhoenixKit.Newsletters.{Broadcast, Broadcaster, Content, Delivery, List, ListMember}
 
   import Ecto.Query
 
@@ -326,10 +326,7 @@ defmodule PhoenixKit.Newsletters do
   def delete_broadcast(_), do: {:error, :cannot_delete_non_draft}
 
   def render_broadcast_html(%Broadcast{} = broadcast) do
-    case Earmark.as_html(broadcast.markdown_body || "") do
-      {:ok, html, _} -> {:ok, html}
-      {:error, _, errors} -> {:error, errors}
-    end
+    Content.render_markdown_strict(broadcast.markdown_body)
   end
 
   # ============================================================================

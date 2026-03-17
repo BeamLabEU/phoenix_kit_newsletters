@@ -4,15 +4,9 @@ defmodule PhoenixKit.Newsletters.Web.UnsubscribeControllerTest do
   alias PhoenixKit.Newsletters.Web.UnsubscribeController
 
   describe "module structure" do
-    test "UnsubscribeController module is loadable" do
+    test "UnsubscribeController module is loadable and exports expected functions" do
       assert Code.ensure_loaded?(UnsubscribeController)
-    end
-
-    test "exports unsubscribe/2" do
       assert function_exported?(UnsubscribeController, :unsubscribe, 2)
-    end
-
-    test "exports process_unsubscribe/2" do
       assert function_exported?(UnsubscribeController, :process_unsubscribe, 2)
     end
   end
