@@ -1,4 +1,4 @@
-defmodule PhoenixKit.Modules.Newsletters.Web.UnsubscribeHTML do
+defmodule PhoenixKit.Newsletters.Web.UnsubscribeHTML do
   @moduledoc false
 
   use PhoenixKitWeb, :html

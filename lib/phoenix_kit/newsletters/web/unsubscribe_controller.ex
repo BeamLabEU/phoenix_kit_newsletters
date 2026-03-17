@@ -1,12 +1,12 @@
-defmodule PhoenixKit.Modules.Newsletters.Web.UnsubscribeController do
+defmodule PhoenixKit.Newsletters.Web.UnsubscribeController do
   @moduledoc false
 
   use PhoenixKitWeb, :controller
 
-  alias PhoenixKit.Modules.Newsletters
+  alias PhoenixKit.Newsletters
   alias PhoenixKit.Utils.Routes
 
-  plug(:put_view, html: PhoenixKit.Modules.Newsletters.Web.UnsubscribeHTML)
+  plug(:put_view, html: PhoenixKit.Newsletters.Web.UnsubscribeHTML)
 
   # GET /newsletters/unsubscribe?token=...
   # Shows unsubscribe options page (per-list + global)

@@ -1,4 +1,4 @@
-defmodule PhoenixKit.Modules.Newsletters.Workers.DeliveryWorker do
+defmodule PhoenixKit.Newsletters.Workers.DeliveryWorker do
   @moduledoc """
   Oban worker for sending a single broadcast email to one recipient.
 
@@ -28,8 +28,8 @@ defmodule PhoenixKit.Modules.Newsletters.Workers.DeliveryWorker do
   # Optional soft dependency — guarded by Code.ensure_loaded? at runtime
   alias PhoenixKit.Modules.Emails.Template, as: EmailTemplate
 
-  alias PhoenixKit.Modules.Newsletters
-  alias PhoenixKit.Modules.Newsletters.Delivery
+  alias PhoenixKit.Newsletters
+  alias PhoenixKit.Newsletters.Delivery
   alias PhoenixKit.Utils.Date, as: UtilsDate
   alias PhoenixKit.Utils.Routes
 
@@ -166,7 +166,7 @@ defmodule PhoenixKit.Modules.Newsletters.Workers.DeliveryWorker do
   defp update_broadcast_counter(broadcast_uuid, field) do
     import Ecto.Query
 
-    PhoenixKit.Modules.Newsletters.Broadcast
+    PhoenixKit.Newsletters.Broadcast
     |> where([b], b.uuid == ^broadcast_uuid)
     |> repo().update_all(inc: [{field, 1}])
   end

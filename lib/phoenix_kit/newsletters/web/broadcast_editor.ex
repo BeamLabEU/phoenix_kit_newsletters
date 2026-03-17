@@ -1,4 +1,4 @@
-defmodule PhoenixKit.Modules.Newsletters.Web.BroadcastEditor do
+defmodule PhoenixKit.Newsletters.Web.BroadcastEditor do
   @moduledoc """
   LiveView for creating and editing newsletter broadcasts with Markdown editor and live preview.
   """
@@ -12,8 +12,8 @@ defmodule PhoenixKit.Modules.Newsletters.Web.BroadcastEditor do
   alias PhoenixKit.Modules.Emails.Template, as: EmailTemplate
   alias PhoenixKit.Modules.Emails.Templates, as: EmailTemplates
 
-  alias PhoenixKit.Modules.Newsletters
-  alias PhoenixKit.Modules.Newsletters.Broadcaster
+  alias PhoenixKit.Newsletters
+  alias PhoenixKit.Newsletters.Broadcaster
   alias PhoenixKit.Settings
   alias PhoenixKit.Utils.Routes
 

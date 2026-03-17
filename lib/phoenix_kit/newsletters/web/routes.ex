@@ -1,4 +1,4 @@
-defmodule PhoenixKit.Modules.Newsletters.Web.Routes do
+defmodule PhoenixKit.Newsletters.Web.Routes do
   @moduledoc """
   Route definitions for Newsletters public routes (unsubscribe flow).
 
@@ -6,7 +6,7 @@ defmodule PhoenixKit.Modules.Newsletters.Web.Routes do
   This module only handles non-LiveView public routes.
   """
 
-  alias PhoenixKit.Modules.Newsletters.Web.UnsubscribeController
+  alias PhoenixKit.Newsletters.Web.UnsubscribeController
 
   def generate(url_prefix) do
     quote do

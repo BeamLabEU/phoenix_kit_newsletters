@@ -1,4 +1,4 @@
-defmodule PhoenixKit.Modules.Newsletters.Web.ListEditor do
+defmodule PhoenixKit.Newsletters.Web.ListEditor do
   @moduledoc """
   LiveView for creating and editing newsletter lists.
   """
@@ -10,8 +10,8 @@ defmodule PhoenixKit.Modules.Newsletters.Web.ListEditor do
   import PhoenixKitWeb.Components.Core.Input
   import PhoenixKitWeb.Components.Core.PkLink
 
-  alias PhoenixKit.Modules.Newsletters
-  alias PhoenixKit.Modules.Newsletters.List
+  alias PhoenixKit.Newsletters
+  alias PhoenixKit.Newsletters.List
   alias PhoenixKit.Settings
   alias PhoenixKit.Utils.Routes
 

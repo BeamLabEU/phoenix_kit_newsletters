@@ -1,4 +1,4 @@
-defmodule PhoenixKit.Modules.Newsletters.Broadcast do
+defmodule PhoenixKit.Newsletters.Broadcast do
   @moduledoc """
   Ecto schema for newsletter broadcasts.
   """
@@ -27,7 +27,7 @@ defmodule PhoenixKit.Modules.Newsletters.Broadcast do
     field(:list_uuid, UUIDv7)
     field(:created_by_user_uuid, UUIDv7)
 
-    belongs_to(:list, PhoenixKit.Modules.Newsletters.List,
+    belongs_to(:list, PhoenixKit.Newsletters.List,
       foreign_key: :list_uuid,
       references: :uuid,
       define_field: false,
@@ -45,7 +45,7 @@ defmodule PhoenixKit.Modules.Newsletters.Broadcast do
       type: UUIDv7
     )
 
-    has_many(:deliveries, PhoenixKit.Modules.Newsletters.Delivery,
+    has_many(:deliveries, PhoenixKit.Newsletters.Delivery,
       foreign_key: :broadcast_uuid,
       references: :uuid
     )

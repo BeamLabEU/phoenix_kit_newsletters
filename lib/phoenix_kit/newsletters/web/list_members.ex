@@ -1,4 +1,4 @@
-defmodule PhoenixKit.Modules.Newsletters.Web.ListMembers do
+defmodule PhoenixKit.Newsletters.Web.ListMembers do
   @moduledoc """
   LiveView for managing members of a newsletter list.
   """
@@ -9,7 +9,7 @@ defmodule PhoenixKit.Modules.Newsletters.Web.ListMembers do
   import PhoenixKitWeb.Components.Core.Icon
   import PhoenixKitWeb.Components.Core.TableDefault
 
-  alias PhoenixKit.Modules.Newsletters
+  alias PhoenixKit.Newsletters
   alias PhoenixKit.Settings
   alias PhoenixKit.Users.Auth
   alias PhoenixKit.Utils.Routes

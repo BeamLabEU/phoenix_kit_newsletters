@@ -1,4 +1,4 @@
-defmodule PhoenixKit.Modules.Newsletters.Web.BroadcastDetails do
+defmodule PhoenixKit.Newsletters.Web.BroadcastDetails do
   @moduledoc """
   LiveView for viewing broadcast details and delivery statistics.
   """
@@ -10,7 +10,7 @@ defmodule PhoenixKit.Modules.Newsletters.Web.BroadcastDetails do
   import PhoenixKitWeb.Components.Core.PkLink
   import PhoenixKitWeb.Components.Core.TableDefault
 
-  alias PhoenixKit.Modules.Newsletters
+  alias PhoenixKit.Newsletters
   alias PhoenixKit.Settings
   alias PhoenixKit.Utils.Routes
 

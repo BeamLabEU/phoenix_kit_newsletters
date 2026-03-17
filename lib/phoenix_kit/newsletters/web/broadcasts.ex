@@ -1,4 +1,4 @@
-defmodule PhoenixKit.Modules.Newsletters.Web.Broadcasts do
+defmodule PhoenixKit.Newsletters.Web.Broadcasts do
   @moduledoc """
   LiveView for the broadcasts list in the newsletters admin panel.
   """
@@ -10,7 +10,7 @@ defmodule PhoenixKit.Modules.Newsletters.Web.Broadcasts do
   import PhoenixKitWeb.Components.Core.PkLink
   import PhoenixKitWeb.Components.Core.TableDefault
 
-  alias PhoenixKit.Modules.Newsletters
+  alias PhoenixKit.Newsletters
   alias PhoenixKit.Settings
   alias PhoenixKit.Utils.Routes
 

@@ -1,4 +1,4 @@
-defmodule PhoenixKit.Modules.Newsletters.Delivery do
+defmodule PhoenixKit.Newsletters.Delivery do
   @moduledoc """
   Ecto schema for per-recipient delivery tracking.
   """
@@ -20,7 +20,7 @@ defmodule PhoenixKit.Modules.Newsletters.Delivery do
     field(:broadcast_uuid, UUIDv7)
     field(:user_uuid, UUIDv7)
 
-    belongs_to(:broadcast, PhoenixKit.Modules.Newsletters.Broadcast,
+    belongs_to(:broadcast, PhoenixKit.Newsletters.Broadcast,
       foreign_key: :broadcast_uuid,
       references: :uuid,
       define_field: false,

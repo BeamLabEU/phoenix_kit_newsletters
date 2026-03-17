@@ -1,4 +1,4 @@
-defmodule PhoenixKit.Modules.Newsletters do
+defmodule PhoenixKit.Newsletters do
   @moduledoc """
   Newsletters module — email broadcasts and subscription management.
 
@@ -58,7 +58,7 @@ defmodule PhoenixKit.Modules.Newsletters do
 
   @impl PhoenixKit.Module
   def admin_tabs do
-    alias PhoenixKit.Modules.Newsletters.Web
+    alias PhoenixKit.Newsletters.Web
 
     [
       Tab.new!(
@@ -163,13 +163,13 @@ defmodule PhoenixKit.Modules.Newsletters do
   end
 
   @impl PhoenixKit.Module
-  def route_module, do: PhoenixKit.Modules.Newsletters.Web.Routes
+  def route_module, do: PhoenixKit.Newsletters.Web.Routes
 
   # ============================================================================
   # Lists
   # ============================================================================
 
-  alias PhoenixKit.Modules.Newsletters.{Broadcast, Broadcaster, Delivery, List, ListMember}
+  alias PhoenixKit.Newsletters.{Broadcast, Broadcaster, Delivery, List, ListMember}
 
   import Ecto.Query
 

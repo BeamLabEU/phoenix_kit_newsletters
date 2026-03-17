@@ -1,4 +1,4 @@
-defmodule PhoenixKit.Modules.Newsletters.Paths do
+defmodule PhoenixKit.Newsletters.Paths do
   @moduledoc "Centralized path helpers for Newsletters module."
 
   alias PhoenixKit.Utils.Routes

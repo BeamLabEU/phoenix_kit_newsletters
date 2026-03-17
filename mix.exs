@@ -47,7 +47,7 @@ defmodule PhoenixKitNewsletters.MixProject do
 
   defp docs do
     [
-      main: "PhoenixKit.Modules.Newsletters",
+      main: "PhoenixKit.Newsletters",
       source_ref: "v#{@version}",
       source_url: @source_url
     ]

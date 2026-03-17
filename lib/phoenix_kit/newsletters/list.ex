@@ -1,4 +1,4 @@
-defmodule PhoenixKit.Modules.Newsletters.List do
+defmodule PhoenixKit.Newsletters.List do
   @moduledoc """
   Ecto schema for newsletter lists.
   """
@@ -18,12 +18,12 @@ defmodule PhoenixKit.Modules.Newsletters.List do
     field(:is_default, :boolean, default: false)
     field(:subscriber_count, :integer, default: 0)
 
-    has_many(:members, PhoenixKit.Modules.Newsletters.ListMember,
+    has_many(:members, PhoenixKit.Newsletters.ListMember,
       foreign_key: :list_uuid,
       references: :uuid
     )
 
-    has_many(:broadcasts, PhoenixKit.Modules.Newsletters.Broadcast,
+    has_many(:broadcasts, PhoenixKit.Newsletters.Broadcast,
       foreign_key: :list_uuid,
       references: :uuid
     )

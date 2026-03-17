@@ -1,4 +1,4 @@
-defmodule PhoenixKit.Modules.Newsletters.Broadcaster do
+defmodule PhoenixKit.Newsletters.Broadcaster do
   @moduledoc """
   Orchestrates broadcast sending: paginates list members, creates Delivery
   records and Oban jobs in batches.
@@ -8,9 +8,9 @@ defmodule PhoenixKit.Modules.Newsletters.Broadcaster do
 
   import Ecto.Query
 
-  alias PhoenixKit.Modules.Newsletters
-  alias PhoenixKit.Modules.Newsletters.{Broadcast, Delivery, ListMember}
-  alias PhoenixKit.Modules.Newsletters.Workers.DeliveryWorker
+  alias PhoenixKit.Newsletters
+  alias PhoenixKit.Newsletters.{Broadcast, Delivery, ListMember}
+  alias PhoenixKit.Newsletters.Workers.DeliveryWorker
   alias PhoenixKit.Utils.Date, as: UtilsDate
 
   @batch_size 500

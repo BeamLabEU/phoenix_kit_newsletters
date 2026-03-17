@@ -1,7 +1,7 @@
 defmodule PhoenixKitNewslettersTest do
   use ExUnit.Case, async: true
 
-  alias PhoenixKit.Modules.Newsletters
+  alias PhoenixKit.Newsletters
 
   describe "behaviour implementation" do
     test "implements PhoenixKit.Module" do
@@ -158,7 +158,7 @@ defmodule PhoenixKitNewslettersTest do
     end
 
     test "route_module/0 returns Newsletters.Web.Routes" do
-      assert Newsletters.route_module() == PhoenixKit.Modules.Newsletters.Web.Routes
+      assert Newsletters.route_module() == PhoenixKit.Newsletters.Web.Routes
     end
   end
 

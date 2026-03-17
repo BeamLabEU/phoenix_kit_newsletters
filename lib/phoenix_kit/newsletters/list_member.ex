@@ -1,4 +1,4 @@
-defmodule PhoenixKit.Modules.Newsletters.ListMember do
+defmodule PhoenixKit.Newsletters.ListMember do
   @moduledoc """
   Ecto schema for newsletter list membership.
   """
@@ -24,7 +24,7 @@ defmodule PhoenixKit.Modules.Newsletters.ListMember do
       type: UUIDv7
     )
 
-    belongs_to(:list, PhoenixKit.Modules.Newsletters.List,
+    belongs_to(:list, PhoenixKit.Newsletters.List,
       foreign_key: :list_uuid,
       references: :uuid,
       define_field: false,
