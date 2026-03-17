@@ -9,12 +9,36 @@ Add to your `mix.exs`:
 ```elixir
 def deps do
   [
-    # During development, use path. For production, use hex version once published.
-    {:phoenix_kit_newsletters, path: "/path/to/phoenix_kit_newsletters"}
-    # {:phoenix_kit_newsletters, "~> 0.1", hex: :phoenix_kit_newsletters}
+    {:phoenix_kit_newsletters, "~> 0.1"}
+    # During development (before Hex publish):
+    # {:phoenix_kit_newsletters, github: "BeamLabEU/phoenix_kit_newsletters"}
   ]
 end
 ```
+
+## Oban Setup
+
+PhoenixKit Newsletters uses Oban for background email delivery. Add the newsletters queue to your Oban configuration:
+
+```elixir
+# In config/config.exs:
+config :my_app, Oban,
+  repo: MyApp.Repo,
+  queues: [newsletters: 10]
+```
+
+See the [Oban documentation](https://hexdocs.pm/oban) for full configuration options.
+
+## How It Works
+
+PhoenixKit Newsletters auto-registers with PhoenixKit on startup — no additional configuration needed.
+
+1. Run `mix deps.get`
+2. Recompile PhoenixKit routes: `mix deps.compile phoenix_kit --force`
+3. Restart your server
+4. Enable the module in **Admin > Modules > Newsletters**
+
+Migrations are managed by PhoenixKit core and applied automatically via `mix phoenix_kit.update`.
 
 ## Requirements
 

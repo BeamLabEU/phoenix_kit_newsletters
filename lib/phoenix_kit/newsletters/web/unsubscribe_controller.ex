@@ -1,7 +1,8 @@
 defmodule PhoenixKit.Newsletters.Web.UnsubscribeController do
   @moduledoc false
 
-  use PhoenixKitWeb, :controller
+  use Phoenix.Controller, formats: [:html]
+  import Plug.Conn
 
   alias PhoenixKit.Newsletters
   alias PhoenixKit.Utils.Routes
@@ -33,6 +34,12 @@ defmodule PhoenixKit.Newsletters.Web.UnsubscribeController do
         |> put_flash(:error, "Invalid or expired unsubscribe link.")
         |> redirect(to: Routes.path("/"))
     end
+  end
+
+  def unsubscribe(conn, _params) do
+    conn
+    |> put_flash(:error, "Invalid or expired unsubscribe link.")
+    |> redirect(to: Routes.path("/"))
   end
 
   # POST /newsletters/unsubscribe — process the choice

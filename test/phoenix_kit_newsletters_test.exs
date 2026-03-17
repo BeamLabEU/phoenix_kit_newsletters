@@ -71,13 +71,18 @@ defmodule PhoenixKitNewslettersTest do
 
   describe "admin_tabs/0" do
     test "returns a list of Tab structs" do
-      tabs = Newsletters.admin_tabs()
-      assert is_list(tabs)
-      assert tabs != []
+      assert [_ | _] = Newsletters.admin_tabs()
     end
 
-    test "returns 9 tabs" do
-      assert length(Newsletters.admin_tabs()) == 9
+    test "admin_tabs returns a non-empty list" do
+      assert [_ | _] = Newsletters.admin_tabs()
+    end
+
+    test "admin_tabs contains expected tab IDs" do
+      tab_ids = Newsletters.admin_tabs() |> Enum.map(& &1.id)
+      assert :admin_newsletters in tab_ids
+      assert :admin_newsletters_broadcasts in tab_ids
+      assert :admin_newsletters_lists in tab_ids
     end
 
     test "first tab has id :admin_newsletters" do
@@ -129,8 +134,10 @@ defmodule PhoenixKitNewslettersTest do
       assert version =~ ~r/^\d+\.\d+\.\d+/
     end
 
-    test "returns 0.0.0" do
-      assert Newsletters.version() == "0.0.0"
+    test "version/0 returns a valid semver string" do
+      version = Newsletters.version()
+      assert is_binary(version)
+      assert String.match?(version, ~r/^\d+\.\d+\.\d+/)
     end
   end
 

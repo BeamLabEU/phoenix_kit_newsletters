@@ -21,6 +21,9 @@ defmodule PhoenixKit.Newsletters do
   # ============================================================================
 
   @impl PhoenixKit.Module
+  def version, do: unquote(Mix.Project.config()[:version])
+
+  @impl PhoenixKit.Module
   def module_key, do: "newsletters"
 
   @impl PhoenixKit.Module
