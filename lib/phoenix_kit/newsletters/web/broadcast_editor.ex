@@ -13,7 +13,7 @@ defmodule PhoenixKit.Newsletters.Web.BroadcastEditor do
   alias PhoenixKit.Modules.Emails.Templates, as: EmailTemplates
 
   alias PhoenixKit.Newsletters
-  alias PhoenixKit.Newsletters.Broadcaster
+  alias PhoenixKit.Newsletters.{Broadcaster, Content}
   alias PhoenixKit.Settings
   alias PhoenixKit.Utils.Routes
 
@@ -245,13 +245,9 @@ defmodule PhoenixKit.Newsletters.Web.BroadcastEditor do
   end
 
   defp render_preview(markdown, template_uuid, templates) do
-    case Earmark.as_html(markdown || "") do
-      {:ok, html, _} ->
-        inject_into_template(html, template_uuid, templates)
-
-      _ ->
-        ""
-    end
+    markdown
+    |> Content.render_markdown()
+    |> inject_into_template(template_uuid, templates)
   end
 
   defp inject_into_template(html, template_uuid, templates)

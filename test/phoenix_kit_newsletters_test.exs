@@ -36,11 +36,9 @@ defmodule PhoenixKitNewslettersTest do
       assert is_boolean(Newsletters.enabled?())
     end
 
-    test "enable_system/0 is exported" do
+    test "enable_system/0 and disable_system/0 are exported" do
+      assert Code.ensure_loaded?(Newsletters)
       assert function_exported?(Newsletters, :enable_system, 0)
-    end
-
-    test "disable_system/0 is exported" do
       assert function_exported?(Newsletters, :disable_system, 0)
     end
 
@@ -71,7 +69,7 @@ defmodule PhoenixKitNewslettersTest do
   end
 
   describe "admin_tabs/0" do
-    test "returns a non-empty list" do
+    test "returns a non-empty list of Tab structs" do
       assert [_ | _] = Newsletters.admin_tabs()
     end
 

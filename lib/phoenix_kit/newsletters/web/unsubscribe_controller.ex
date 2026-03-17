@@ -1,8 +1,7 @@
 defmodule PhoenixKit.Newsletters.Web.UnsubscribeController do
   @moduledoc false
 
-  use Phoenix.Controller, formats: [:html]
-  import Plug.Conn
+  use PhoenixKitWeb, :controller
 
   alias PhoenixKit.Newsletters
   alias PhoenixKit.Utils.Routes
