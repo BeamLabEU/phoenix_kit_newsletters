@@ -9,8 +9,9 @@ defmodule PhoenixKit.Newsletters.Web.BroadcastEditor do
   import PhoenixKitWeb.Components.Core.Icon
 
   # Optional soft dependencies — guarded by Code.ensure_loaded? at runtime
-  alias PhoenixKit.Modules.Emails.Template, as: EmailTemplate
-  alias PhoenixKit.Modules.Emails.Templates, as: EmailTemplates
+  # Use module atoms directly (not alias) to avoid compile-time warnings
+  @email_templates_mod PhoenixKit.Modules.Emails.Templates
+  @email_template_mod PhoenixKit.Modules.Emails.Template
 
   alias PhoenixKit.Newsletters
   alias PhoenixKit.Newsletters.{Broadcaster, Content}
@@ -161,15 +162,15 @@ defmodule PhoenixKit.Newsletters.Web.BroadcastEditor do
 
   # Guard: Emails.Templates is an optional dependency — only call if loaded
   defp load_templates do
-    if Code.ensure_loaded?(EmailTemplates) do
-      EmailTemplates.list_templates(%{status: "active"})
+    if Code.ensure_loaded?(@email_templates_mod) do
+      apply(@email_templates_mod, :list_templates, [%{status: "active"}])
     else
       []
     end
   end
 
   defp default_template_uuid do
-    if Code.ensure_loaded?(EmailTemplates) do
+    if Code.ensure_loaded?(@email_templates_mod) do
       PhoenixKit.Settings.get_setting("newsletters_default_template")
     else
       nil
@@ -261,13 +262,17 @@ defmodule PhoenixKit.Newsletters.Web.BroadcastEditor do
 
   defp inject_into_template(html, _, _), do: html
 
+  defp template_display_name(template) do
+    apply(@email_template_mod, :get_translation, [template.display_name, "en"]) || template.name
+  end
+
   defp apply_template_if_found(html, template_uuid, templates) do
     case Enum.find(templates, fn t -> t.uuid == template_uuid end) do
       nil ->
         html
 
       tmpl ->
-        html_body = EmailTemplate.get_translation(tmpl.html_body, "en")
+        html_body = apply(@email_template_mod, :get_translation, [tmpl.html_body, "en"])
         String.replace(html_body, "{{content}}", html)
     end
   end

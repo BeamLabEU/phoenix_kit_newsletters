@@ -166,6 +166,9 @@ defmodule PhoenixKit.Newsletters do
   end
 
   @impl PhoenixKit.Module
+  def css_sources, do: [:phoenix_kit_newsletters]
+
+  @impl PhoenixKit.Module
   def route_module, do: PhoenixKit.Newsletters.Web.Routes
 
   # ============================================================================
