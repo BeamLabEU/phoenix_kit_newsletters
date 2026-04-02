@@ -59,18 +59,19 @@
 
             <fieldset class="fieldset">
               <label class="label" for={@form[:status].id}>Status</label>
-              <select
-                id={@form[:status].id}
-                name={@form[:status].name}
-                class="select w-full"
-              >
-                <option value="active" selected={@form[:status].value == "active"}>
-                  Active
-                </option>
-                <option value="archived" selected={@form[:status].value == "archived"}>
-                  Archived
-                </option>
-              </select>
+              <label class="select w-full">
+                <select
+                  id={@form[:status].id}
+                  name={@form[:status].name}
+                >
+                  <option value="active" selected={@form[:status].value == "active"}>
+                    Active
+                  </option>
+                  <option value="archived" selected={@form[:status].value == "archived"}>
+                    Archived
+                  </option>
+                </select>
+              </label>
             </fieldset>
 
             <fieldset class="fieldset justify-end">

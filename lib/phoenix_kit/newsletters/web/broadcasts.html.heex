@@ -15,18 +15,19 @@
   <%!-- Actions Bar --%>
   <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-6">
     <div>
-      <select
-        name="status"
-        class="select select-sm"
-        phx-change="filter_status"
-      >
-        <option value="" selected={@status_filter == ""}>All Statuses</option>
-        <option value="draft" selected={@status_filter == "draft"}>Draft</option>
-        <option value="scheduled" selected={@status_filter == "scheduled"}>Scheduled</option>
-        <option value="sending" selected={@status_filter == "sending"}>Sending</option>
-        <option value="sent" selected={@status_filter == "sent"}>Sent</option>
-        <option value="cancelled" selected={@status_filter == "cancelled"}>Cancelled</option>
-      </select>
+      <label class="select select-sm">
+        <select
+          name="status"
+          phx-change="filter_status"
+        >
+          <option value="" selected={@status_filter == ""}>All Statuses</option>
+          <option value="draft" selected={@status_filter == "draft"}>Draft</option>
+          <option value="scheduled" selected={@status_filter == "scheduled"}>Scheduled</option>
+          <option value="sending" selected={@status_filter == "sending"}>Sending</option>
+          <option value="sent" selected={@status_filter == "sent"}>Sent</option>
+          <option value="cancelled" selected={@status_filter == "cancelled"}>Cancelled</option>
+        </select>
+      </label>
     </div>
 
     <.pk_link navigate="/admin/newsletters/broadcasts/new" class="btn btn-primary btn-sm">
