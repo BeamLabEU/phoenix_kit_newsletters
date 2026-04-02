@@ -31,28 +31,32 @@
         <%!-- List selector --%>
         <fieldset class="fieldset">
           <label class="label">Newsletter List</label>
-          <select name="list_uuid" class="select w-full">
-            <option value="">Select a list...</option>
-            <option :for={list <- @lists} value={list.uuid} selected={@list_uuid == list.uuid}>
-              {list.name} ({list.subscriber_count} subscribers)
-            </option>
-          </select>
+          <label class="select w-full">
+            <select name="list_uuid">
+              <option value="">Select a list...</option>
+              <option :for={list <- @lists} value={list.uuid} selected={@list_uuid == list.uuid}>
+                {list.name} ({list.subscriber_count} subscribers)
+              </option>
+            </select>
+          </label>
         </fieldset>
 
         <%!-- Template selector (only shown when Emails module available) --%>
         <%= if @templates != [] do %>
           <fieldset class="fieldset">
             <label class="label">Email Template</label>
-            <select name="template_uuid" class="select w-full">
-              <option value="">No template (plain markdown)</option>
-              <option
-                :for={template <- @templates}
-                value={template.uuid}
-                selected={@template_uuid == template.uuid}
-              >
-                {template_display_name(template)}
-              </option>
-            </select>
+            <label class="select w-full">
+              <select name="template_uuid">
+                <option value="">No template (plain markdown)</option>
+                <option
+                  :for={template <- @templates}
+                  value={template.uuid}
+                  selected={@template_uuid == template.uuid}
+                >
+                  {template_display_name(template)}
+                </option>
+              </select>
+            </label>
           </fieldset>
         <% end %>
 

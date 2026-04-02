@@ -86,17 +86,18 @@
   <div class="bg-base-200 rounded-lg p-4 mb-6">
     <div class="flex gap-2 items-center">
       <span class="text-sm font-medium">Filter by status:</span>
-      <select
-        phx-change="filter_status"
-        name="status"
-        class="select select-sm"
-      >
-        <option value="" selected={@status_filter == ""}>All</option>
-        <option value="active" selected={@status_filter == "active"}>Active</option>
-        <option value="unsubscribed" selected={@status_filter == "unsubscribed"}>
-          Unsubscribed
-        </option>
-      </select>
+      <label class="select select-sm">
+        <select
+          phx-change="filter_status"
+          name="status"
+        >
+          <option value="" selected={@status_filter == ""}>All</option>
+          <option value="active" selected={@status_filter == "active"}>Active</option>
+          <option value="unsubscribed" selected={@status_filter == "unsubscribed"}>
+            Unsubscribed
+          </option>
+        </select>
+      </label>
     </div>
   </div>
 
