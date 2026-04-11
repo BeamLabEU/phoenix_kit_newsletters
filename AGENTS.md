@@ -50,7 +50,7 @@ This is a **library** (not a standalone Phoenix app) that provides newsletters a
 
 - **Admin** (6 LiveViews): Broadcasts index/editor/details, Lists index/editor, ListMembers — all use `Phoenix.LiveView` directly (not `PhoenixKitWeb` macros)
 - **Public** (1 Controller): `UnsubscribeController` handles token-verified unsubscribe (single list or all lists)
-- **Routes**: `route_module/0` provides public routes; admin routes auto-generated from `admin_tabs/0`
+- **Routes**: `route_module/0` provides public routes; admin routes auto-generated from `admin_tabs/0`. Never hand-register these routes in the parent app's `router.ex`; see `phoenix_kit/guides/custom-admin-pages.md` for the authoritative reference
 - **Paths**: Centralized path helpers in `Paths` module — always use these instead of hardcoding URLs
 
 ### Soft Dependencies
