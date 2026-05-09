@@ -1,9 +1,14 @@
 # Changelog
 
-## 0.1.3 - 2026-05-08
+## 0.1.3 - 2026-05-09
 
 ### Added
-- Per-module Gettext backend (`PhoenixKit.Newsletters.Gettext`) with `en`/`ru`/`et` catalogues for all admin sidebar tab labels. Requires `phoenix_kit` release that ships the `gettext_backend` Tab API (BeamLabEU/phoenix_kit#522); on older releases tabs render raw English (graceful degradation).
+- Per-module Gettext backend (`PhoenixKit.Newsletters.Gettext`) with `en`/`ru`/`et` catalogues for all admin sidebar tab labels. Requires `phoenix_kit` ≥ 1.7.106 (ships the `gettext_backend` Tab API); older releases render tabs as raw English (graceful degradation).
+- Drift-guard test in `i18n_test.exs` asserting every admin tab label has a non-identity ru translation — fails loudly when a new tab is added without updating `priv/gettext/`.
+
+### Changed
+- i18n test suite runs `async: true` (Gettext locale is per-process, no shared state).
+- Simplified `test/test_helper.exs` to one-line `ExUnit.start()` now that `phoenix_kit` 1.7.106 (with the `gettext_backend` API) is published on Hex.
 
 ## 0.1.2 - 2026-04-11
 
