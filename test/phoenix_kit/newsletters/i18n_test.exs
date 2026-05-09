@@ -12,14 +12,7 @@ defmodule PhoenixKit.Newsletters.I18nTest do
     * Falls back to the raw msgid for an unknown locale.
   """
 
-  use ExUnit.Case, async: false
-
-  # Excluded by `test/test_helper.exs` when running against a `phoenix_kit`
-  # release that pre-dates the `gettext_backend` API (PR BeamLabEU/phoenix_kit#522).
-  # Once the consumer's `phoenix_kit` dep resolves to a release that ships
-  # `Tab.localized_label/1`, the helper detects it and these tests run
-  # automatically — no follow-up edit needed.
-  @moduletag :requires_phoenix_kit_i18n_api
+  use ExUnit.Case, async: true
 
   alias PhoenixKit.Dashboard.Tab
   alias PhoenixKit.Newsletters
@@ -39,6 +32,19 @@ defmodule PhoenixKit.Newsletters.I18nTest do
                  "(got #{inspect(tab.gettext_backend)})"
 
         assert tab.gettext_domain == "default"
+      end
+    end
+
+    test "every tab label has a non-identity ru translation (drift guard)" do
+      Gettext.put_locale(NewslettersGettext, "ru")
+
+      for tab <- Newsletters.admin_tabs() do
+        translated = Tab.localized_label(tab)
+
+        refute translated == tab.label,
+               "Tab #{inspect(tab.id)} label #{inspect(tab.label)} has no ru " <>
+                 "translation in priv/gettext/ru/LC_MESSAGES/default.po. " <>
+                 "Add the msgid to default.pot and run `mix gettext.merge priv/gettext`."
       end
     end
   end
