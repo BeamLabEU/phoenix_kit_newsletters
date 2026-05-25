@@ -35,7 +35,13 @@
             <select name="list_uuid">
               <option value="">{gettext("Select a list...")}</option>
               <option :for={list <- @lists} value={list.uuid} selected={@list_uuid == list.uuid}>
-                {gettext("%{name} (%{count} subscribers)", name: list.name, count: list.subscriber_count)}
+                {ngettext(
+                  "%{name} (%{count} subscriber)",
+                  "%{name} (%{count} subscribers)",
+                  list.subscriber_count,
+                  name: list.name,
+                  count: list.subscriber_count
+                )}
               </option>
             </select>
           </label>
