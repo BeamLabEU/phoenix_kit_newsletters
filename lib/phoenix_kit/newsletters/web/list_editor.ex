@@ -4,6 +4,7 @@ defmodule PhoenixKit.Newsletters.Web.ListEditor do
   """
 
   use Phoenix.LiveView
+  use Gettext, backend: PhoenixKit.Newsletters.Gettext
 
   import PhoenixKitWeb.Components.Core.AdminPageHeader
   import PhoenixKitWeb.Components.Core.Icon
@@ -27,7 +28,7 @@ defmodule PhoenixKit.Newsletters.Web.ListEditor do
     else
       {:ok,
        socket
-       |> put_flash(:error, "Newsletters module is not enabled")
+       |> put_flash(:error, gettext("Newsletters module is not enabled"))
        |> push_navigate(to: Routes.path("/admin"))}
     end
   end
@@ -38,21 +39,21 @@ defmodule PhoenixKit.Newsletters.Web.ListEditor do
 
     {:noreply,
      socket
-     |> assign(:page_title, "Edit List: #{list.name}")
+     |> assign(:page_title, gettext("Edit list: %{name}", name: list.name))
      |> assign(:list, list)
      |> assign(:form, to_form(List.changeset(list, %{})))}
   rescue
     Ecto.NoResultsError ->
       {:noreply,
        socket
-       |> put_flash(:error, "List not found")
+       |> put_flash(:error, gettext("List not found"))
        |> push_navigate(to: Routes.path("/admin/newsletters/lists"))}
   end
 
   def handle_params(_params, _url, socket) do
     {:noreply,
      socket
-     |> assign(:page_title, "New List")
+     |> assign(:page_title, gettext("New List"))
      |> assign(:list, nil)
      |> assign(:form, to_form(List.changeset(%List{}, %{})))}
   end
@@ -76,7 +77,7 @@ defmodule PhoenixKit.Newsletters.Web.ListEditor do
       {:ok, _list} ->
         {:noreply,
          socket
-         |> put_flash(:info, "List saved successfully")
+         |> put_flash(:info, gettext("List saved successfully"))
          |> push_navigate(to: Routes.path("/admin/newsletters/lists"))}
 
       {:error, changeset} ->

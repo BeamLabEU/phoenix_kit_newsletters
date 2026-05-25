@@ -4,6 +4,7 @@ defmodule PhoenixKit.Newsletters.Web.BroadcastEditor do
   """
 
   use Phoenix.LiveView
+  use Gettext, backend: PhoenixKit.Newsletters.Gettext
 
   import PhoenixKitWeb.Components.Core.AdminPageHeader
   import PhoenixKitWeb.Components.Core.Icon
@@ -23,7 +24,7 @@ defmodule PhoenixKit.Newsletters.Web.BroadcastEditor do
     if Newsletters.enabled?() do
       socket =
         socket
-        |> assign(:page_title, "New Broadcast")
+        |> assign(:page_title, gettext("New Broadcast"))
         |> assign(:project_title, Settings.get_project_title())
         |> assign(:lists, [])
         |> assign(:templates, [])
@@ -40,7 +41,7 @@ defmodule PhoenixKit.Newsletters.Web.BroadcastEditor do
     else
       {:ok,
        socket
-       |> put_flash(:error, "Newsletters module is not enabled")
+       |> put_flash(:error, gettext("Newsletters module is not enabled"))
        |> push_navigate(to: Routes.path("/admin"))}
     end
   end
@@ -55,7 +56,7 @@ defmodule PhoenixKit.Newsletters.Web.BroadcastEditor do
      socket
      |> assign(:lists, lists)
      |> assign(:templates, templates)
-     |> assign(:page_title, "Edit Broadcast")
+     |> assign(:page_title, gettext("Edit Broadcast"))
      |> assign(:broadcast, broadcast)
      |> assign(:subject, broadcast.subject || "")
      |> assign(:list_uuid, broadcast.list_uuid || "")
@@ -69,7 +70,7 @@ defmodule PhoenixKit.Newsletters.Web.BroadcastEditor do
     Ecto.NoResultsError ->
       {:noreply,
        socket
-       |> put_flash(:error, "Broadcast not found")
+       |> put_flash(:error, gettext("Broadcast not found"))
        |> push_navigate(to: Routes.path("/admin/newsletters/broadcasts"))}
   end
 
@@ -120,15 +121,21 @@ defmodule PhoenixKit.Newsletters.Web.BroadcastEditor do
           {:ok, _broadcast} ->
             {:noreply,
              socket
-             |> put_flash(:info, "Broadcast is being sent")
+             |> put_flash(:info, gettext("Broadcast is being sent"))
              |> push_navigate(to: Routes.path("/admin/newsletters/broadcasts/#{broadcast.uuid}"))}
 
           {:error, reason} ->
-            {:noreply, put_flash(socket, :error, "Failed to send: #{inspect(reason)}")}
+            {:noreply,
+             put_flash(
+               socket,
+               :error,
+               gettext("Failed to send: %{reason}", reason: inspect(reason))
+             )}
         end
 
       {:error, reason} ->
-        {:noreply, put_flash(socket, :error, "Failed to save: #{inspect(reason)}")}
+        {:noreply,
+         put_flash(socket, :error, gettext("Failed to save: %{reason}", reason: inspect(reason)))}
     end
   end
 
@@ -138,7 +145,7 @@ defmodule PhoenixKit.Newsletters.Web.BroadcastEditor do
 
     case socket.assigns.scheduled_at do
       "" ->
-        {:noreply, put_flash(socket, :error, "Please select a schedule date and time")}
+        {:noreply, put_flash(socket, :error, gettext("Please select a schedule date and time"))}
 
       scheduled_at_str ->
         save_broadcast(socket, "scheduled", %{scheduled_at: parse_datetime(scheduled_at_str)})
@@ -213,7 +220,10 @@ defmodule PhoenixKit.Newsletters.Web.BroadcastEditor do
          socket
          |> assign(:saving, false)
          |> assign(:broadcast, broadcast)
-         |> put_flash(:info, "Broadcast saved as #{status}")
+         |> put_flash(
+           :info,
+           gettext("Broadcast saved as %{status}", status: status_label(status))
+         )
          |> push_navigate(to: Routes.path("/admin/newsletters/broadcasts"))}
 
       {:error, changeset} ->
@@ -225,9 +235,16 @@ defmodule PhoenixKit.Newsletters.Web.BroadcastEditor do
         {:noreply,
          socket
          |> assign(:saving, false)
-         |> put_flash(:error, "Validation failed: #{errors}")}
+         |> put_flash(:error, gettext("Validation failed: %{errors}", errors: errors))}
     end
   end
+
+  defp status_label("draft"), do: gettext("Draft")
+  defp status_label("scheduled"), do: gettext("Scheduled")
+  defp status_label("sending"), do: gettext("Sending")
+  defp status_label("sent"), do: gettext("Sent")
+  defp status_label("cancelled"), do: gettext("Cancelled")
+  defp status_label(other), do: other
 
   defp save_broadcast_and_return(socket) do
     attrs = %{

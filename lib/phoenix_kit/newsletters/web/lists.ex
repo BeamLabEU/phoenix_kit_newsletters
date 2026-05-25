@@ -4,6 +4,7 @@ defmodule PhoenixKit.Newsletters.Web.Lists do
   """
 
   use Phoenix.LiveView
+  use Gettext, backend: PhoenixKit.Newsletters.Gettext
 
   import PhoenixKitWeb.Components.Core.AdminPageHeader
   import PhoenixKitWeb.Components.Core.Icon
@@ -19,7 +20,7 @@ defmodule PhoenixKit.Newsletters.Web.Lists do
     if Newsletters.enabled?() do
       socket =
         socket
-        |> assign(:page_title, "Newsletters Lists")
+        |> assign(:page_title, gettext("Newsletter Lists"))
         |> assign(:project_title, Settings.get_project_title())
         |> assign(:lists, [])
         |> assign(:show_confirm_modal, false)
@@ -32,7 +33,7 @@ defmodule PhoenixKit.Newsletters.Web.Lists do
     else
       {:ok,
        socket
-       |> put_flash(:error, "Newsletters module is not enabled")
+       |> put_flash(:error, gettext("Newsletters module is not enabled"))
        |> push_navigate(to: Routes.path("/admin"))}
     end
   end
@@ -49,8 +50,11 @@ defmodule PhoenixKit.Newsletters.Web.Lists do
      |> assign(:show_confirm_modal, true)
      |> assign(:confirm_action, :delete)
      |> assign(:confirm_target, uuid)
-     |> assign(:confirm_title, "Delete List")
-     |> assign(:confirm_message, "This list and all its data will be permanently deleted.")}
+     |> assign(:confirm_title, gettext("Delete list"))
+     |> assign(
+       :confirm_message,
+       gettext("This list and all its data will be permanently deleted.")
+     )}
   end
 
   @impl true
@@ -82,11 +86,11 @@ defmodule PhoenixKit.Newsletters.Web.Lists do
       {:ok, _} ->
         {:noreply,
          socket
-         |> put_flash(:info, "List deleted")
+         |> put_flash(:info, gettext("List deleted"))
          |> assign(:lists, Newsletters.list_lists())}
 
       {:error, _} ->
-        {:noreply, put_flash(socket, :error, "Cannot delete list")}
+        {:noreply, put_flash(socket, :error, gettext("Cannot delete list"))}
     end
   end
 end

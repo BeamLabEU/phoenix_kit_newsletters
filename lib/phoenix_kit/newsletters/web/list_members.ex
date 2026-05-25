@@ -4,6 +4,7 @@ defmodule PhoenixKit.Newsletters.Web.ListMembers do
   """
 
   use Phoenix.LiveView
+  use Gettext, backend: PhoenixKit.Newsletters.Gettext
 
   import PhoenixKitWeb.Components.Core.AdminPageHeader
   import PhoenixKitWeb.Components.Core.Icon
@@ -19,7 +20,7 @@ defmodule PhoenixKit.Newsletters.Web.ListMembers do
     if Newsletters.enabled?() do
       socket =
         socket
-        |> assign(:page_title, "Members")
+        |> assign(:page_title, gettext("Members"))
         |> assign(:project_title, Settings.get_project_title())
         |> assign(:list, nil)
         |> assign(:members, [])
@@ -36,7 +37,7 @@ defmodule PhoenixKit.Newsletters.Web.ListMembers do
     else
       {:ok,
        socket
-       |> put_flash(:error, "Newsletters module is not enabled")
+       |> put_flash(:error, gettext("Newsletters module is not enabled"))
        |> push_navigate(to: Routes.path("/admin"))}
     end
   end
@@ -52,7 +53,7 @@ defmodule PhoenixKit.Newsletters.Web.ListMembers do
           nil ->
             {:noreply,
              socket
-             |> put_flash(:error, "List not found")
+             |> put_flash(:error, gettext("List not found"))
              |> push_navigate(to: Routes.path("/admin/newsletters/lists"))}
 
           list ->
@@ -60,7 +61,10 @@ defmodule PhoenixKit.Newsletters.Web.ListMembers do
 
             {:noreply,
              socket
-             |> assign(:page_title, "#{list.name} — Members")
+             |> assign(
+               :page_title,
+               gettext("%{name} — Members", name: list.name)
+             )
              |> assign(:list, list)
              |> assign(:members, members)}
         end
@@ -134,13 +138,13 @@ defmodule PhoenixKit.Newsletters.Web.ListMembers do
 
         {:noreply,
          socket
-         |> put_flash(:info, "Member added")
+         |> put_flash(:info, gettext("Member added"))
          |> assign(:members, members)
          |> assign(:search_query, "")
          |> assign(:search_results, [])}
 
       {:error, _} ->
-        {:noreply, put_flash(socket, :error, "Could not add member")}
+        {:noreply, put_flash(socket, :error, gettext("Could not add member"))}
     end
   end
 
@@ -159,7 +163,10 @@ defmodule PhoenixKit.Newsletters.Web.ListMembers do
 
     {:noreply,
      socket
-     |> put_flash(:info, "Added #{added} users to the list")
+     |> put_flash(
+       :info,
+       ngettext("Added %{count} user to the list", "Added %{count} users to the list", added)
+     )
      |> assign(:members, members)
      |> assign(:search_query, "")
      |> assign(:search_results, [])}
@@ -175,14 +182,14 @@ defmodule PhoenixKit.Newsletters.Web.ListMembers do
 
           {:noreply,
            socket
-           |> put_flash(:info, "Member unsubscribed")
+           |> put_flash(:info, gettext("Member unsubscribed"))
            |> assign(:members, members)}
 
         {:error, _} ->
-          {:noreply, put_flash(socket, :error, "Could not unsubscribe member")}
+          {:noreply, put_flash(socket, :error, gettext("Could not unsubscribe member"))}
       end
     else
-      {:noreply, put_flash(socket, :error, "Member not found")}
+      {:noreply, put_flash(socket, :error, gettext("Member not found"))}
     end
   end
 
@@ -198,27 +205,31 @@ defmodule PhoenixKit.Newsletters.Web.ListMembers do
 
           {:noreply,
            socket
-           |> put_flash(:info, "Member removed")
+           |> put_flash(:info, gettext("Member removed"))
            |> assign(:members, members)}
 
         {:error, _} ->
-          {:noreply, put_flash(socket, :error, "Could not remove member")}
+          {:noreply, put_flash(socket, :error, gettext("Could not remove member"))}
       end
     else
-      {:noreply, put_flash(socket, :error, "Member not found")}
+      {:noreply, put_flash(socket, :error, gettext("Member not found"))}
     end
   end
 
   defp confirm_text("add_all_users"),
-    do: {"Add All Users", "All registered users will be subscribed to this list."}
+    do:
+      {gettext("Add all users"), gettext("All registered users will be subscribed to this list.")}
 
   defp confirm_text("unsubscribe"),
-    do: {"Unsubscribe Member", "This member will be unsubscribed from the list."}
+    do:
+      {gettext("Unsubscribe member"), gettext("This member will be unsubscribed from the list.")}
 
   defp confirm_text("remove"),
-    do: {"Remove Member", "This member will be permanently removed from the list."}
+    do:
+      {gettext("Remove member"),
+       gettext("This member will be permanently removed from the list.")}
 
-  defp confirm_text(_), do: {"Confirm", "Are you sure?"}
+  defp confirm_text(_), do: {gettext("Confirm"), gettext("Are you sure?")}
 
   defp find_member(members, uuid) do
     Enum.find(members, fn m -> to_string(m.uuid) == uuid end)

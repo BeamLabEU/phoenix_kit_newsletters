@@ -9,7 +9,13 @@
   <.admin_page_header
     back={Routes.path("/admin/newsletters/lists")}
     title={@list.name}
-    subtitle={"#{@list.subscriber_count} active subscribers"}
+    subtitle={
+      ngettext(
+        "%{count} active subscriber",
+        "%{count} active subscribers",
+        @list.subscriber_count
+      )
+    }
   />
 
   <%!-- Confirm Modal --%>
@@ -19,7 +25,7 @@
         <h3 class="font-bold text-lg mb-4">{@confirm_title}</h3>
         <p class="mb-4">{@confirm_message}</p>
         <div class="modal-action">
-          <button phx-click="hide_confirm" class="btn btn-outline">Cancel</button>
+          <button phx-click="hide_confirm" class="btn btn-outline">{gettext("Cancel")}</button>
           <button phx-click="confirm_action" class="btn btn-error">{@confirm_title}</button>
         </div>
       </div>
@@ -30,13 +36,13 @@
   <div class="card bg-base-100 shadow-sm mb-6">
     <div class="card-body">
       <div class="flex items-center justify-between mb-3">
-        <h3 class="card-title text-base">Add Members</h3>
+        <h3 class="card-title text-base">{gettext("Add members")}</h3>
         <button
           phx-click="show_confirm"
           phx-value-action="add_all_users"
           class="btn btn-sm btn-outline"
         >
-          <.icon name="hero-user-group" class="w-4 h-4" /> Add All Users
+          <.icon name="hero-user-group" class="w-4 h-4" /> {gettext("Add all users")}
         </button>
       </div>
 
@@ -45,7 +51,7 @@
           type="text"
           name="query"
           value={@search_query}
-          placeholder="Search users by email or name..."
+          placeholder={gettext("Search users by email or name...")}
           class="input w-full"
           phx-change="search_users"
           phx-debounce="300"
@@ -67,7 +73,7 @@
                 phx-value-user-uuid={user.uuid}
                 class="btn btn-xs btn-primary"
               >
-                <.icon name="hero-plus" class="w-3 h-3" /> Add
+                <.icon name="hero-plus" class="w-3 h-3" /> {gettext("Add")}
               </button>
             </div>
           <% end %>
@@ -76,7 +82,7 @@
 
       <%= if @search_query != "" and length(@search_results) == 0 do %>
         <p class="text-sm text-base-content/60 mt-2">
-          No users found matching "{@search_query}"
+          {gettext("No users found matching \"%{query}\"", query: @search_query)}
         </p>
       <% end %>
     </div>
@@ -85,16 +91,16 @@
   <%!-- Filters --%>
   <div class="bg-base-200 rounded-lg p-4 mb-6">
     <div class="flex gap-2 items-center">
-      <span class="text-sm font-medium">Filter by status:</span>
+      <span class="text-sm font-medium">{gettext("Filter by status:")}</span>
       <label class="select select-sm">
         <select
           phx-change="filter_status"
           name="status"
         >
-          <option value="" selected={@status_filter == ""}>All</option>
-          <option value="active" selected={@status_filter == "active"}>Active</option>
+          <option value="" selected={@status_filter == ""}>{gettext("All")}</option>
+          <option value="active" selected={@status_filter == "active"}>{gettext("Active")}</option>
           <option value="unsubscribed" selected={@status_filter == "unsubscribed"}>
-            Unsubscribed
+            {gettext("Unsubscribed")}
           </option>
         </select>
       </label>
@@ -107,10 +113,10 @@
       <.table_default variant="zebra" size="sm" class="w-full">
         <.table_default_header>
           <.table_default_row>
-            <.table_default_header_cell>Email</.table_default_header_cell>
-            <.table_default_header_cell>Status</.table_default_header_cell>
-            <.table_default_header_cell>Subscribed At</.table_default_header_cell>
-            <.table_default_header_cell>Actions</.table_default_header_cell>
+            <.table_default_header_cell>{gettext("Email")}</.table_default_header_cell>
+            <.table_default_header_cell>{gettext("Status")}</.table_default_header_cell>
+            <.table_default_header_cell>{gettext("Subscribed at")}</.table_default_header_cell>
+            <.table_default_header_cell>{gettext("Actions")}</.table_default_header_cell>
           </.table_default_row>
         </.table_default_header>
 
@@ -121,14 +127,14 @@
                 <%= if member.user do %>
                   {member.user.email}
                 <% else %>
-                  <span class="text-base-content/50">(unknown)</span>
+                  <span class="text-base-content/50">{gettext("(unknown)")}</span>
                 <% end %>
               </.table_default_cell>
               <.table_default_cell>
                 <%= if member.status == "active" do %>
-                  <span class="badge badge-sm badge-success">Active</span>
+                  <span class="badge badge-sm badge-success">{gettext("Active")}</span>
                 <% else %>
-                  <span class="badge badge-sm badge-ghost">Unsubscribed</span>
+                  <span class="badge badge-sm badge-ghost">{gettext("Unsubscribed")}</span>
                 <% end %>
               </.table_default_cell>
               <.table_default_cell class="text-xs">
@@ -144,13 +150,13 @@
                       phx-value-action="unsubscribe"
                       phx-value-uuid={member.uuid}
                       class="btn btn-xs btn-outline btn-warning"
-                      title="Unsubscribe"
+                      title={gettext("Unsubscribe")}
                     >
                       <.icon
                         name="hero-arrow-left-on-rectangle"
                         class="w-3 h-3 hidden sm:inline"
                       />
-                      <span class="sm:hidden whitespace-nowrap">Unsubscribe</span>
+                      <span class="sm:hidden whitespace-nowrap">{gettext("Unsubscribe")}</span>
                     </button>
                   <% end %>
                   <button
@@ -158,10 +164,10 @@
                     phx-value-action="remove"
                     phx-value-uuid={member.uuid}
                     class="btn btn-xs btn-outline btn-error"
-                    title="Remove"
+                    title={gettext("Remove")}
                   >
                     <.icon name="hero-trash" class="w-3 h-3 hidden sm:inline" />
-                    <span class="sm:hidden whitespace-nowrap">Remove</span>
+                    <span class="sm:hidden whitespace-nowrap">{gettext("Remove")}</span>
                   </button>
                 </div>
               </.table_default_cell>
@@ -183,19 +189,19 @@
                   <%= if member.user do %>
                     {member.user.email}
                   <% else %>
-                    <span class="text-base-content/50">(unknown)</span>
+                    <span class="text-base-content/50">{gettext("(unknown)")}</span>
                   <% end %>
                 </span>
                 <%= if member.status == "active" do %>
-                  <span class="badge badge-sm badge-success">Active</span>
+                  <span class="badge badge-sm badge-success">{gettext("Active")}</span>
                 <% else %>
-                  <span class="badge badge-sm badge-ghost">Unsubscribed</span>
+                  <span class="badge badge-sm badge-ghost">{gettext("Unsubscribed")}</span>
                 <% end %>
               </div>
 
               <%!-- Body: key/value grid --%>
               <div class="grid grid-cols-2 gap-x-4 gap-y-2 text-sm">
-                <div class="text-base-content/60">Subscribed At</div>
+                <div class="text-base-content/60">{gettext("Subscribed at")}</div>
                 <div>
                   <%= if member.subscribed_at do %>
                     {Calendar.strftime(member.subscribed_at, "%Y-%m-%d %H:%M")}
@@ -214,7 +220,7 @@
                     phx-value-uuid={member.uuid}
                     class="btn btn-xs btn-outline btn-warning"
                   >
-                    <.icon name="hero-arrow-left-on-rectangle" class="w-3 h-3" /> Unsubscribe
+                    <.icon name="hero-arrow-left-on-rectangle" class="w-3 h-3" /> {gettext("Unsubscribe")}
                   </button>
                 <% end %>
                 <button
@@ -223,7 +229,7 @@
                   phx-value-uuid={member.uuid}
                   class="btn btn-xs btn-outline btn-error"
                 >
-                  <.icon name="hero-trash" class="w-3 h-3" /> Remove
+                  <.icon name="hero-trash" class="w-3 h-3" /> {gettext("Remove")}
                 </button>
               </div>
             </div>
@@ -234,12 +240,12 @@
   <% else %>
     <div class="text-center py-12">
       <.icon name="hero-users" class="w-16 h-16 mx-auto mb-4 opacity-30" />
-      <h3 class="text-lg font-medium text-base-content mb-2">No members found</h3>
+      <h3 class="text-lg font-medium text-base-content mb-2">{gettext("No members found")}</h3>
       <p class="text-base-content/70">
         <%= if @status_filter != "" do %>
-          Try changing the filter above.
+          {gettext("Try changing the filter above.")}
         <% else %>
-          This list has no subscribers yet.
+          {gettext("This list has no subscribers yet.")}
         <% end %>
       </p>
     </div>

@@ -9,7 +9,7 @@
   <.admin_page_header
     back={Routes.path("/admin/newsletters/broadcasts")}
     title={@page_title}
-    subtitle="Compose and send a broadcast email to your newsletter list"
+    subtitle={gettext("Compose and send a broadcast email to your newsletter list")}
   />
 
   <form id="broadcast-form" phx-change="validate" phx-submit="save_draft">
@@ -18,24 +18,24 @@
       <div class="space-y-4">
         <%!-- Subject --%>
         <fieldset class="fieldset">
-          <label class="label">Subject</label>
+          <label class="label">{gettext("Subject")}</label>
           <input
             type="text"
             name="subject"
             value={@subject}
-            placeholder="Enter email subject..."
+            placeholder={gettext("Enter email subject...")}
             class="input w-full"
           />
         </fieldset>
 
         <%!-- List selector --%>
         <fieldset class="fieldset">
-          <label class="label">Newsletter List</label>
+          <label class="label">{gettext("Newsletter list")}</label>
           <label class="select w-full">
             <select name="list_uuid">
-              <option value="">Select a list...</option>
+              <option value="">{gettext("Select a list...")}</option>
               <option :for={list <- @lists} value={list.uuid} selected={@list_uuid == list.uuid}>
-                {list.name} ({list.subscriber_count} subscribers)
+                {gettext("%{name} (%{count} subscribers)", name: list.name, count: list.subscriber_count)}
               </option>
             </select>
           </label>
@@ -44,10 +44,10 @@
         <%!-- Template selector (only shown when Emails module available) --%>
         <%= if @templates != [] do %>
           <fieldset class="fieldset">
-            <label class="label">Email Template</label>
+            <label class="label">{gettext("Email template")}</label>
             <label class="select w-full">
               <select name="template_uuid">
-                <option value="">No template (plain markdown)</option>
+                <option value="">{gettext("No template (plain markdown)")}</option>
                 <option
                   :for={template <- @templates}
                   value={template.uuid}
@@ -62,7 +62,7 @@
 
         <%!-- Markdown Editor --%>
         <fieldset class="fieldset">
-          <label class="label">Content (Markdown)</label>
+          <label class="label">{gettext("Content (Markdown)")}</label>
           <.live_component
             module={PhoenixKitWeb.Components.Core.MarkdownEditor}
             id="broadcast-editor"
@@ -71,7 +71,7 @@
             show_formatting_toolbar={true}
             protect_navigation={false}
             height="400px"
-            placeholder="Write your broadcast content in Markdown..."
+            placeholder={gettext("Write your broadcast content in Markdown...")}
           />
         </fieldset>
 
@@ -81,7 +81,7 @@
             <%= if @saving do %>
               <span class="loading loading-spinner loading-xs"></span>
             <% end %>
-            Save Draft
+            {gettext("Save draft")}
           </button>
 
           <button
@@ -90,7 +90,7 @@
             class="btn btn-primary btn-sm"
             disabled={@saving or @subject == "" or @list_uuid == ""}
           >
-            <.icon name="hero-paper-airplane" class="w-4 h-4" /> Send Now
+            <.icon name="hero-paper-airplane" class="w-4 h-4" /> {gettext("Send now")}
           </button>
 
           <div class="flex items-center gap-2 ml-auto">
@@ -106,7 +106,7 @@
               class="btn btn-secondary btn-sm"
               disabled={@saving or @scheduled_at == "" or @subject == "" or @list_uuid == ""}
             >
-              <.icon name="hero-clock" class="w-4 h-4" /> Schedule
+              <.icon name="hero-clock" class="w-4 h-4" /> {gettext("Schedule")}
             </button>
           </div>
         </div>
@@ -114,7 +114,7 @@
 
       <%!-- Right: Preview --%>
       <div>
-        <label class="label">Preview</label>
+        <label class="label">{gettext("Preview")}</label>
         <div
           class="border border-base-300 rounded-lg overflow-hidden bg-white"
           style="height: 580px;"
@@ -130,7 +130,7 @@
             <div class="flex items-center justify-center h-full text-base-content/40">
               <div class="text-center">
                 <.icon name="hero-eye" class="w-10 h-10 mx-auto mb-2 opacity-40" />
-                <p class="text-sm">Preview will appear here as you type</p>
+                <p class="text-sm">{gettext("Preview will appear here as you type")}</p>
               </div>
             </div>
           <% end %>

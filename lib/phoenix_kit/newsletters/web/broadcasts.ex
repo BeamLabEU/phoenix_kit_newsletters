@@ -4,6 +4,7 @@ defmodule PhoenixKit.Newsletters.Web.Broadcasts do
   """
 
   use Phoenix.LiveView
+  use Gettext, backend: PhoenixKit.Newsletters.Gettext
 
   import PhoenixKitWeb.Components.Core.AdminPageHeader
   import PhoenixKitWeb.Components.Core.Icon
@@ -19,7 +20,7 @@ defmodule PhoenixKit.Newsletters.Web.Broadcasts do
     if Newsletters.enabled?() do
       socket =
         socket
-        |> assign(:page_title, "Broadcasts")
+        |> assign(:page_title, gettext("Broadcasts"))
         |> assign(:project_title, Settings.get_project_title())
         |> assign(:broadcasts, [])
         |> assign(:status_filter, "")
@@ -28,7 +29,7 @@ defmodule PhoenixKit.Newsletters.Web.Broadcasts do
     else
       {:ok,
        socket
-       |> put_flash(:error, "Newsletters module is not enabled")
+       |> put_flash(:error, gettext("Newsletters module is not enabled"))
        |> push_navigate(to: Routes.path("/admin"))}
     end
   end
@@ -73,6 +74,15 @@ defmodule PhoenixKit.Newsletters.Web.Broadcasts do
       _ -> "badge-ghost"
     end
   end
+
+  def status_label(status), do: gettext_status(status)
+
+  defp gettext_status("draft"), do: gettext("Draft")
+  defp gettext_status("scheduled"), do: gettext("Scheduled")
+  defp gettext_status("sending"), do: gettext("Sending")
+  defp gettext_status("sent"), do: gettext("Sent")
+  defp gettext_status("cancelled"), do: gettext("Cancelled")
+  defp gettext_status(other), do: other
 
   defp format_datetime(nil), do: "-"
 

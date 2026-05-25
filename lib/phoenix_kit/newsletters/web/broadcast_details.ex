@@ -4,6 +4,7 @@ defmodule PhoenixKit.Newsletters.Web.BroadcastDetails do
   """
 
   use Phoenix.LiveView
+  use Gettext, backend: PhoenixKit.Newsletters.Gettext
 
   import PhoenixKitWeb.Components.Core.AdminPageHeader
   import PhoenixKitWeb.Components.Core.Icon
@@ -38,7 +39,7 @@ defmodule PhoenixKit.Newsletters.Web.BroadcastDetails do
     else
       {:ok,
        socket
-       |> put_flash(:error, "Newsletters module is not enabled")
+       |> put_flash(:error, gettext("Newsletters module is not enabled"))
        |> push_navigate(to: Routes.path("/admin"))}
     end
   end
@@ -58,8 +59,11 @@ defmodule PhoenixKit.Newsletters.Web.BroadcastDetails do
      socket
      |> assign(:show_confirm_modal, true)
      |> assign(:confirm_action, :cancel_broadcast)
-     |> assign(:confirm_title, "Cancel Broadcast")
-     |> assign(:confirm_message, "This will stop any remaining deliveries for this broadcast.")}
+     |> assign(:confirm_title, gettext("Cancel broadcast"))
+     |> assign(
+       :confirm_message,
+       gettext("This will stop any remaining deliveries for this broadcast.")
+     )}
   end
 
   @impl true
@@ -81,10 +85,10 @@ defmodule PhoenixKit.Newsletters.Web.BroadcastDetails do
             {:noreply,
              socket
              |> assign(:broadcast, broadcast)
-             |> put_flash(:info, "Broadcast cancelled")}
+             |> put_flash(:info, gettext("Broadcast cancelled"))}
 
           {:error, _changeset} ->
-            {:noreply, put_flash(socket, :error, "Failed to cancel broadcast")}
+            {:noreply, put_flash(socket, :error, gettext("Failed to cancel broadcast"))}
         end
 
       _ ->
@@ -120,10 +124,29 @@ defmodule PhoenixKit.Newsletters.Web.BroadcastDetails do
       Ecto.NoResultsError ->
         socket
         |> assign(:loading, false)
-        |> put_flash(:error, "Broadcast not found")
+        |> put_flash(:error, gettext("Broadcast not found"))
         |> push_navigate(to: Routes.path("/admin/newsletters/broadcasts"))
     end
   end
+
+  def status_label(status), do: gettext_status(status)
+
+  defp gettext_status("draft"), do: gettext("Draft")
+  defp gettext_status("scheduled"), do: gettext("Scheduled")
+  defp gettext_status("sending"), do: gettext("Sending")
+  defp gettext_status("sent"), do: gettext("Sent")
+  defp gettext_status("cancelled"), do: gettext("Cancelled")
+  defp gettext_status(other), do: other
+
+  def delivery_label(status), do: gettext_delivery(status)
+
+  defp gettext_delivery("pending"), do: gettext("Pending")
+  defp gettext_delivery("sent"), do: gettext("Sent")
+  defp gettext_delivery("delivered"), do: gettext("Delivered")
+  defp gettext_delivery("opened"), do: gettext("Opened")
+  defp gettext_delivery("bounced"), do: gettext("Bounced")
+  defp gettext_delivery("failed"), do: gettext("Failed")
+  defp gettext_delivery(other), do: other
 
   defp status_badge_class(status) do
     case status do

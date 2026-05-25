@@ -1,6 +1,7 @@
 ## This file is the .pot template for the phoenix_kit_newsletters
 ## "default" Gettext domain. msgids here are tab/group labels and
-## tooltips registered with `gettext_backend: PhoenixKit.Newsletters.Gettext`.
+## admin-panel UI strings registered with
+## `gettext_backend: PhoenixKit.Newsletters.Gettext`.
 ##
 ## Tab labels are not extracted automatically by `mix gettext.extract`
 ## (they live as plain strings in `Tab.new!(label: ...)`, not in a
@@ -11,6 +12,8 @@
 
 msgid ""
 msgstr ""
+
+## --- Sidebar tab labels (Tab.new! literals) ---
 
 #: lib/phoenix_kit/newsletters/newsletters.ex
 msgid "Newsletters"
@@ -47,3 +50,383 @@ msgstr ""
 #: lib/phoenix_kit/newsletters/newsletters.ex
 msgid "List Members"
 msgstr ""
+
+## --- Common admin UI ---
+
+msgid "Newsletters module is not enabled"
+msgstr ""
+
+msgid "Cancel"
+msgstr ""
+
+msgid "Loading..."
+msgstr ""
+
+msgid "Edit"
+msgstr ""
+
+msgid "Delete"
+msgstr ""
+
+msgid "Refresh"
+msgstr ""
+
+msgid "Status"
+msgstr ""
+
+msgid "List"
+msgstr ""
+
+msgid "Name"
+msgstr ""
+
+msgid "Description"
+msgstr ""
+
+msgid "Slug"
+msgstr ""
+
+msgid "Active"
+msgstr ""
+
+msgid "Archived"
+msgstr ""
+
+msgid "Subscribers"
+msgstr ""
+
+msgid "Actions"
+msgstr ""
+
+msgid "Add"
+msgstr ""
+
+msgid "Remove"
+msgstr ""
+
+msgid "Members"
+msgstr ""
+
+msgid "Confirm"
+msgstr ""
+
+msgid "Are you sure?"
+msgstr ""
+
+msgid "All"
+msgstr ""
+
+## --- Broadcast statuses / delivery statuses ---
+
+msgid "Draft"
+msgstr ""
+
+msgid "Scheduled"
+msgstr ""
+
+msgid "Sending"
+msgstr ""
+
+msgid "Sent"
+msgstr ""
+
+msgid "Cancelled"
+msgstr ""
+
+msgid "Pending"
+msgstr ""
+
+msgid "Delivered"
+msgstr ""
+
+msgid "Opened"
+msgstr ""
+
+msgid "Bounced"
+msgstr ""
+
+msgid "Failed"
+msgstr ""
+
+## --- Broadcasts list page ---
+
+msgid "Create and manage email broadcasts"
+msgstr ""
+
+msgid "All statuses"
+msgstr ""
+
+msgid "No broadcasts found"
+msgstr ""
+
+msgid "Create your first broadcast to get started."
+msgstr ""
+
+msgid "Subject"
+msgstr ""
+
+msgid "Sent at"
+msgstr ""
+
+## --- Broadcast editor page ---
+
+msgid "Broadcast not found"
+msgstr ""
+
+msgid "Broadcast is being sent"
+msgstr ""
+
+msgid "Failed to send: %{reason}"
+msgstr ""
+
+msgid "Failed to save: %{reason}"
+msgstr ""
+
+msgid "Please select a schedule date and time"
+msgstr ""
+
+msgid "Broadcast saved as %{status}"
+msgstr ""
+
+msgid "Validation failed: %{errors}"
+msgstr ""
+
+msgid "Compose and send a broadcast email to your newsletter list"
+msgstr ""
+
+msgid "Enter email subject..."
+msgstr ""
+
+msgid "Newsletter list"
+msgstr ""
+
+msgid "Select a list..."
+msgstr ""
+
+msgid "%{name} (%{count} subscribers)"
+msgstr ""
+
+msgid "Email template"
+msgstr ""
+
+msgid "No template (plain markdown)"
+msgstr ""
+
+msgid "Content (Markdown)"
+msgstr ""
+
+msgid "Write your broadcast content in Markdown..."
+msgstr ""
+
+msgid "Save draft"
+msgstr ""
+
+msgid "Send now"
+msgstr ""
+
+msgid "Schedule"
+msgstr ""
+
+msgid "Preview"
+msgstr ""
+
+msgid "Preview will appear here as you type"
+msgstr ""
+
+## --- Broadcast details page ---
+
+msgid "Cancel broadcast"
+msgstr ""
+
+msgid "This will stop any remaining deliveries for this broadcast."
+msgstr ""
+
+msgid "Broadcast cancelled"
+msgstr ""
+
+msgid "Failed to cancel broadcast"
+msgstr ""
+
+msgid "Template"
+msgstr ""
+
+msgid "Total recipients"
+msgstr ""
+
+msgid "Deliveries"
+msgstr ""
+
+msgid "No deliveries yet"
+msgstr ""
+
+msgid "Recipient"
+msgstr ""
+
+msgid "Delivered at"
+msgstr ""
+
+msgid "Opened at"
+msgstr ""
+
+msgid "Error"
+msgstr ""
+
+## --- Lists page ---
+
+msgid "Newsletter Lists"
+msgstr ""
+
+msgid "Delete list"
+msgstr ""
+
+msgid "This list and all its data will be permanently deleted."
+msgstr ""
+
+msgid "List deleted"
+msgstr ""
+
+msgid "Cannot delete list"
+msgstr ""
+
+msgid "Manage your email subscriber lists"
+msgstr ""
+
+msgid "Default"
+msgstr ""
+
+msgid "View members"
+msgstr ""
+
+msgid "No newsletter lists yet"
+msgstr ""
+
+msgid "Create your first list to start managing subscribers."
+msgstr ""
+
+msgid "Create first list"
+msgstr ""
+
+## --- List editor page ---
+
+msgid "Edit list: %{name}"
+msgstr ""
+
+msgid "List not found"
+msgstr ""
+
+msgid "List saved successfully"
+msgstr ""
+
+msgid "Edit newsletter list settings"
+msgstr ""
+
+msgid "Create a new newsletter list"
+msgstr ""
+
+msgid "My newsletter"
+msgstr ""
+
+msgid "Auto-generated from name if left empty"
+msgstr ""
+
+msgid "Describe this list..."
+msgstr ""
+
+msgid "Default list"
+msgstr ""
+
+msgid "Update list"
+msgstr ""
+
+msgid "Create list"
+msgstr ""
+
+## --- List members page ---
+
+msgid "%{name} — Members"
+msgstr ""
+
+msgid "Member added"
+msgstr ""
+
+msgid "Could not add member"
+msgstr ""
+
+msgid "Member unsubscribed"
+msgstr ""
+
+msgid "Could not unsubscribe member"
+msgstr ""
+
+msgid "Member not found"
+msgstr ""
+
+msgid "Member removed"
+msgstr ""
+
+msgid "Could not remove member"
+msgstr ""
+
+msgid "Add all users"
+msgstr ""
+
+msgid "All registered users will be subscribed to this list."
+msgstr ""
+
+msgid "Unsubscribe member"
+msgstr ""
+
+msgid "This member will be unsubscribed from the list."
+msgstr ""
+
+msgid "Remove member"
+msgstr ""
+
+msgid "This member will be permanently removed from the list."
+msgstr ""
+
+msgid "Add members"
+msgstr ""
+
+msgid "Search users by email or name..."
+msgstr ""
+
+msgid "No users found matching \"%{query}\""
+msgstr ""
+
+msgid "Filter by status:"
+msgstr ""
+
+msgid "Unsubscribed"
+msgstr ""
+
+msgid "Email"
+msgstr ""
+
+msgid "Subscribed at"
+msgstr ""
+
+msgid "Unsubscribe"
+msgstr ""
+
+msgid "(unknown)"
+msgstr ""
+
+msgid "No members found"
+msgstr ""
+
+msgid "Try changing the filter above."
+msgstr ""
+
+msgid "This list has no subscribers yet."
+msgstr ""
+
+msgid "Added %{count} user to the list"
+msgid_plural "Added %{count} users to the list"
+msgstr[0] ""
+msgstr[1] ""
+
+msgid "%{count} active subscriber"
+msgid_plural "%{count} active subscribers"
+msgstr[0] ""
+msgstr[1] ""

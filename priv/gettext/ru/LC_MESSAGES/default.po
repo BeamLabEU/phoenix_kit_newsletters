@@ -12,6 +12,8 @@ msgstr ""
 "Plural-Forms: nplurals=3; plural=(n%10==1 && n%100!=11 ? 0 : n%10>=2 && "
 "n%10<=4 && (n%100<10 || n%100>=20) ? 1 : 2);\n"
 
+## --- Sidebar tab labels ---
+
 #: lib/phoenix_kit/newsletters/newsletters.ex
 msgid "Newsletters"
 msgstr "Рассылки"
@@ -47,3 +49,385 @@ msgstr "Редактирование списка"
 #: lib/phoenix_kit/newsletters/newsletters.ex
 msgid "List Members"
 msgstr "Подписчики списка"
+
+## --- Common admin UI ---
+
+msgid "Newsletters module is not enabled"
+msgstr "Модуль рассылок не включён"
+
+msgid "Cancel"
+msgstr "Отмена"
+
+msgid "Loading..."
+msgstr "Загрузка..."
+
+msgid "Edit"
+msgstr "Редактировать"
+
+msgid "Delete"
+msgstr "Удалить"
+
+msgid "Refresh"
+msgstr "Обновить"
+
+msgid "Status"
+msgstr "Статус"
+
+msgid "List"
+msgstr "Список"
+
+msgid "Name"
+msgstr "Название"
+
+msgid "Description"
+msgstr "Описание"
+
+msgid "Slug"
+msgstr "Слаг"
+
+msgid "Active"
+msgstr "Активный"
+
+msgid "Archived"
+msgstr "В архиве"
+
+msgid "Subscribers"
+msgstr "Подписчики"
+
+msgid "Actions"
+msgstr "Действия"
+
+msgid "Add"
+msgstr "Добавить"
+
+msgid "Remove"
+msgstr "Удалить"
+
+msgid "Members"
+msgstr "Подписчики"
+
+msgid "Confirm"
+msgstr "Подтвердить"
+
+msgid "Are you sure?"
+msgstr "Вы уверены?"
+
+msgid "All"
+msgstr "Все"
+
+## --- Broadcast / delivery statuses ---
+
+msgid "Draft"
+msgstr "Черновик"
+
+msgid "Scheduled"
+msgstr "Запланирован"
+
+msgid "Sending"
+msgstr "Отправляется"
+
+msgid "Sent"
+msgstr "Отправлен"
+
+msgid "Cancelled"
+msgstr "Отменён"
+
+msgid "Pending"
+msgstr "В ожидании"
+
+msgid "Delivered"
+msgstr "Доставлено"
+
+msgid "Opened"
+msgstr "Открыто"
+
+msgid "Bounced"
+msgstr "Отклонено"
+
+msgid "Failed"
+msgstr "Ошибка"
+
+## --- Broadcasts list page ---
+
+msgid "Create and manage email broadcasts"
+msgstr "Создание и управление почтовыми рассылками"
+
+msgid "All statuses"
+msgstr "Все статусы"
+
+msgid "No broadcasts found"
+msgstr "Выпуски не найдены"
+
+msgid "Create your first broadcast to get started."
+msgstr "Создайте первый выпуск, чтобы начать."
+
+msgid "Subject"
+msgstr "Тема"
+
+msgid "Sent at"
+msgstr "Отправлено"
+
+## --- Broadcast editor page ---
+
+msgid "Broadcast not found"
+msgstr "Выпуск не найден"
+
+msgid "Broadcast is being sent"
+msgstr "Выпуск отправляется"
+
+msgid "Failed to send: %{reason}"
+msgstr "Ошибка отправки: %{reason}"
+
+msgid "Failed to save: %{reason}"
+msgstr "Ошибка сохранения: %{reason}"
+
+msgid "Please select a schedule date and time"
+msgstr "Выберите дату и время отправки"
+
+msgid "Broadcast saved as %{status}"
+msgstr "Выпуск сохранён со статусом «%{status}»"
+
+msgid "Validation failed: %{errors}"
+msgstr "Ошибка валидации: %{errors}"
+
+msgid "Compose and send a broadcast email to your newsletter list"
+msgstr "Создайте и отправьте письмо подписчикам списка"
+
+msgid "Enter email subject..."
+msgstr "Введите тему письма..."
+
+msgid "Newsletter list"
+msgstr "Список рассылки"
+
+msgid "Select a list..."
+msgstr "Выберите список..."
+
+msgid "%{name} (%{count} subscribers)"
+msgstr "%{name} (%{count} подписчиков)"
+
+msgid "Email template"
+msgstr "Шаблон письма"
+
+msgid "No template (plain markdown)"
+msgstr "Без шаблона (чистый Markdown)"
+
+msgid "Content (Markdown)"
+msgstr "Содержимое (Markdown)"
+
+msgid "Write your broadcast content in Markdown..."
+msgstr "Напишите содержимое выпуска в Markdown..."
+
+msgid "Save draft"
+msgstr "Сохранить черновик"
+
+msgid "Send now"
+msgstr "Отправить сейчас"
+
+msgid "Schedule"
+msgstr "Запланировать"
+
+msgid "Preview"
+msgstr "Предпросмотр"
+
+msgid "Preview will appear here as you type"
+msgstr "Предпросмотр появится здесь по мере набора"
+
+## --- Broadcast details page ---
+
+msgid "Cancel broadcast"
+msgstr "Отменить выпуск"
+
+msgid "This will stop any remaining deliveries for this broadcast."
+msgstr "Это остановит оставшиеся доставки этого выпуска."
+
+msgid "Broadcast cancelled"
+msgstr "Выпуск отменён"
+
+msgid "Failed to cancel broadcast"
+msgstr "Не удалось отменить выпуск"
+
+msgid "Template"
+msgstr "Шаблон"
+
+msgid "Total recipients"
+msgstr "Всего получателей"
+
+msgid "Deliveries"
+msgstr "Доставки"
+
+msgid "No deliveries yet"
+msgstr "Доставок пока нет"
+
+msgid "Recipient"
+msgstr "Получатель"
+
+msgid "Delivered at"
+msgstr "Доставлено"
+
+msgid "Opened at"
+msgstr "Открыто"
+
+msgid "Error"
+msgstr "Ошибка"
+
+## --- Lists page ---
+
+msgid "Newsletter Lists"
+msgstr "Списки рассылок"
+
+msgid "Delete list"
+msgstr "Удалить список"
+
+msgid "This list and all its data will be permanently deleted."
+msgstr "Список и все его данные будут удалены безвозвратно."
+
+msgid "List deleted"
+msgstr "Список удалён"
+
+msgid "Cannot delete list"
+msgstr "Не удалось удалить список"
+
+msgid "Manage your email subscriber lists"
+msgstr "Управление списками подписчиков"
+
+msgid "Default"
+msgstr "По умолчанию"
+
+msgid "View members"
+msgstr "Посмотреть подписчиков"
+
+msgid "No newsletter lists yet"
+msgstr "Пока нет списков рассылок"
+
+msgid "Create your first list to start managing subscribers."
+msgstr "Создайте первый список, чтобы начать управление подписчиками."
+
+msgid "Create first list"
+msgstr "Создать первый список"
+
+## --- List editor page ---
+
+msgid "Edit list: %{name}"
+msgstr "Редактирование списка: %{name}"
+
+msgid "List not found"
+msgstr "Список не найден"
+
+msgid "List saved successfully"
+msgstr "Список сохранён"
+
+msgid "Edit newsletter list settings"
+msgstr "Изменение настроек списка рассылки"
+
+msgid "Create a new newsletter list"
+msgstr "Создание нового списка рассылки"
+
+msgid "My newsletter"
+msgstr "Моя рассылка"
+
+msgid "Auto-generated from name if left empty"
+msgstr "Будет сгенерировано из названия, если оставить пустым"
+
+msgid "Describe this list..."
+msgstr "Опишите этот список..."
+
+msgid "Default list"
+msgstr "Список по умолчанию"
+
+msgid "Update list"
+msgstr "Обновить список"
+
+msgid "Create list"
+msgstr "Создать список"
+
+## --- List members page ---
+
+msgid "%{name} — Members"
+msgstr "%{name} — подписчики"
+
+msgid "Member added"
+msgstr "Подписчик добавлен"
+
+msgid "Could not add member"
+msgstr "Не удалось добавить подписчика"
+
+msgid "Member unsubscribed"
+msgstr "Подписчик отписан"
+
+msgid "Could not unsubscribe member"
+msgstr "Не удалось отписать подписчика"
+
+msgid "Member not found"
+msgstr "Подписчик не найден"
+
+msgid "Member removed"
+msgstr "Подписчик удалён"
+
+msgid "Could not remove member"
+msgstr "Не удалось удалить подписчика"
+
+msgid "Add all users"
+msgstr "Добавить всех пользователей"
+
+msgid "All registered users will be subscribed to this list."
+msgstr "Все зарегистрированные пользователи будут подписаны на этот список."
+
+msgid "Unsubscribe member"
+msgstr "Отписать подписчика"
+
+msgid "This member will be unsubscribed from the list."
+msgstr "Подписчик будет отписан от этого списка."
+
+msgid "Remove member"
+msgstr "Удалить подписчика"
+
+msgid "This member will be permanently removed from the list."
+msgstr "Подписчик будет безвозвратно удалён из списка."
+
+msgid "Add members"
+msgstr "Добавить подписчиков"
+
+msgid "Search users by email or name..."
+msgstr "Поиск пользователей по email или имени..."
+
+msgid "No users found matching \"%{query}\""
+msgstr "Не найдено пользователей по запросу «%{query}»"
+
+msgid "Filter by status:"
+msgstr "Фильтр по статусу:"
+
+msgid "Unsubscribed"
+msgstr "Отписан"
+
+msgid "Email"
+msgstr "Email"
+
+msgid "Subscribed at"
+msgstr "Подписан"
+
+msgid "Unsubscribe"
+msgstr "Отписать"
+
+msgid "(unknown)"
+msgstr "(неизвестно)"
+
+msgid "No members found"
+msgstr "Подписчики не найдены"
+
+msgid "Try changing the filter above."
+msgstr "Попробуйте изменить фильтр выше."
+
+msgid "This list has no subscribers yet."
+msgstr "В этом списке ещё нет подписчиков."
+
+msgid "Added %{count} user to the list"
+msgid_plural "Added %{count} users to the list"
+msgstr[0] "В список добавлен %{count} пользователь"
+msgstr[1] "В список добавлено %{count} пользователя"
+msgstr[2] "В список добавлено %{count} пользователей"
+
+msgid "%{count} active subscriber"
+msgid_plural "%{count} active subscribers"
+msgstr[0] "%{count} активный подписчик"
+msgstr[1] "%{count} активных подписчика"
+msgstr[2] "%{count} активных подписчиков"

@@ -10,7 +10,9 @@
     back={Routes.path("/admin/newsletters/lists")}
     title={@page_title}
     subtitle={
-      if @list, do: "Edit newsletter list settings", else: "Create a new newsletter list"
+      if @list,
+        do: gettext("Edit newsletter list settings"),
+        else: gettext("Create a new newsletter list")
     }
   />
 
@@ -21,19 +23,19 @@
           <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
             <fieldset class="fieldset">
               <label class="label" for={@form[:name].id}>
-                Name <span class="text-error">*</span>
+                {gettext("Name")} <span class="text-error">*</span>
               </label>
               <.input
                 field={@form[:name]}
                 type="text"
-                placeholder="My Newsletter"
+                placeholder={gettext("My newsletter")}
                 class="input w-full"
               />
             </fieldset>
 
             <fieldset class="fieldset">
               <label class="label" for={@form[:slug].id}>
-                Slug <span class="text-error">*</span>
+                {gettext("Slug")} <span class="text-error">*</span>
               </label>
               <.input
                 field={@form[:slug]}
@@ -42,33 +44,33 @@
                 class="input w-full"
               />
               <p class="text-xs text-base-content/60 mt-1">
-                Auto-generated from name if left empty
+                {gettext("Auto-generated from name if left empty")}
               </p>
             </fieldset>
 
             <fieldset class="fieldset md:col-span-2">
-              <label class="label" for={@form[:description].id}>Description</label>
+              <label class="label" for={@form[:description].id}>{gettext("Description")}</label>
               <textarea
                 id={@form[:description].id}
                 name={@form[:description].name}
                 rows="3"
-                placeholder="Describe this list..."
+                placeholder={gettext("Describe this list...")}
                 class="textarea w-full"
               >{Phoenix.HTML.Form.normalize_value("textarea", @form[:description].value)}</textarea>
             </fieldset>
 
             <fieldset class="fieldset">
-              <label class="label" for={@form[:status].id}>Status</label>
+              <label class="label" for={@form[:status].id}>{gettext("Status")}</label>
               <label class="select w-full">
                 <select
                   id={@form[:status].id}
                   name={@form[:status].name}
                 >
                   <option value="active" selected={@form[:status].value == "active"}>
-                    Active
+                    {gettext("Active")}
                   </option>
                   <option value="archived" selected={@form[:status].value == "archived"}>
-                    Archived
+                    {gettext("Archived")}
                   </option>
                 </select>
               </label>
@@ -84,18 +86,18 @@
                   checked={@form[:is_default].value}
                   class="checkbox"
                 />
-                <span>Default list</span>
+                <span>{gettext("Default list")}</span>
               </label>
             </fieldset>
           </div>
 
           <div class="flex justify-end gap-2 mt-6">
             <.pk_link navigate="/admin/newsletters/lists" class="btn btn-ghost">
-              Cancel
+              {gettext("Cancel")}
             </.pk_link>
             <button type="submit" class="btn btn-primary">
               <.icon name="hero-check" class="w-4 h-4 mr-1" />
-              {if @list, do: "Update List", else: "Create List"}
+              {if @list, do: gettext("Update list"), else: gettext("Create list")}
             </button>
           </div>
         </.form>

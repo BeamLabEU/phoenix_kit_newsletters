@@ -8,7 +8,7 @@
 <div class="container flex-col mx-auto px-4 py-6">
   <.admin_page_header back={Routes.path("/admin/newsletters/broadcasts")}>
     <h1 class="text-xl sm:text-2xl font-bold text-base-content">
-      {if @broadcast, do: @broadcast.subject, else: "Broadcast Details"}
+      {if @broadcast, do: @broadcast.subject, else: gettext("Broadcast Details")}
     </h1>
   </.admin_page_header>
 
@@ -19,7 +19,7 @@
         <h3 class="font-bold text-lg mb-4">{@confirm_title}</h3>
         <p class="mb-4">{@confirm_message}</p>
         <div class="modal-action">
-          <button phx-click="hide_confirm" class="btn btn-outline">Cancel</button>
+          <button phx-click="hide_confirm" class="btn btn-outline">{gettext("Cancel")}</button>
           <button phx-click="confirm_action" class="btn btn-error">{@confirm_title}</button>
         </div>
       </div>
@@ -29,7 +29,7 @@
   <%= if @loading do %>
     <div class="flex justify-center items-center h-32">
       <span class="loading loading-spinner loading-md"></span>
-      <span class="ml-2">Loading...</span>
+      <span class="ml-2">{gettext("Loading...")}</span>
     </div>
   <% else %>
     <%= if @broadcast do %>
@@ -40,7 +40,7 @@
             navigate={"/admin/newsletters/broadcasts/#{@broadcast.uuid}/edit"}
             class="btn btn-outline btn-sm"
           >
-            <.icon name="hero-pencil" class="w-4 h-4" /> Edit
+            <.icon name="hero-pencil" class="w-4 h-4" /> {gettext("Edit")}
           </.pk_link>
         <% end %>
 
@@ -51,12 +51,12 @@
             phx-value-action="cancel_broadcast"
             class="btn btn-error btn-sm"
           >
-            <.icon name="hero-x-circle" class="w-4 h-4" /> Cancel Broadcast
+            <.icon name="hero-x-circle" class="w-4 h-4" /> {gettext("Cancel broadcast")}
           </button>
         <% end %>
 
         <button type="button" phx-click="refresh" class="btn btn-ghost btn-sm ml-auto">
-          <.icon name="hero-arrow-path" class="w-4 h-4" /> Refresh
+          <.icon name="hero-arrow-path" class="w-4 h-4" /> {gettext("Refresh")}
         </button>
       </div>
 
@@ -65,19 +65,19 @@
         <div class="card-body p-4">
           <div class="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
             <div>
-              <p class="text-base-content/60 text-xs font-medium uppercase mb-1">Status</p>
+              <p class="text-base-content/60 text-xs font-medium uppercase mb-1">{gettext("Status")}</p>
               <span class={"badge #{status_badge_class(@broadcast.status)}"}>
-                {@broadcast.status}
+                {status_label(@broadcast.status)}
               </span>
             </div>
             <div>
-              <p class="text-base-content/60 text-xs font-medium uppercase mb-1">List</p>
+              <p class="text-base-content/60 text-xs font-medium uppercase mb-1">{gettext("List")}</p>
               <p class="font-medium">
                 {if @broadcast.list, do: @broadcast.list.name, else: "-"}
               </p>
             </div>
             <div>
-              <p class="text-base-content/60 text-xs font-medium uppercase mb-1">Template</p>
+              <p class="text-base-content/60 text-xs font-medium uppercase mb-1">{gettext("Template")}</p>
               <p class="font-medium">
                 {if Map.get(@broadcast, :template),
                   do: template_display_name(@broadcast.template),
@@ -85,7 +85,7 @@
               </p>
             </div>
             <div>
-              <p class="text-base-content/60 text-xs font-medium uppercase mb-1">Sent At</p>
+              <p class="text-base-content/60 text-xs font-medium uppercase mb-1">{gettext("Sent at")}</p>
               <p class="font-medium">{format_datetime(@broadcast.sent_at)}</p>
             </div>
           </div>
@@ -95,33 +95,33 @@
       <%!-- Delivery Stats --%>
       <div class="stats stats-horizontal shadow w-full mb-6 overflow-x-auto">
         <div class="stat">
-          <div class="stat-title">Total Recipients</div>
+          <div class="stat-title">{gettext("Total recipients")}</div>
           <div class="stat-value text-2xl">{@broadcast.total_recipients}</div>
         </div>
         <div class="stat">
-          <div class="stat-title">Sent</div>
+          <div class="stat-title">{gettext("Sent")}</div>
           <div class="stat-value text-2xl text-info">{stat_value(@delivery_stats, "sent")}</div>
         </div>
         <div class="stat">
-          <div class="stat-title">Delivered</div>
+          <div class="stat-title">{gettext("Delivered")}</div>
           <div class="stat-value text-2xl text-success">
             {stat_value(@delivery_stats, "delivered")}
           </div>
         </div>
         <div class="stat">
-          <div class="stat-title">Opened</div>
+          <div class="stat-title">{gettext("Opened")}</div>
           <div class="stat-value text-2xl text-primary">
             {stat_value(@delivery_stats, "opened")}
           </div>
         </div>
         <div class="stat">
-          <div class="stat-title">Bounced</div>
+          <div class="stat-title">{gettext("Bounced")}</div>
           <div class="stat-value text-2xl text-warning">
             {stat_value(@delivery_stats, "bounced")}
           </div>
         </div>
         <div class="stat">
-          <div class="stat-title">Failed</div>
+          <div class="stat-title">{gettext("Failed")}</div>
           <div class="stat-value text-2xl text-error">
             {stat_value(@delivery_stats, "failed")}
           </div>
@@ -129,22 +129,22 @@
       </div>
 
       <%!-- Deliveries Table (desktop) --%>
-      <h2 class="text-lg font-semibold mb-3">Deliveries</h2>
+      <h2 class="text-lg font-semibold mb-3">{gettext("Deliveries")}</h2>
       <%= if @deliveries == [] do %>
         <div class="text-center py-10 text-base-content/50">
-          <p>No deliveries yet</p>
+          <p>{gettext("No deliveries yet")}</p>
         </div>
       <% else %>
         <div class="hidden md:block">
           <.table_default variant="zebra" size="sm" class="w-full">
             <.table_default_header>
               <.table_default_row>
-                <.table_default_header_cell>Recipient</.table_default_header_cell>
-                <.table_default_header_cell>Status</.table_default_header_cell>
-                <.table_default_header_cell>Sent At</.table_default_header_cell>
-                <.table_default_header_cell>Delivered At</.table_default_header_cell>
-                <.table_default_header_cell>Opened At</.table_default_header_cell>
-                <.table_default_header_cell>Error</.table_default_header_cell>
+                <.table_default_header_cell>{gettext("Recipient")}</.table_default_header_cell>
+                <.table_default_header_cell>{gettext("Status")}</.table_default_header_cell>
+                <.table_default_header_cell>{gettext("Sent at")}</.table_default_header_cell>
+                <.table_default_header_cell>{gettext("Delivered at")}</.table_default_header_cell>
+                <.table_default_header_cell>{gettext("Opened at")}</.table_default_header_cell>
+                <.table_default_header_cell>{gettext("Error")}</.table_default_header_cell>
               </.table_default_row>
             </.table_default_header>
 
@@ -155,7 +155,7 @@
                 </.table_default_cell>
                 <.table_default_cell>
                   <span class={"badge badge-sm #{delivery_badge_class(delivery.status)}"}>
-                    {delivery.status}
+                    {delivery_label(delivery.status)}
                   </span>
                 </.table_default_cell>
                 <.table_default_cell class="text-sm text-base-content/70">
@@ -187,23 +187,23 @@
                       {if delivery.user, do: delivery.user.email, else: delivery.user_uuid}
                     </span>
                     <span class={"badge badge-sm #{delivery_badge_class(delivery.status)}"}>
-                      {delivery.status}
+                      {delivery_label(delivery.status)}
                     </span>
                   </div>
 
                   <%!-- Body: key/value grid --%>
                   <div class="grid grid-cols-2 gap-x-4 gap-y-2 text-sm">
-                    <div class="text-base-content/60">Sent At</div>
+                    <div class="text-base-content/60">{gettext("Sent at")}</div>
                     <div>{format_datetime(delivery.sent_at)}</div>
 
-                    <div class="text-base-content/60">Delivered At</div>
+                    <div class="text-base-content/60">{gettext("Delivered at")}</div>
                     <div>{format_datetime(delivery.delivered_at)}</div>
 
-                    <div class="text-base-content/60">Opened At</div>
+                    <div class="text-base-content/60">{gettext("Opened at")}</div>
                     <div>{format_datetime(delivery.opened_at)}</div>
 
                     <%= if delivery.error do %>
-                      <div class="text-base-content/60">Error</div>
+                      <div class="text-base-content/60">{gettext("Error")}</div>
                       <div class="text-error text-xs">{delivery.error}</div>
                     <% end %>
                   </div>
