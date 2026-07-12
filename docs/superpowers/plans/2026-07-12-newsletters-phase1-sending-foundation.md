@@ -2,6 +2,12 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
+> **Review round 1 incorporated (2026-07-12):** GLM-5.2 `reviewer` (effort max) found — all verified against code and fixed inline: (1) 🔴 credential-detection gate needs field `access_key` (not `access_key_id`) + nested/validated `:credentials`, with headless `validate_connection/2` after `save_setup` and end-to-end `get_credentials` assertions (B1/B4/C1); (2) 🔴 `add_connection/3` returns `{:ok, %{uuid: …}}` (B4); (3) 🔴 `deliver_via_integration/3` must NOT go through SES-only `deliver_email/2` — replicate the Provider seam directly (C3); (4) 🟠 permanently blank the legacy plaintext AWS secret after verification (B5); (5) 🟠 `TIMESTAMPTZ` per V58 standard + capabilities as atoms + `provider_kind`↔integration consistency validation (D1/B1/D2). Verdict: Sound-with-changes → changes applied.
+>
+> GLM-5.2 `component-architect` corroborated all of the above independently and added: (6) the "Integrations = 3 credential keys only" boundary is correct — `aws_ses_configuration_set`/SNS/SQS settings stay in the emails module; (7) per-profile SES `configuration_set` in `advanced` jsonb is **inert in Phase 1** (the emails module's global config-set wins) unless C3 passes it per-call — deliberately deferred to Phase 5 (rotation), documented so it isn't rediscovered; (8) `provider_kind` names `aws_ses`/`smtp` deliberately match the emails detection map (`utils.ex:36`); `brevo_api`/`brevo_smtp` are NOT in that map → **no open/click classification for Brevo sends until Phase 7 tracking** — expected, stated here so nobody is surprised.
+>
+> Fable self-review additions: (9) at D1 implementation, **re-verify `@current_version` is still 142** — upstream moves fast (+48 commits in ~4 weeks); if it advanced, take the next free version and update the plan; (10) before Stage A edits, run a `mix test` baseline in all three fork repos and check the hydroforce checkout's dirty state; back up the dev DB (`pg_dump phoenixkit_hello_world_dev`) before the first `mix phoenix_kit.update` (the path-dep switch rolls core migrations forward); (11) when live-testing D4/D5, confirm the hydroforce Oban config includes the `newsletters_delivery` queue.
+
 **Goal:** Build the sending foundation for the expanded newsletters system — move email credentials into core PhoenixKit **Integrations** (starting with AWS SES, adding **Brevo API + SMTP** and **generic SMTP**), and add a newsletters **"Send Settings"** block (send profiles) that reference an integration and carry per-account send parameters (rate, from-name, reply-to, signature) — with multiple profiles per integration.
 
 **Architecture:** Credentials live ONLY in core `PhoenixKit.Integrations` (JSONB rows in `phoenix_kit_settings`, sensitive fields AES-256-GCM encrypted). The `emails` module and the `newsletters` module resolve credentials from Integrations by stored UUID. All *send behavior* (cadence, identity, signatures) lives in a newsletters-owned `SendProfile` schema. Sending routes through core `PhoenixKit.Mailer` / `Email.Provider` (preserving tracking/SES behavior), selecting a Swoosh adapter per profile (SES / SMTP / Brevo API). New DB table (`send_profiles`) is created by a **core migration `V143`** (consistent with existing newsletters tables in core `V79`/`V84`).
@@ -88,30 +94,38 @@ git add mix.exs mix.lock && git commit -m "chore(dev): wire phoenix_kit/emails/n
 - Test: `/app/test/phoenix_kit/integrations/providers_test.exs`
 
 **Interfaces:**
-- Produces: provider key `"aws_ses"`, `auth_type: :key_secret`, setup fields `access_key_id`, `secret_key`, `aws_region`. (Field **`secret_key`** deliberately named to hit `Encryption.@sensitive_fields` so it auto-encrypts.)
+- Produces: provider key `"aws_ses"`, `auth_type: :key_secret`, setup fields **`access_key`** (label "Access Key ID"), `secret_key`, `aws_region`.
+- **⚠ Field naming is load-bearing (GLM finding, verified):** the credential-detection gate (`integrations.ex` `maybe_set_status/2` + `has_credentials?/1`) recognizes `:key_secret` creds **only via `data["access_key"]`** — naming the field `access_key_id` would leave status `"disconnected"` and `get_credentials/1` would return `{:error, :not_configured}`. Storage key = `access_key`; the human label still says "Access Key ID". `secret_key` hits `Encryption.@sensitive_fields` so it auto-encrypts.
 
 - [ ] **Step 1: Write failing test**
 ```elixir
-test "aws_ses provider is registered with encryptable secret field" do
+test "aws_ses provider is registered and produces usable credentials" do
   p = PhoenixKit.Integrations.Providers.get_provider("aws_ses")
   assert p.auth_type == :key_secret
   keys = Enum.map(p.setup_fields, & &1.key)
-  assert "access_key_id" in keys and "secret_key" in keys and "aws_region" in keys
+  assert "access_key" in keys and "secret_key" in keys and "aws_region" in keys
   assert "secret_key" in PhoenixKit.Integrations.Encryption.sensitive_fields()
+  assert :email_send in p.capabilities
+
+  # end-to-end: headless save must yield retrievable credentials
+  {:ok, %{uuid: uuid}} = PhoenixKit.Integrations.add_connection("aws_ses", "test")
+  {:ok, _} = PhoenixKit.Integrations.save_setup(uuid, %{
+    "access_key" => "AKIA_T", "secret_key" => "S", "aws_region" => "eu-central-1"})
+  assert {:ok, %{"access_key" => "AKIA_T"}} = PhoenixKit.Integrations.get_credentials(uuid)
 end
 ```
 - [ ] **Step 2: Run → FAIL** (`get_provider("aws_ses")` returns nil). Run: `mix test test/phoenix_kit/integrations/providers_test.exs`
-- [ ] **Step 3: Implement** — add to `builtin_providers/0` (follow the OpenAI map shape at `providers.ex:248-322`):
+- [ ] **Step 3: Implement** — add to `builtin_providers/0` (follow the OpenAI map shape at `providers.ex:248-322`; capabilities are **atoms**, include `oauth_config: nil` for spec compliance):
 ```elixir
 %{
   key: "aws_ses", name: "Amazon SES", description: "AWS Simple Email Service (SMTP credentials via SES API)",
-  icon: "hero-envelope", auth_type: :key_secret,
+  icon: "hero-envelope", auth_type: :key_secret, oauth_config: nil,
   setup_fields: [
-    %{key: "access_key_id", label: "Access Key ID", type: :text, required: true, placeholder: "AKIA…"},
-    %{key: "secret_key",    label: "Secret Access Key", type: :password, required: true},
-    %{key: "aws_region",    label: "Region", type: :text, required: true, placeholder: "eu-central-1"}
+    %{key: "access_key", label: "Access Key ID", type: :text, required: true, placeholder: "AKIA…"},
+    %{key: "secret_key", label: "Secret Access Key", type: :password, required: true},
+    %{key: "aws_region", label: "Region", type: :text, required: true, placeholder: "eu-central-1"}
   ],
-  capabilities: ["email_send"]
+  capabilities: [:email_send]
 }
 ```
 - [ ] **Step 4: Run → PASS**
@@ -131,7 +145,7 @@ end
 - [ ] **Step 1: Write failing test** — with an `aws_ses` connection saved and `emails_aws_integration_uuid` set, `get_aws_access_key/0` returns the Integrations value, not the legacy setting.
 ```elixir
 test "get_aws_access_key prefers the selected Integrations connection" do
-  {:ok, uuid} = seed_aws_ses_integration(%{"access_key_id" => "AKIA_NEW", "secret_key" => "S", "aws_region" => "eu-central-1"})
+  {:ok, uuid} = seed_aws_ses_integration(%{"access_key" => "AKIA_NEW", "secret_key" => "S", "aws_region" => "eu-central-1"})
   PhoenixKit.Settings.update_setting("emails_aws_integration_uuid", uuid)
   assert PhoenixKit.Modules.Emails.get_aws_access_key() == "AKIA_NEW"
 end
@@ -150,7 +164,7 @@ defp aws_ses_credentials do
   end
 end
 
-def get_aws_access_key,  do: Map.get(aws_ses_credentials(), "access_key_id") || legacy_aws_access_key()
+def get_aws_access_key,  do: Map.get(aws_ses_credentials(), "access_key") || legacy_aws_access_key()
 def get_aws_secret_key,  do: Map.get(aws_ses_credentials(), "secret_key")    || legacy_aws_secret_key()
 def get_aws_region,      do: Map.get(aws_ses_credentials(), "aws_region")     || legacy_aws_region()
 ```
@@ -178,32 +192,35 @@ def get_aws_region,      do: Map.get(aws_ses_credentials(), "aws_region")     ||
 
 - [ ] **Step 1: Write failing test** — given legacy AWS settings and no integration, `migrate_legacy/0` creates one `aws_ses` connection, sets `emails_aws_integration_uuid`, and re-running does nothing.
 - [ ] **Step 2: Run → FAIL**
-- [ ] **Step 3: Implement**
+- [ ] **Step 3: Implement** — **⚠ two verified gotchas:** `add_connection/3` returns `{:ok, %{uuid: uuid, data: data}}` (NOT `{:ok, uuid}` — that match crashes at `save_setup/3`'s `is_binary` guard); and headless saves must call `validate_connection/2` afterwards so status flips past `"configured"` (the admin form does this automatically — see the comment in `integrations.ex` `maybe_set_status/2`).
 ```elixir
 @impl PhoenixKit.Module
 def migrate_legacy do
   if Settings.get_setting("emails_aws_integration_uuid") in [nil, ""] do
     ak = Settings.get_setting("aws_access_key_id"); sk = Settings.get_setting("aws_secret_access_key")
     if is_binary(ak) and ak != "" and is_binary(sk) and sk != "" do
-      {:ok, uuid} = Integrations.add_connection("aws_ses", "Amazon SES (migrated)")
+      {:ok, %{uuid: uuid}} = Integrations.add_connection("aws_ses", "Amazon SES (migrated)")
       {:ok, _} = Integrations.save_setup(uuid, %{
-        "access_key_id" => ak, "secret_key" => sk,
+        "access_key" => ak, "secret_key" => sk,
         "aws_region" => Settings.get_setting("aws_region") || "us-east-1"
       })
+      _ = Integrations.validate_connection(uuid, "aws_ses")   # adjust to the real arity/args at implementation
       Settings.update_setting("emails_aws_integration_uuid", uuid)
     end
   end
   :ok
 end
 ```
-- [ ] **Step 4: Run → PASS** (assert secret is stored `enc:v1:`-prefixed in the JSONB row).
+- [ ] **Step 4: Run → PASS** (assert secret is stored `enc:v1:`-prefixed in the JSONB row AND `get_credentials(uuid)` returns `{:ok, _}` — the end-to-end gate check).
 - [ ] **Step 5: Commit** (emails fork): `feat(emails): migrate_legacy moves SES creds into encrypted Integrations`
+> **Security note (GLM finding):** migration alone leaves the plaintext `aws_secret_access_key` settings row in the DB. Blanking it is a deliberate, verified step in B5 — do not skip it.
 
 ### Task B5: Live-test SES-via-Integrations on Hydra Force
 
 - [ ] **Step 1:** In the running dev app, run `PhoenixKit.Modules.Emails.migrate_legacy()` (via `mix phoenix_kit.update` legacy hook or IEx), confirm an `aws_ses` connection appears at `/admin/settings/integrations` with an encrypted secret.
-- [ ] **Step 2:** Send a test email (emails module test-send) and confirm delivery via SES using Integrations-sourced creds; verify the legacy plaintext row is no longer the source (temporarily blank it to prove).
-- [ ] **Step 3:** Record result in the PR description. No code commit (verification only).
+- [ ] **Step 2:** Send a test email (emails module test-send) and confirm delivery via SES using Integrations-sourced creds.
+- [ ] **Step 3: Permanently blank the legacy plaintext secret** once the Integrations send is verified: set `aws_secret_access_key` (and `aws_access_key_id`) settings rows to `""`. Re-send a test email to prove SES still works from Integrations only. *(GLM security finding: leaving the plaintext secret defeats the purpose of the refactor.)*
+- [ ] **Step 4:** Record results in the PR description. No code commit (verification only).
 
 ---
 
@@ -218,7 +235,8 @@ end
 - `brevo_smtp`: `auth_type: :credentials`, fields `username` (`<subacct>@smtp-brevo.com`), `password` (`xsmtpsib-…` → store under `secret_key`? No — SMTP password field must encrypt; name it `password` and extend `@sensitive_fields`, OR store as `api_key`). **Decision:** extend `Encryption.@sensitive_fields` with `"password"` (Task C2) so SMTP passwords encrypt. host `smtp-relay.brevo.com`, port `587` as defaults.
 - `smtp` (generic): `auth_type: :credentials`, fields `host`, `port`, `username`, `password`.
 
-- [ ] **Steps:** failing test asserting the three providers + their fields → implement provider maps (Brevo API/SMTP defaults per verified facts) → pass → commit `feat(integrations): register brevo_api, brevo_smtp, smtp providers`.
+- **⚠ `:credentials` gate (GLM finding, verified):** `has_credentials?/1` recognizes `:credentials`-type connections only via a **nested `"credentials"` map** or a `status ∈ [connected, configured]`. Flat `host/port/username/password` fields alone leave the connection `"disconnected"` → `get_credentials/1` fails. Mitigation (both): (a) every headless save is followed by `validate_connection/2` (stamps `"connected"`); (b) each provider test asserts end-to-end `add_connection → save_setup → validate → get_credentials == {:ok, _}`. If that proves brittle, the alternative is a small core generalization of `has_credentials?/1` — decide at implementation with a failing test in hand.
+- [ ] **Steps:** failing test asserting the three providers + fields (capabilities `[:email_send]` atoms, `oauth_config: nil`) **+ the end-to-end get_credentials assertion per provider** → implement provider maps (Brevo API/SMTP defaults per verified facts) → pass → commit `feat(integrations): register brevo_api, brevo_smtp, smtp providers`.
 
 ### Task C2: Encrypt SMTP passwords — extend sensitive fields
 
@@ -231,15 +249,27 @@ end
 ### Task C3: Swoosh delivery selection per integration provider (core mailer seam)
 
 **Files:**
-- Modify: `/app/lib/phoenix_kit/mailer.ex` — add `swoosh_config_for/1` mapping an integration provider+creds → `{adapter, config}` (AmazonSES / SMTP / Brevo). Keep routing through `deliver_email/2` so `Email.Provider.intercept_before_send/handle_after_send` still fires.
+- Modify: `/app/lib/phoenix_kit/mailer.ex` — add `swoosh_config_for/1` mapping an integration provider+creds → `{adapter, config}` (AmazonSES / SMTP / Brevo), and `deliver_via_integration/3`.
 - Test: core mailer test with `Swoosh.Adapters.Test`.
 
 **Interfaces:**
-- Produces: `PhoenixKit.Mailer.deliver_via_integration(email, integration_uuid, opts)` → resolves creds via `Integrations.get_credentials/1`, builds adapter config, delivers through the existing interceptor path.
-- Adapter map: `"aws_ses"→Swoosh.Adapters.AmazonSES`, `"smtp"|"brevo_smtp"→Swoosh.Adapters.SMTP`, `"brevo_api"→Swoosh.Adapters.Brevo` (api_key).
+- Produces: `PhoenixKit.Mailer.deliver_via_integration(email, integration_uuid, opts)` → resolves creds via `Integrations.get_credentials/1`, builds adapter config, delivers **replicating the Provider seam directly**:
+```elixir
+def deliver_via_integration(email, integration_uuid, opts \\ []) do
+  with {:ok, creds} <- PhoenixKit.Integrations.get_credentials(integration_uuid),
+       {adapter, config} <- swoosh_config_for(creds) do
+    provider = PhoenixKit.Email.Provider.current()
+    email = provider.intercept_before_send(email, opts)
+    result = Swoosh.Mailer.deliver(email, [adapter: adapter] ++ config)
+    provider.handle_after_send(email, result)
+    result
+  end
+end
+```
+- **⚠ Do NOT route through `deliver_email/2` (GLM finding, verified):** its `deliver_with_runtime_config/3` is **hardcoded to SES** (`config[:adapter] == Swoosh.Adapters.AmazonSES`, creds only from `Provider.current().get_aws_*`) — a Brevo/SMTP send through it would ignore or misroute per-call config. Replicating the interceptor seam directly preserves tracking (Decision #7) without the SES-only override. *(Stage B's SES path deliberately stays on `deliver_email/2` — B2's rewired getters feed `deliver_with_runtime_config` for free.)*
+- Adapter map: `"aws_ses"→Swoosh.Adapters.AmazonSES`, `"smtp"|"brevo_smtp"→Swoosh.Adapters.SMTP`, `"brevo_api"→Swoosh.Adapters.Brevo` (api_key). `Swoosh.Adapters.Brevo` verified present in swoosh 1.26.3; `gen_smtp` is a hard dep of phoenix_kit itself, so the SMTP adapter runtime is available.
 
-- [ ] **Steps:** failing test (each provider builds the expected adapter config and delivery is captured by `Swoosh.Adapters.Test`) → implement `swoosh_config_for/1` + `deliver_via_integration/3` → pass → commit `feat(mailer): deliver via a chosen Integration (SES/SMTP/Brevo)`.
-> Confirm `Swoosh.Adapters.Brevo` is available (add `{:swoosh, …}` already present; Brevo adapter ships with Swoosh). If absent, use a thin `POST /v3/smtp/email` client via `Integrations.authenticated_request/4`.
+- [ ] **Steps:** failing test (each provider builds the expected adapter config; delivery captured by `Swoosh.Adapters.Test`; interceptor called) → implement `swoosh_config_for/1` + `deliver_via_integration/3` → pass → commit `feat(mailer): deliver via a chosen Integration (SES/SMTP/Brevo)`.
 
 ### Task C4: Live-test Brevo API + SMTP on Hydra Force
 
@@ -261,7 +291,7 @@ end
 
 - [ ] **Step 1: Write failing migration test** (run `V143.up` on a test prefix, assert table exists + `COMMENT ON TABLE …phoenix_kit IS '143'`).
 - [ ] **Step 2: FAIL**
-- [ ] **Step 3: Implement `v143.ex`** (follow `v79.ex` raw-SQL pattern):
+- [ ] **Step 3: Implement `v143.ex`** (follow the **`v142.ex`** idiom — `Map.get(opts, :prefix, "public")` + two-clause `prefix_str/1`; timestamps are **`TIMESTAMPTZ`** per the project's V58 standard, matching `v79.ex`):
 ```elixir
 defmodule PhoenixKit.Migrations.Postgres.V143 do
   use Ecto.Migration
@@ -278,22 +308,24 @@ defmodule PhoenixKit.Migrations.Postgres.V143 do
       rate_per_hour INTEGER, rate_per_day INTEGER, pause_seconds INTEGER DEFAULT 0,
       advanced JSONB NOT NULL DEFAULT '{}'::jsonb,
       enabled BOOLEAN NOT NULL DEFAULT TRUE,
-      inserted_at TIMESTAMP NOT NULL DEFAULT (now() AT TIME ZONE 'utc'),
-      updated_at TIMESTAMP NOT NULL DEFAULT (now() AT TIME ZONE 'utc')
+      inserted_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
     )""")
     execute("CREATE INDEX IF NOT EXISTS idx_nl_send_profiles_integration ON #{p}phoenix_kit_newsletters_send_profiles(integration_uuid)")
+    execute("ALTER TABLE #{p}phoenix_kit_newsletters_broadcasts ADD COLUMN IF NOT EXISTS send_profile_uuid UUID")
     execute("COMMENT ON TABLE #{p}phoenix_kit IS '143'")
   end
   def down(opts) do
     p = prefix_str(Map.get(opts, :prefix, "public"))
+    execute("ALTER TABLE #{p}phoenix_kit_newsletters_broadcasts DROP COLUMN IF EXISTS send_profile_uuid")
     execute("DROP TABLE IF EXISTS #{p}phoenix_kit_newsletters_send_profiles CASCADE")
     execute("COMMENT ON TABLE #{p}phoenix_kit IS '142'")
   end
   defp prefix_str("public"), do: "public."
-  defp prefix_str(nil), do: "public."
   defp prefix_str(prefix), do: "#{prefix}."
 end
 ```
+> `broadcasts.send_profile_uuid` (needed by D4) is folded in here — safe only because V143 hasn't shipped anywhere yet. Bare UUID (no FK) is consistent with the codebase's loose-UUID pattern (v138/v140) — reviewed and accepted.
 - [ ] **Step 4: PASS**; bump `@current_version` to 143. — [ ] **Step 5: Commit** (`/app`): `feat(migrations): V143 newsletters send_profiles table`
 
 ### Task D2: `SendProfile` Ecto schema + context (newsletters)
@@ -306,8 +338,8 @@ end
 **Interfaces:**
 - Produces: `PhoenixKit.Newsletters.SendProfile` schema mirroring the V143 columns; changeset validates `name`, `integration_uuid`, `provider_kind ∈ ~w(aws_ses smtp brevo_api brevo_smtp)`, non-negative rates.
 
-- [ ] **Step 1: Failing changeset test** (required fields; provider_kind inclusion; multiple profiles may share one `integration_uuid`).
-- [ ] **Step 2: FAIL** — [ ] **Step 3:** implement schema (UUIDv7 PK, `schema "phoenix_kit_newsletters_send_profiles"`, fields per D1, `timestamps(type: :utc_datetime)`) + context CRUD (via `RepoHelper.repo()`). — [ ] **Step 4: PASS** — [ ] **Step 5: Commit** `feat(newsletters): SendProfile schema + context`.
+- [ ] **Step 1: Failing changeset test** (required fields; provider_kind inclusion; multiple profiles may share one `integration_uuid`; **consistency: `provider_kind` must match the referenced integration's actual provider** — validated in the changeset to prevent drift between the two sources of truth (GLM finding)).
+- [ ] **Step 2: FAIL** — [ ] **Step 3:** implement schema (UUIDv7 PK, `schema "phoenix_kit_newsletters_send_profiles"`, fields per D1, `timestamps(type: :utc_datetime)`) + context CRUD (via `RepoHelper.repo()`) + a `validate_provider_kind_matches_integration/1` changeset step that loads the integration and compares its `provider` to `provider_kind`. — [ ] **Step 4: PASS** — [ ] **Step 5: Commit** `feat(newsletters): SendProfile schema + context`.
 
 ### Task D3: Newsletters admin — "Send Settings" LiveView
 
@@ -333,7 +365,7 @@ end
 - Consumes: `Newsletters.get_send_profile!/1`, `Mailer.deliver_via_integration/3`.
 - Produces: per-broadcast send-method selection; signature appended to body; from/reply-to from the profile.
 
-- [ ] **Steps:** update V143 to add `send_profile_uuid` to broadcasts (before Stage D ships) → failing worker test → implement profile-aware `send_email/4` (fallback to legacy single-Mailer when no profile) → pass → commit `feat(newsletters): send broadcasts via selected Send Profile/integration`.
+- [ ] **Steps:** (`send_profile_uuid` already ships in V143 — see D1) → failing worker test → implement profile-aware `send_email/4` (apply from_name/reply_to/signature; deliver via `Mailer.deliver_via_integration/3`; fallback to legacy single-Mailer `deliver_email/2` when no profile selected) → pass → commit `feat(newsletters): send broadcasts via selected Send Profile/integration`.
 
 ### Task D5: Live-test end-to-end on Hydra Force
 

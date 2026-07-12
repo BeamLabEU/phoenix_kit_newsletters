@@ -1,9 +1,11 @@
-# PhoenixKit Newsletters — Expansion Design Spec (v2)
+# PhoenixKit Newsletters — Expansion Design Spec (v3)
 
-**Date:** 2026-07-11 · **Module:** `phoenix_kit_newsletters` (fork `timujinne` → upstream `BeamLabEU`), currently **v0.1.4**
+**Date:** 2026-07-11 (v2) / 2026-07-12 (v3 consolidation) · **Module:** `phoenix_kit_newsletters` (fork `timujinne` → upstream `BeamLabEU`), currently **v0.1.4**
 **Goal:** Grow the module from a basic opt-in broadcast tool into a full-featured mailing system with feature parity to **LetsExtract Email Studio 7** (the desktop bulk-mailer used on the laptop), while staying a compliant, web-native PhoenixKit module.
 
 **v2 note:** revised after two independent **GLM-5.2** plan reviews (roles: `component-architect` + `reviewer`, `--effort max`), whose load-bearing claims were verified against the parent `phoenix_kit` codebase. The reviews reshaped the domain model and phases — see **Appendix B**.
+
+**v3 note:** consolidated after the user's binding refinements (Appendix C) and the detailed Phase-1 plan (`docs/superpowers/plans/2026-07-12-newsletters-phase1-sending-foundation.md`). Unifies `SendMethod`→**`SendProfile`**, moves migrations to **core V143+**, and renumbers the roadmap (§7) with **Phase 1 = Sending Foundation**.
 
 ---
 
@@ -15,9 +17,10 @@
 | 2 | Sending backend | **Multi-account sending** — several SMTP "send methods" with signatures, rotation, per-account limits | user |
 | 3 | Deliverable now | **Design spec + phased plan**, stop for user review before implementation | user |
 | 4 | Plan review | Reviewed by **GLM-5.2** agents (via `phoenix_kit` container `zai … --model glm-5.2 --effort max`) | user |
-| 5 | SMTP credential storage | **Reuse `PhoenixKit.Integrations` + `Integrations.Encryption` (AES-256-GCM)** — no bespoke crypto, no Cloak | GLM review (verified) |
-| 6 | New tables home | **Ship via `migration_module/0`** (package-owned versioned migrations), NOT parent core migrations | GLM review (verified) |
+| 5 | SMTP credential storage | **Reuse `PhoenixKit.Integrations` + `Integrations.Encryption` (AES-256-GCM)** — no bespoke crypto, no Cloak. Integrations hold **keys only**; all send settings live in newsletters `SendProfile` | GLM review + user (App. C) |
+| 6 | New tables home | **Core `phoenix_kit` versioned migrations (next = V143)** — consistent with existing newsletters tables in core v79/v84. *(Supersedes the v2 `migration_module/0` decision — user, Appendix C.)* | user (App. C) |
 | 7 | Tracking path | **Reuse `PhoenixKit.Email.Provider` hooks**; multi-account sends must still funnel through the Mailer/Provider seam | GLM review (verified) |
+| 8 | Dev/test target | **Running dev app in the `phoenix_kit` container** (`/root/projects/hydroforce`, dev DB `postgres`), forks wired via `path:` deps; live-test every stage | user |
 
 ---
 
@@ -44,7 +47,7 @@ Expansion branches from this clean, synced `main`. (Spec committed on `feature/n
 **Hard constraints today (the crux):**
 1. A recipient *is* a registered user; arbitrary emails cannot exist.
 2. `DeliveryWorker`, the unsubscribe **token** (`%{user_uuid, list_uuid}`), and the `UnsubscribeController` are all **user-bound**.
-3. New tables have **no package-owned migration path** — the module never implements `migration_module/0`.
+3. Tables live in **core** migrations (v79/v84); the module implements no `migration_module/0`. *(v3 keeps this pattern: new tables continue in core, V143+.)*
 
 ---
 
@@ -61,8 +64,8 @@ Legend: ✅ exists · ⚠️ partial · ❌ missing. (Verified LetsExtract termi
 | **Templates** (multiple, HTML+text, upload/EML) | ⚠️ one optional Emails template | Module-owned `Template` library |
 | **Macros** `%Var%` (+ spintax) | ⚠️ 3 hardcoded `{{}}` | Macro engine (`%Var%` **and** `{{var}}`); spintax = optional/cut |
 | **Attachments** (files, inline/URL images) | ❌ | Reuse parent **Storage** module + Swoosh attach |
-| **Multiple send methods** (SMTP profiles) | ❌ single Mailer | `SendMethod` + **Integrations** creds |
-| Per-method **From/Reply-to/ReturnPath**, signature | ⚠️ single from_email/name | Fields on `SendMethod` |
+| **Multiple send methods** (SMTP profiles) | ❌ single Mailer | `SendProfile` + **Integrations** creds |
+| Per-method **From/Reply-to/ReturnPath**, signature | ⚠️ single from_email/name | Fields on `SendProfile` |
 | **Rotation** + per-account limits | ❌ | Rotation + atomic per-method caps |
 | **"Check SMTP"** test | ❌ | Admin test-send action |
 | **Spam-check** (SpamAssassin 0–10, mail-tester, DNSBL) | ❌ | Optional Phase 7 (defer) |
@@ -78,31 +81,31 @@ Legend: ✅ exists · ⚠️ partial · ❌ missing. (Verified LetsExtract termi
 
 ## 5. Target domain model (revised per review)
 
-New/changed schemas (all `phoenix_kit_newsletters_*`, UUIDv7) — **all shipped via the package's own `migration_module/0`**:
+New/changed schemas (all `phoenix_kit_newsletters_*`, UUIDv7) — **all shipped via core `phoenix_kit` versioned migrations (V143+, next free version at implementation time)**:
 
 - **`Contact`** — `email` **(citext, GLOBAL unique per tenant-`prefix`; migration must `CREATE EXTENSION IF NOT EXISTS citext`)**, first/last name, company, country, `custom_fields` (jsonb → macros), status (active/bounced/unsubscribed/complained), source. Independent of `Users`. Membership expressed **only** via `ContactListMember` (no "scope" ambiguity).
 - **`ContactListMember`** — join `contact_uuid` ↔ `list_uuid`, status. (Existing `ListMember` for users stays → hybrid.)
 - **`List` change** — no `kind` enum. A list may hold both user and contact members; the Broadcaster resolves recipients by **UNION** of the two joins. (`kind` dropped — it would drift from actual membership. Optional creation *hint* only, if ever.)
-- **`Delivery` changes** — add nullable `contact_uuid`; make `user_uuid` **nullable**; **DB `CHECK ((user_uuid IS NULL) <> (contact_uuid IS NULL))`** (changeset-only XOR is insufficient — `Broadcaster` uses `insert_all`, bypassing changesets). Add `send_method_uuid`, open/click fields.
+- **`Delivery` changes** — add nullable `contact_uuid`; make `user_uuid` **nullable**; **DB `CHECK ((user_uuid IS NULL) <> (contact_uuid IS NULL))`** (changeset-only XOR is insufficient — `Broadcaster` uses `insert_all`, bypassing changesets). Add `send_profile_uuid` (stamped per delivery once rotation exists), open/click fields.
 - **`Suppression`** — `type` (email/domain/pattern), `value`, `scope` (global/list), reason, source. Enforcement: email+domain as a **single set-membership query** at enqueue; patterns a **bounded** pass; **worker guard is the source of truth** (catches suppressions added post-enqueue).
 - **`Template`** — module-owned library (name, subject, html/text, macros meta). **Resolve `Broadcast.template_uuid` collision** (today → Emails.Template): split into `emails_template_uuid` vs `newsletter_template_uuid`, or model polymorphic `{type, uuid}`. Decided in Phase 0.
-- **`SendMethod`** — **thin** row: from_name, from_email, reply_to, return_path, signature_html/text, enabled, hourly_limit, daily_limit, rotation weight/priority, optional headers (List-ID/List-Unsubscribe/Precedence), **`integration_uuid` FK → `PhoenixKit.Integrations`** (which holds the encrypted SMTP/API secret). **No bespoke encrypted-config column.**
-- **`SendMethodUsage`** — per-method per-window counter; enforced with an **atomic claim** (`UPDATE … SET used = used+1 WHERE used < cap RETURNING`, row-lock) or a per-method rate-limiter — because Oban's **global** queue concurrency cannot express per-account caps.
+- **`SendProfile`** *(v3: unified name — supersedes v2's "SendMethod"; this is the user's "Send Settings" block)* — **thin** row: name, from_name, from_email, reply_to, return_path, signature_html/text, enabled, rate_per_hour, rate_per_day, pause_seconds, rotation weight/priority *(used from the Rotation phase)*, `advanced` jsonb (per-provider-kind extras: SES config-set/queues, API options), optional headers (List-ID/List-Unsubscribe/Precedence), **`integration_uuid` → `PhoenixKit.Integrations` row** (which holds the encrypted SMTP/API secret; bare UUID, no FK — integrations live in `phoenix_kit_settings.key`). **Multiple profiles may reference the same integration** (same account, different cadence/signature). **No bespoke encrypted-config column.** Table ships in **core V143**.
+- **`SendProfileUsage`** — per-profile per-window counter; enforced with an **atomic claim** (`UPDATE … SET used = used+1 WHERE used < cap RETURNING`, row-lock) or a per-profile rate-limiter — because Oban's **global** queue concurrency cannot express per-account caps. *(Ships in the Rotation & Limits phase, not Phase 1.)*
 - **`Attachment`** — belongs to broadcast/template; **store via parent `PhoenixKit.Storage`** (not module-local); Swoosh attach.
 - **`Campaign`** — **cut from v1** (drip/staged = different product). Single-shot scheduling stays on `Broadcast.scheduled_at`.
 
-**Sender-pipeline refactor (the real unlock):** `Broadcaster` resolves user∪contact recipients and writes `user_uuid` XOR `contact_uuid` deliveries (+ **unique index `(broadcast_uuid, user_uuid)` / `(broadcast_uuid, contact_uuid)`** for idempotency; move the long-running enqueue **out of one giant transaction** into per-batch txns for 100k+ scale). `DeliveryWorker` becomes **recipient-agnostic** (user OR contact: to-address, macro vars, and a **contact-capable unsubscribe token**). Multi-account send still routes through `Mailer.deliver_email/2` (per-call Swoosh config from the SendMethod) to **keep Provider/tracking/SES behavior** — not a raw per-account Swoosh mailer that bypasses it.
+**Sender-pipeline refactor (the real unlock):** `Broadcaster` resolves user∪contact recipients and writes `user_uuid` XOR `contact_uuid` deliveries (+ **unique index `(broadcast_uuid, user_uuid)` / `(broadcast_uuid, contact_uuid)`** for idempotency; move the long-running enqueue **out of one giant transaction** into per-batch txns for 100k+ scale). `DeliveryWorker` becomes **recipient-agnostic** (user OR contact: to-address, macro vars, and a **contact-capable unsubscribe token**). Multi-account send still routes through `Mailer.deliver_email/2` (per-call Swoosh config from the SendProfile's integration) to **keep Provider/tracking/SES behavior** — not a raw per-account Swoosh mailer that bypasses it.
 
 ---
 
 ## 6. Subsystems (isolation boundaries)
 
-1. **Migrations** — package `migration_module/0` + versioned skeleton (`phoenix_kit_update_v*_to_v*`).
+1. **Migrations** — core `phoenix_kit` versioned migrations (`postgres/vNNN.ex`; V143 for Phase 1, next free version per phase).
 2. **Contacts** — CRUD + file/clipboard import + dedup + segmentation.
 3. **Sender pipeline** — recipient-agnostic Broadcaster/Worker + contact unsubscribe + idempotency.
 4. **Suppression** — check(email/domain/pattern) enforced at enqueue + worker.
 5. **Templates** — library CRUD, upload/EML, macro engine (`%Var%`+`{{}}`), HTML-escaped merge fields.
-6. **Sending accounts** — `SendMethod` (+Integrations) + rotation + atomic per-method limits, via Mailer/Provider seam.
+6. **Sending accounts** — `SendProfile` (+Integrations) + rotation + atomic per-profile limits, via Mailer/Provider seam.
 7. **Throttling & scheduling** — batch/pause/window → Oban design; extend `process_scheduled_broadcasts`.
 8. **Attachments** — parent Storage + Swoosh attach.
 9. **Spam-check** *(optional/deferrable)* — SpamAssassin/mail-tester/DNSBL.
@@ -110,20 +113,18 @@ New/changed schemas (all `phoenix_kit_newsletters_*`, UUIDv7) — **all shipped 
 
 ---
 
-## 7. Phased roadmap (revised)
+## 7. Phased roadmap (v3 — consolidated 2026-07-12)
 
-Every phase ends green (compile + credo + dialyzer + tests incl. the invariants named below) and is a reviewable PR. Dependencies drove the resequencing.
+Every phase ends green (compile + credo + dialyzer + tests incl. the invariants named below), is **live-tested on the Hydra Force dev app**, and is a reviewable PR. Each phase: detailed plan → **GLM-5.2 dual review** (component-architect + reviewer) → implement with live testing → final GLM review. Migrations take the **next free core version at implementation time** (V143 for Phase 1; later numbers may shift as upstream advances — never pin ahead).
 
-- **Phase 0 — Architecture & migration plumbing (blocker for all).** Implement `migration_module/0` → `PhoenixKit.Newsletters.Migrations` (versioned). Lock three decisions: (i) SMTP creds via **Integrations** (`integration_providers/0` contributes `smtp`/provider defs); (ii) tracking reuses **`Email.Provider`**; (iii) resolve **`template_uuid`** collision (split/polymorphic). No feature code.
-- **Phase 1a — Contacts foundation.** `Contact` + `ContactListMember` schemas, contacts CRUD LiveView, **import from CSV/XLSX (email+fields) and TXT/clipboard**, parse + dedup + validate. Ships as "manage contact lists" (does **not** yet send to them — honest scope).
-- **Phase 1b — Send-to-contacts (pipeline refactor).** Nullable `Delivery.user_uuid` + `contact_uuid` + **DB CHECK XOR**; `Broadcaster` UNION resolution + **idempotency unique index** + per-batch txns; recipient-agnostic `DeliveryWorker`; **contact-capable unsubscribe token** + controller branch; **union-aware `count_active_members`/`subscriber_count`**. *This* unlocks arbitrary-address mailing. Backward-compat test: existing user lists send identically.
-- **Phase 2 — Suppression / block-lists.** `Suppression` (email/domain/pattern; our domain/pattern enhancement), admin UI, enforcement at enqueue (set-membership) + **worker guard as source of truth**; auto-add on user unsubscribe now, on bounce/complaint when Phase 8 lands.
-- **Phase 3 — Template library + macros.** Module `Template` (multiple, HTML+text, visual+raw, upload/**EML**), macro engine `%Var%`+`{{var}}` with **HTML-escaped** merge fields; broadcast selects template. *(Spintax: optional, likely cut v1.)*
-- **Phase 4 — Multi-account sending + limits** *(merged with old Phase 5's limit half)*. `SendMethod` (thin + `integration_uuid`; From/Reply-to/ReturnPath/signature/headers), **"Check SMTP"**, **rotation**, **atomic per-method hourly/daily caps** (`SendMethodUsage`), routed through `Mailer.deliver_email/2`. Design the Oban model (dynamic per-method queues or app-level limiter) — the single shared queue can't do per-account caps.
-- **Phase 5 — Pacing & scheduling.** Map **batch=N + Pause(s) + Connections(threads)** onto the enqueue timing; send windows; extend `process_scheduled_broadcasts`. (Rotation/limits already correct from Phase 4.)
+- **Phase 1 — Sending Foundation** *(detailed plan: `docs/superpowers/plans/2026-07-12-newsletters-phase1-sending-foundation.md`; absorbs old Phase 0 decisions + the multi-account half of old Phase 4)*. Stages: **A** — forks (core/emails/newsletters) wired into the container dev app via `path:` deps, migrated baseline. **B** — `aws_ses` Integrations provider; emails getters resolve creds from Integrations with legacy fallback; `Emails.migrate_legacy/0` moves plaintext SES settings into an encrypted connection. **C** — `brevo_api`/`brevo_smtp`/`smtp` providers; `"password"` added to `Encryption.@sensitive_fields`; `Mailer.deliver_via_integration/3` (per-call Swoosh config through the Provider seam). **D** — core **V143** (`phoenix_kit_newsletters_send_profiles` + `broadcasts.send_profile_uuid`); `SendProfile` schema/context; "Send Settings" admin; profile-aware `DeliveryWorker.send_email/4` with legacy fallback. Rate fields are *stored* here, *enforced* in Phase 5.
+- **Phase 2 — Contacts foundation + send-to-contacts** *(old 1a+1b together)*. 2a: `Contact` + `ContactListMember`, CRUD LiveView, import CSV/XLSX (email+fields) / TXT/clipboard, parse+dedup ("manage lists" only). 2b: nullable `Delivery.user_uuid` + `contact_uuid` + **DB CHECK XOR**; `Broadcaster` UNION resolution + **idempotency unique index** + per-batch txns; recipient-agnostic `DeliveryWorker` **built on top of the Phase-1 profile-aware send path**; **contact-capable unsubscribe token** + controller branch; union-aware counters. Backward-compat test: user lists send identically. *This* unlocks arbitrary-address mailing.
+- **Phase 3 — Suppression / block-lists.** `Suppression` (email/domain/pattern; domain/pattern = our enhancement), admin UI, enforcement at enqueue (set-membership) + **worker guard as source of truth**; auto-add on user/contact unsubscribe now, on bounce/complaint when Phase 7 lands.
+- **Phase 4 — Template library + macros.** Module `Template` (multiple, HTML+text, visual+raw, upload/**EML**), macro engine `%Var%`+`{{var}}` with **HTML-escaped** merge fields; broadcast selects template; **resolve the `template_uuid` collision here** (split `emails_template_uuid` vs `newsletter_template_uuid`, or polymorphic). *(Spintax: cut from v1.)*
+- **Phase 5 — Rotation, limits & pacing** *(old Phase 4-remainder + old 5)*. Rotation across `SendProfile`s (weight/priority), **atomic per-profile hourly/daily caps** (`SendProfileUsage` — `UPDATE … WHERE used < cap RETURNING`), per-delivery `send_profile_uuid` stamping, **batch=N + Pause(s) + Connections** mapped onto enqueue timing, send windows, extend `process_scheduled_broadcasts`. Decide the Oban model (dynamic per-profile queues vs app-level limiter) — the single shared queue can't do per-account caps.
 - **Phase 6 — Attachments.** Parent **Storage**-backed attachments (any number); Swoosh attach; inline vs linked images.
-- **Phase 7 — Spam-check & test-send** *(optional, cut-candidate; must not block critical path)*. SpamAssassin 0–10 + mail-tester + DNSBL; .eml/browser preview; test send.
-- **Phase 8 — Tracking & reports.** Open pixel + click redirect **routes** (`route_module` additions) via `Email.Provider` hooks; bounce/complaint webhook ingestion (Brevo) → `Delivery`/`Suppression`; unsubscribe modes; per-broadcast/campaign analytics.
+- **Phase 7 — Tracking & reports.** Open pixel + click redirect **routes** (`route_module` additions) via `Email.Provider` hooks; bounce/complaint webhook ingestion (Brevo) → `Delivery`/`Suppression`; unsubscribe modes; per-broadcast analytics.
+- **Phase 8 (optional, cut-candidate) — Spam-check & preview extras.** SpamAssassin 0–10 + mail-tester + DNSBL; .eml/browser preview. Must not block the critical path.
 - **Phase 9 (future) — Address verification.** Email Verifier (~10 criteria) feeding list hygiene. Out of v1.
 
 **Cut from v1 (YAGNI):** `Campaign`/drip-staged sends, spintax, and (deferred) spam-check. Live email harvesting/crawling stays in the LetsExtract crawler toolkit. A/B testing excluded.
@@ -132,7 +133,7 @@ Every phase ends green (compile + credo + dialyzer + tests incl. the invariants 
 
 ## 8. Integration points & conventions
 
-- **Migrations:** package-owned via `migration_module/0`, run by `mix phoenix_kit.update` (naming `phoenix_kit_update_v*_to_v*`).
+- **Migrations:** core `phoenix_kit` versioned migrations (`lib/phoenix_kit/migrations/postgres/vNNN.ex` + `@current_version` bump), applied via `mix phoenix_kit.update`.
 - **Credentials:** `PhoenixKit.Integrations` + `Integrations.Encryption` (`enc:v1:` AES-256-GCM); `migrate_legacy/0` for any local→Integrations moves.
 - **Mailer/Provider:** all sends (incl. multi-account per-call config) go through `PhoenixKit.Mailer` → `Email.Provider.intercept_before_send/handle_after_send` so tracking/SES behavior is preserved.
 - **Oban:** `newsletters_delivery` queue; add per-method limiting (dynamic queues or app-level limiter) + a scheduler cron; **broadcast-level idempotency** via delivery unique indexes.
