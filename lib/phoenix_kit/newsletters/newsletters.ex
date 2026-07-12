@@ -170,6 +170,41 @@ defmodule PhoenixKit.Newsletters do
         visible: false,
         live_view: {Web.ListMembers, :index},
         gettext_backend: PhoenixKit.Newsletters.Gettext
+      ),
+      Tab.new!(
+        id: :admin_newsletters_send_settings,
+        label: "Send Settings",
+        icon: "hero-paper-airplane",
+        path: "newsletters/send-settings",
+        priority: 523,
+        level: :admin,
+        permission: "newsletters",
+        parent: :admin_newsletters,
+        match: :prefix,
+        live_view: {Web.SendProfiles, :index},
+        gettext_backend: PhoenixKit.Newsletters.Gettext
+      ),
+      Tab.new!(
+        id: :admin_newsletters_send_settings_new,
+        label: "New send profile",
+        path: "newsletters/send-settings/new",
+        level: :admin,
+        permission: "newsletters",
+        parent: :admin_newsletters,
+        visible: false,
+        live_view: {Web.SendProfileEditor, :new},
+        gettext_backend: PhoenixKit.Newsletters.Gettext
+      ),
+      Tab.new!(
+        id: :admin_newsletters_send_settings_edit,
+        label: "Edit send profile",
+        path: "newsletters/send-settings/:id/edit",
+        level: :admin,
+        permission: "newsletters",
+        parent: :admin_newsletters,
+        visible: false,
+        live_view: {Web.SendProfileEditor, :edit},
+        gettext_backend: PhoenixKit.Newsletters.Gettext
       )
     ]
   end

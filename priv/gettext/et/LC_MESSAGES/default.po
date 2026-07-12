@@ -56,6 +56,22 @@ msgstr "Muuda loendit"
 msgid "List members"
 msgstr "Loendi liikmed"
 
+#: lib/phoenix_kit/newsletters/web/send_profiles.ex:23
+#: lib/phoenix_kit/newsletters/web/send_profiles.html.heex:11
+#, elixir-autogen
+msgid "Send Settings"
+msgstr "Saatmisseaded"
+
+#: lib/phoenix_kit/newsletters/web/send_profile_editor.ex:60
+#: lib/phoenix_kit/newsletters/web/send_profiles.html.heex:18
+#, elixir-autogen
+msgid "New send profile"
+msgstr "Uus saatmisprofiil"
+
+#: lib/phoenix_kit/newsletters/newsletters.ex
+msgid "Edit send profile"
+msgstr "Muuda saatmisprofiili"
+
 ## --- Common admin UI ---
 #: lib/phoenix_kit/newsletters/web/broadcast_details.ex:42
 #: lib/phoenix_kit/newsletters/web/broadcast_editor.ex:44
@@ -63,6 +79,8 @@ msgstr "Loendi liikmed"
 #: lib/phoenix_kit/newsletters/web/list_editor.ex:31
 #: lib/phoenix_kit/newsletters/web/list_members.ex:40
 #: lib/phoenix_kit/newsletters/web/lists.ex:36
+#: lib/phoenix_kit/newsletters/web/send_profile_editor.ex:35
+#: lib/phoenix_kit/newsletters/web/send_profiles.ex:36
 #, elixir-autogen
 msgid "Newsletters module is not enabled"
 msgstr "Uudiskirjade moodul ei ole aktiveeritud"
@@ -71,6 +89,8 @@ msgstr "Uudiskirjade moodul ei ole aktiveeritud"
 #: lib/phoenix_kit/newsletters/web/list_editor.html.heex:96
 #: lib/phoenix_kit/newsletters/web/list_members.html.heex:28
 #: lib/phoenix_kit/newsletters/web/lists.html.heex:29
+#: lib/phoenix_kit/newsletters/web/send_profile_editor.html.heex:169
+#: lib/phoenix_kit/newsletters/web/send_profiles.html.heex:29
 #, elixir-autogen
 msgid "Cancel"
 msgstr "Tühista"
@@ -84,6 +104,9 @@ msgstr "Laadimine..."
 #: lib/phoenix_kit/newsletters/web/lists.html.heex:88
 #: lib/phoenix_kit/newsletters/web/lists.html.heex:91
 #: lib/phoenix_kit/newsletters/web/lists.html.heex:153
+#: lib/phoenix_kit/newsletters/web/send_profiles.html.heex:100
+#: lib/phoenix_kit/newsletters/web/send_profiles.html.heex:103
+#: lib/phoenix_kit/newsletters/web/send_profiles.html.heex:168
 #, elixir-autogen
 msgid "Edit"
 msgstr "Muuda"
@@ -91,6 +114,9 @@ msgstr "Muuda"
 #: lib/phoenix_kit/newsletters/web/lists.html.heex:98
 #: lib/phoenix_kit/newsletters/web/lists.html.heex:101
 #: lib/phoenix_kit/newsletters/web/lists.html.heex:161
+#: lib/phoenix_kit/newsletters/web/send_profiles.html.heex:110
+#: lib/phoenix_kit/newsletters/web/send_profiles.html.heex:113
+#: lib/phoenix_kit/newsletters/web/send_profiles.html.heex:176
 #, elixir-autogen
 msgid "Delete"
 msgstr "Kustuta"
@@ -106,6 +132,7 @@ msgstr "Värskenda"
 #: lib/phoenix_kit/newsletters/web/list_editor.html.heex:63
 #: lib/phoenix_kit/newsletters/web/list_members.html.heex:117
 #: lib/phoenix_kit/newsletters/web/lists.html.heex:44
+#: lib/phoenix_kit/newsletters/web/send_profiles.html.heex:46
 #, elixir-autogen
 msgid "Status"
 msgstr "Olek"
@@ -119,6 +146,8 @@ msgstr "Loend"
 
 #: lib/phoenix_kit/newsletters/web/list_editor.html.heex:26
 #: lib/phoenix_kit/newsletters/web/lists.html.heex:42
+#: lib/phoenix_kit/newsletters/web/send_profile_editor.html.heex:26
+#: lib/phoenix_kit/newsletters/web/send_profiles.html.heex:42
 #, elixir-autogen
 msgid "Name"
 msgstr "Nimi"
@@ -160,6 +189,7 @@ msgstr "Tellijad"
 
 #: lib/phoenix_kit/newsletters/web/list_members.html.heex:119
 #: lib/phoenix_kit/newsletters/web/lists.html.heex:46
+#: lib/phoenix_kit/newsletters/web/send_profiles.html.heex:47
 #, elixir-autogen
 msgid "Actions"
 msgstr "Tegevused"
@@ -515,6 +545,8 @@ msgstr "Halda meilitellijate loendeid"
 
 #: lib/phoenix_kit/newsletters/web/lists.html.heex:56
 #: lib/phoenix_kit/newsletters/web/lists.html.heex:122
+#: lib/phoenix_kit/newsletters/web/send_profiles.html.heex:57
+#: lib/phoenix_kit/newsletters/web/send_profiles.html.heex:134
 #, elixir-autogen
 msgid "Default"
 msgstr "Vaikimisi"
@@ -755,3 +787,210 @@ msgid "%{name} (%{count} subscriber)"
 msgid_plural "%{name} (%{count} subscribers)"
 msgstr[0] "%{name} (%{count} tellija)"
 msgstr[1] "%{name} (%{count} tellijat)"
+
+#: lib/phoenix_kit/newsletters/web/send_profiles.html.heex:72
+#, elixir-autogen, elixir-format
+msgid "%{count}/hr"
+msgstr "%{count}/h"
+
+#: lib/phoenix_kit/newsletters/web/send_profile_editor.html.heex:66
+#, elixir-autogen, elixir-format
+msgid "Acme Newsletter"
+msgstr "Acme uudiskiri"
+
+#: lib/phoenix_kit/newsletters/web/send_profile_editor.html.heex:152
+#, elixir-autogen, elixir-format
+msgid "Advanced (JSON)"
+msgstr "Täpsemalt (JSON)"
+
+#: lib/phoenix_kit/newsletters/web/send_profile_editor.html.heex:145
+#, elixir-autogen, elixir-format
+msgid "Best,\nThe Team"
+msgstr "Parimate soovidega,\nMeeskond"
+
+#: lib/phoenix_kit/newsletters/web/send_profiles.ex:109
+#, elixir-autogen, elixir-format
+msgid "Cannot delete send profile"
+msgstr "Saatmisprofiili ei saa kustutada"
+
+#: lib/phoenix_kit/newsletters/web/send_profiles.ex:58
+#, elixir-autogen, elixir-format
+msgid "Could not set default send profile"
+msgstr "Vaikimisi saatmisprofiili määramine ebaõnnestus"
+
+#: lib/phoenix_kit/newsletters/web/send_profile_editor.html.heex:15
+#, elixir-autogen, elixir-format
+msgid "Create a new send profile"
+msgstr "Loo uus saatmisprofiil"
+
+#: lib/phoenix_kit/newsletters/web/send_profiles.html.heex:189
+#, elixir-autogen, elixir-format
+msgid "Create a send profile to choose how broadcasts are delivered."
+msgstr "Loo saatmisprofiil, et valida, kuidas saadetised edastatakse."
+
+#: lib/phoenix_kit/newsletters/web/send_profiles.html.heex:192
+#, elixir-autogen, elixir-format
+msgid "Create first send profile"
+msgstr "Loo esimene saatmisprofiil"
+
+#: lib/phoenix_kit/newsletters/web/send_profile_editor.html.heex:173
+#, elixir-autogen, elixir-format
+msgid "Create send profile"
+msgstr "Loo saatmisprofiil"
+
+#: lib/phoenix_kit/newsletters/web/send_profiles.ex:54
+#, elixir-autogen, elixir-format
+msgid "Default send profile updated"
+msgstr "Vaikimisi saatmisprofiil on uuendatud"
+
+#: lib/phoenix_kit/newsletters/web/send_profiles.ex:69
+#, elixir-autogen, elixir-format
+msgid "Delete send profile"
+msgstr "Kustuta saatmisprofiil"
+
+#: lib/phoenix_kit/newsletters/web/send_profiles.html.heex:81
+#: lib/phoenix_kit/newsletters/web/send_profiles.html.heex:140
+#, elixir-autogen, elixir-format
+msgid "Disabled"
+msgstr "Keelatud"
+
+#: lib/phoenix_kit/newsletters/web/send_profile_editor.html.heex:14
+#, elixir-autogen, elixir-format
+msgid "Edit send profile settings"
+msgstr "Muuda saatmisprofiili seadeid"
+
+#: lib/phoenix_kit/newsletters/web/send_profile_editor.ex:46
+#, elixir-autogen, elixir-format
+msgid "Edit send profile: %{name}"
+msgstr "Muuda saatmisprofiili: %{name}"
+
+#: lib/phoenix_kit/newsletters/web/send_profile_editor.html.heex:120
+#: lib/phoenix_kit/newsletters/web/send_profiles.html.heex:79
+#: lib/phoenix_kit/newsletters/web/send_profiles.html.heex:138
+#, elixir-autogen, elixir-format
+msgid "Enabled"
+msgstr "Lubatud"
+
+#: lib/phoenix_kit/newsletters/web/send_profiles.html.heex:44
+#: lib/phoenix_kit/newsletters/web/send_profiles.html.heex:149
+#, elixir-autogen, elixir-format
+msgid "From"
+msgstr "Saatja"
+
+#: lib/phoenix_kit/newsletters/web/send_profile_editor.html.heex:72
+#, elixir-autogen, elixir-format
+msgid "From email"
+msgstr "Saatja e-post"
+
+#: lib/phoenix_kit/newsletters/web/send_profile_editor.html.heex:62
+#, elixir-autogen, elixir-format
+msgid "From name"
+msgstr "Saatja nimi"
+
+#: lib/phoenix_kit/newsletters/web/send_profile_editor.html.heex:38
+#, elixir-autogen, elixir-format
+msgid "Integration"
+msgstr "Integratsioon"
+
+#: lib/phoenix_kit/newsletters/web/send_profiles.html.heex:91
+#: lib/phoenix_kit/newsletters/web/send_profiles.html.heex:94
+#: lib/phoenix_kit/newsletters/web/send_profiles.html.heex:161
+#, elixir-autogen, elixir-format
+msgid "Make default"
+msgstr "Määra vaikimisi"
+
+#: lib/phoenix_kit/newsletters/web/send_profile_editor.html.heex:57
+#, elixir-autogen, elixir-format
+msgid "Manage integrations under Settings → Integrations"
+msgstr "Halda integratsioone menüüs Seaded → Integratsioonid"
+
+#: lib/phoenix_kit/newsletters/web/send_profiles.html.heex:12
+#, elixir-autogen, elixir-format
+msgid "Manage send profiles used to deliver newsletter broadcasts"
+msgstr "Halda saatmisprofiile, mida kasutatakse uudiskirjade saatmiseks"
+
+#: lib/phoenix_kit/newsletters/web/send_profile_editor.html.heex:31
+#, elixir-autogen, elixir-format
+msgid "Marketing"
+msgstr "Turundus"
+
+#: lib/phoenix_kit/newsletters/web/send_profiles.html.heex:187
+#, elixir-autogen, elixir-format
+msgid "No send profiles yet"
+msgstr "Saatmisprofiile pole veel"
+
+#: lib/phoenix_kit/newsletters/web/send_profile_editor.html.heex:105
+#, elixir-autogen, elixir-format
+msgid "Pause between sends (seconds)"
+msgstr "Paus saatmiste vahel (sekundites)"
+
+#: lib/phoenix_kit/newsletters/web/send_profiles.html.heex:43
+#: lib/phoenix_kit/newsletters/web/send_profiles.html.heex:146
+#, elixir-autogen, elixir-format
+msgid "Provider"
+msgstr "Teenusepakkuja"
+
+#: lib/phoenix_kit/newsletters/web/send_profile_editor.html.heex:162
+#, elixir-autogen, elixir-format
+msgid "Provider-specific extras, e.g. an SES configuration set"
+msgstr "Teenusepakkujaspetsiifilised lisaseaded, nt SES configuration set"
+
+#: lib/phoenix_kit/newsletters/web/send_profiles.html.heex:45
+#, elixir-autogen, elixir-format
+msgid "Rate"
+msgstr "Piirmäär"
+
+#: lib/phoenix_kit/newsletters/web/send_profile_editor.html.heex:99
+#, elixir-autogen, elixir-format
+msgid "Rate per day"
+msgstr "Piirmäär päevas"
+
+#: lib/phoenix_kit/newsletters/web/send_profile_editor.html.heex:93
+#, elixir-autogen, elixir-format
+msgid "Rate per hour"
+msgstr "Piirmäär tunnis"
+
+#: lib/phoenix_kit/newsletters/web/send_profile_editor.html.heex:82
+#, elixir-autogen, elixir-format
+msgid "Reply-to"
+msgstr "Vastamisaadress"
+
+#: lib/phoenix_kit/newsletters/web/send_profile_editor.html.heex:42
+#, elixir-autogen, elixir-format
+msgid "Select an integration..."
+msgstr "Vali integratsioon..."
+
+#: lib/phoenix_kit/newsletters/web/send_profiles.ex:105
+#, elixir-autogen, elixir-format
+msgid "Send profile deleted"
+msgstr "Saatmisprofiil kustutatud"
+
+#: lib/phoenix_kit/newsletters/web/send_profile_editor.ex:53
+#, elixir-autogen, elixir-format
+msgid "Send profile not found"
+msgstr "Saatmisprofiili ei leitud"
+
+#: lib/phoenix_kit/newsletters/web/send_profile_editor.ex:87
+#, elixir-autogen, elixir-format
+msgid "Send profile saved successfully"
+msgstr "Saatmisprofiil salvestatud edukalt"
+
+#: lib/phoenix_kit/newsletters/web/send_profile_editor.html.heex:126
+#, elixir-autogen, elixir-format
+msgid "Signature (HTML)"
+msgstr "Allkiri (HTML)"
+
+#: lib/phoenix_kit/newsletters/web/send_profile_editor.html.heex:139
+#, elixir-autogen, elixir-format
+msgid "Signature (plain text)"
+msgstr "Allkiri (lihttekst)"
+
+#: lib/phoenix_kit/newsletters/web/send_profiles.ex:72
+#, elixir-autogen, elixir-format
+msgid "This send profile will be permanently deleted."
+msgstr "See saatmisprofiil kustutatakse jäädavalt."
+
+#: lib/phoenix_kit/newsletters/web/send_profile_editor.html.heex:173
+#, elixir-autogen, elixir-format
+msgid "Update send profile"
+msgstr "Uuenda saatmisprofiili"

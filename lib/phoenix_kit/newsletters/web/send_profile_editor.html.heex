@@ -1,0 +1,181 @@
+<PhoenixKitWeb.Components.LayoutWrapper.app_layout
+  flash={@flash}
+  phoenix_kit_current_scope={assigns[:phoenix_kit_current_scope]}
+  page_title={@page_title}
+  current_path={@url_path}
+  project_title={@project_title}
+>
+<div class="container flex-col mx-auto px-4 py-6">
+  <.admin_page_header
+    back={Routes.path("/admin/newsletters/send-settings")}
+    title={@page_title}
+    subtitle={
+      if @send_profile,
+        do: gettext("Edit send profile settings"),
+        else: gettext("Create a new send profile")
+    }
+  />
+
+  <div class="max-w-2xl">
+    <div class="card bg-base-100 shadow-sm">
+      <div class="card-body">
+        <.form for={@form} phx-change="validate" phx-submit="save">
+          <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <fieldset class="fieldset">
+              <label class="label" for={@form[:name].id}>
+                {gettext("Name")} <span class="text-error">*</span>
+              </label>
+              <.input
+                field={@form[:name]}
+                type="text"
+                placeholder={gettext("Marketing")}
+                class="input w-full"
+              />
+            </fieldset>
+
+            <fieldset class="fieldset">
+              <label class="label" for={@form[:integration_uuid].id}>
+                {gettext("Integration")} <span class="text-error">*</span>
+              </label>
+              <label class="select w-full">
+                <select id={@form[:integration_uuid].id} name={@form[:integration_uuid].name}>
+                  <option value="">{gettext("Select an integration...")}</option>
+                  <%= for {provider, connections} <- @connections_by_provider, connections != [] do %>
+                    <optgroup label={provider_label(provider)}>
+                      <option
+                        :for={connection <- connections}
+                        value={connection.uuid}
+                        selected={@form[:integration_uuid].value == connection.uuid}
+                      >
+                        {connection.name}
+                      </option>
+                    </optgroup>
+                  <% end %>
+                </select>
+              </label>
+              <p class="text-xs text-base-content/60 mt-1">
+                {gettext("Manage integrations under Settings → Integrations")}
+              </p>
+            </fieldset>
+
+            <fieldset class="fieldset">
+              <label class="label" for={@form[:from_name].id}>{gettext("From name")}</label>
+              <.input
+                field={@form[:from_name]}
+                type="text"
+                placeholder={gettext("Acme Newsletter")}
+                class="input w-full"
+              />
+            </fieldset>
+
+            <fieldset class="fieldset">
+              <label class="label" for={@form[:from_email].id}>{gettext("From email")}</label>
+              <.input
+                field={@form[:from_email]}
+                type="email"
+                placeholder="news@example.com"
+                class="input w-full"
+              />
+            </fieldset>
+
+            <fieldset class="fieldset md:col-span-2">
+              <label class="label" for={@form[:reply_to].id}>{gettext("Reply-to")}</label>
+              <.input
+                field={@form[:reply_to]}
+                type="email"
+                placeholder="support@example.com"
+                class="input w-full"
+              />
+            </fieldset>
+
+            <fieldset class="fieldset">
+              <label class="label" for={@form[:rate_per_hour].id}>
+                {gettext("Rate per hour")}
+              </label>
+              <.input field={@form[:rate_per_hour]} type="number" min="0" class="input w-full" />
+            </fieldset>
+
+            <fieldset class="fieldset">
+              <label class="label" for={@form[:rate_per_day].id}>{gettext("Rate per day")}</label>
+              <.input field={@form[:rate_per_day]} type="number" min="0" class="input w-full" />
+            </fieldset>
+
+            <fieldset class="fieldset">
+              <label class="label" for={@form[:pause_seconds].id}>
+                {gettext("Pause between sends (seconds)")}
+              </label>
+              <.input field={@form[:pause_seconds]} type="number" min="0" class="input w-full" />
+            </fieldset>
+
+            <fieldset class="fieldset justify-end">
+              <label class="label cursor-pointer justify-start gap-3">
+                <input
+                  type="checkbox"
+                  id={@form[:enabled].id}
+                  name={@form[:enabled].name}
+                  value="true"
+                  checked={@form[:enabled].value}
+                  class="checkbox"
+                />
+                <span>{gettext("Enabled")}</span>
+              </label>
+            </fieldset>
+
+            <fieldset class="fieldset md:col-span-2">
+              <label class="label" for={@form[:signature_html].id}>
+                {gettext("Signature (HTML)")}
+              </label>
+              <textarea
+                id={@form[:signature_html].id}
+                name={@form[:signature_html].name}
+                rows="3"
+                placeholder="<p>Best,<br>The Team</p>"
+                class="textarea w-full font-mono text-sm"
+              >{Phoenix.HTML.Form.normalize_value("textarea", @form[:signature_html].value)}</textarea>
+            </fieldset>
+
+            <fieldset class="fieldset md:col-span-2">
+              <label class="label" for={@form[:signature_text].id}>
+                {gettext("Signature (plain text)")}
+              </label>
+              <textarea
+                id={@form[:signature_text].id}
+                name={@form[:signature_text].name}
+                rows="3"
+                placeholder={gettext("Best,\nThe Team")}
+                class="textarea w-full"
+              >{Phoenix.HTML.Form.normalize_value("textarea", @form[:signature_text].value)}</textarea>
+            </fieldset>
+
+            <fieldset class="fieldset md:col-span-2">
+              <label class="label" for={@form[:advanced].id}>
+                {gettext("Advanced (JSON)")}
+              </label>
+              <textarea
+                id={@form[:advanced].id}
+                name={@form[:advanced].name}
+                rows="4"
+                placeholder="{}"
+                class="textarea w-full font-mono text-sm"
+              >{advanced_json(@form[:advanced].value)}</textarea>
+              <p class="text-xs text-base-content/60 mt-1">
+                {gettext("Provider-specific extras, e.g. an SES configuration set")}
+              </p>
+            </fieldset>
+          </div>
+
+          <div class="flex justify-end gap-2 mt-6">
+            <.pk_link navigate="/admin/newsletters/send-settings" class="btn btn-ghost">
+              {gettext("Cancel")}
+            </.pk_link>
+            <button type="submit" class="btn btn-primary">
+              <.icon name="hero-check" class="w-4 h-4 mr-1" />
+              {if @send_profile, do: gettext("Update send profile"), else: gettext("Create send profile")}
+            </button>
+          </div>
+        </.form>
+      </div>
+    </div>
+  </div>
+</div>
+</PhoenixKitWeb.Components.LayoutWrapper.app_layout>
