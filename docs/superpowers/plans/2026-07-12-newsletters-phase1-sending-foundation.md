@@ -373,6 +373,41 @@ end
 
 ---
 
+## Stage E — Blocklist integrity fixes (emails module; user-reported, verified)
+
+> User-reported defects (2026-07-12), both verified: the emails blocklist subsystem is currently decorative — nothing feeds it automatically and nothing enforces it at send time. Fixed here because Stage B already refactors the emails module, and Stage C3's `deliver_via_integration/3` seam makes enforcement cover newsletters sends for free (this is the "guard at send = source of truth" that spec Phase 3 builds on).
+
+### Task E1: Hard bounces auto-add to the blocklist
+
+**Files:**
+- Modify: `/root/projects/phoenix_kit_emails/lib/phoenix_kit/modules/emails/sqs_processor.ex` (`process_bounce_event/1`, ~line 443)
+- Test: emails fork sqs_processor test.
+
+**Interfaces:**
+- Consumes: `RateLimiter.add_to_blocklist/3` (exists at `rate_limiter.ex:271`); `determine_bounce_status/1` (bounce_type "Permanent" → hard bounce).
+- Produces: on a **Permanent** bounce, the recipient email is added to the blocklist with reason `"hard_bounce"`; Transient bounces do NOT blocklist.
+
+- [ ] **Step 1: Failing test** — feed a Permanent-bounce SES event through `process_bounce_event`; assert the recipient lands in the blocklist (and a Transient one does not).
+- [ ] **Step 2: FAIL** — [ ] **Step 3:** in `process_bounce_event/1`, after the log update, extract recipient(s) from `bounce_data["bouncedRecipients"]` and for `bounce_type == "Permanent"` call `RateLimiter.add_to_blocklist(email, "hard_bounce")` (rescue/log so blocklist failure never breaks event processing). — [ ] **Step 4: PASS** — [ ] **Step 5: Commit** (emails fork): `fix(emails): hard bounces auto-add recipients to blocklist`.
+
+### Task E2: Enforce the blocklist on every send
+
+**Files:**
+- Modify: `/app/lib/phoenix_kit/mailer.ex` — enforcement in the delivery path (both `deliver_email/2` and the new `deliver_via_integration/3` from C3).
+- Test: core mailer test.
+
+**Interfaces:**
+- Consumes: `PhoenixKit.Modules.Emails.RateLimiter.check_limits/1` (`rate_limiter.ex:156` — checks blocklist + rate limits; today it has ZERO production callers). Soft dependency: guard with `Code.ensure_loaded?` (emails module optional), mirroring the existing soft-call pattern.
+- Produces: sends to blocklisted recipients return `{:error, :blocked}` (or the check_limits error shape) WITHOUT delivering — for the legacy path and the integration path alike.
+- **Design note:** enforcement lives in the Mailer delivery functions, NOT inside `intercept_before_send` (the interceptor's contract returns a `Swoosh.Email`, it has no abort channel).
+
+- [ ] **Step 1: Failing test** — blocklist an address, call `deliver_email/2` (Swoosh test adapter) → assert `{:error, …blocked…}` and no delivery captured; same via `deliver_via_integration/3`.
+- [ ] **Step 2: FAIL** — [ ] **Step 3:** add a `check_recipient_allowed/1` private in `PhoenixKit.Mailer` (soft-call `RateLimiter.check_limits(%{to: …})` when emails module loaded; `:ok` otherwise) invoked at the top of both delivery functions. — [ ] **Step 4: PASS** (incl. backward-compat: non-blocked sends unchanged; emails module absent → no-op). — [ ] **Step 5: Commit** (core): `fix(mailer): enforce emails blocklist in all delivery paths`.
+
+- [ ] **Live-test (with B5/D5):** blocklist a test address on Hydra Force, attempt a send from emails UI and from a newsletters broadcast — both must refuse; remove from blocklist → send succeeds.
+
+---
+
 ## Self-review checklist (run before requesting review)
 
 1. **Spec coverage:** migrations-in-core-V143 ✓ (D1); forks→Hydra Force via path deps ✓ (A2); AWS creds→Integrations ✓ (B1–B5); Brevo API+SMTP + generic SMTP ✓ (C1–C4); Integrations = keys only, settings elsewhere ✓ (SendProfile D1–D4); multiple profiles per integration ✓ (D2 test, D5); per-type advanced settings ✓ (`advanced` jsonb). **Deferred (flagged):** Contacts import (arbitrary addresses) = a LATER phase, not here.
