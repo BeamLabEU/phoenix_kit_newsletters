@@ -5,7 +5,7 @@ defmodule PhoenixKit.Newsletters.ContentTest do
 
   describe "render_markdown/1" do
     test "converts markdown to HTML" do
-      assert "<p>\nHello <strong>world</strong></p>\n" =
+      assert "<p>Hello <strong>world</strong></p>" =
                Content.render_markdown("Hello **world**")
     end
 

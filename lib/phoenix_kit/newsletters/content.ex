@@ -7,27 +7,27 @@ defmodule PhoenixKit.Newsletters.Content do
 
   @doc """
   Renders markdown to HTML. Returns the HTML string on both success and
-  partial-error (Earmark may produce HTML even with warnings/errors).
+  error (falls back to an empty string if MDEx cannot produce output).
   """
   @spec render_markdown(String.t()) :: String.t()
   def render_markdown(markdown) do
-    case Earmark.as_html(markdown || "") do
-      {:ok, html, _warnings} -> html
-      {:error, html, _errors} -> html
+    case MDEx.to_html(markdown || "") do
+      {:ok, html} -> html
+      {:error, _error} -> ""
     end
   end
 
   @doc """
   Renders markdown to HTML, returning an ok/error tuple.
 
-  Returns `{:ok, html}` on success or `{:error, errors}` when Earmark
+  Returns `{:ok, html}` on success or `{:error, errors}` when MDEx
   cannot produce valid output.
   """
   @spec render_markdown_strict(String.t()) :: {:ok, String.t()} | {:error, list()}
   def render_markdown_strict(markdown) do
-    case Earmark.as_html(markdown || "") do
-      {:ok, html, _} -> {:ok, html}
-      {:error, _, errors} -> {:error, errors}
+    case MDEx.to_html(markdown || "") do
+      {:ok, html} -> {:ok, html}
+      {:error, error} -> {:error, [error]}
     end
   end
 
