@@ -226,17 +226,19 @@ end
 
 ## Stage C — Brevo (API + SMTP) and generic SMTP providers + send abstraction
 
-### Task C1: Register `brevo_api`, `brevo_smtp`, and `smtp` providers (core)
+### Task C1: Register `smtp` (universal) and `brevo_api` providers (core)
+
+> **User decision (2026-07-12): SMTP is ONE universal provider** — any vendor's SMTP works identically; operators create multiple named connections of the same `smtp` provider ("SMTP 1", "SMTP 2", "Brevo SMTP", …) and pick which one to send from. **No per-vendor SMTP providers** (`brevo_smtp` dropped). Brevo gets ONLY the API provider — its credentials and interaction differ fundamentally from SMTP.
 
 **Files:** Modify `/app/lib/phoenix_kit/integrations/providers.ex`; Test `providers_test.exs`.
 
 **Interfaces (verified Brevo facts):**
+- `smtp` (universal): `auth_type: :credentials`, fields `host`, `port` (`:number`, placeholder 587), `username`, `password`. Description/help text hints common relays (e.g. Brevo: `smtp-relay.brevo.com:587`, login `<subacct>@smtp-brevo.com`, password `xsmtpsib-…`). Multiple named connections per provider are native to Integrations (`add_connection(provider_key, name)` / `list_connections/1`).
 - `brevo_api`: `auth_type: :api_key`, field `api_key` (format `xkeysib-<64hex>-<16>`; **not** the SMTP `xsmtpsib-` key), `base_url: "https://api.brevo.com/v3"`.
-- `brevo_smtp`: `auth_type: :credentials`, fields `username` (`<subacct>@smtp-brevo.com`), `password` (`xsmtpsib-…` → store under `secret_key`? No — SMTP password field must encrypt; name it `password` and extend `@sensitive_fields`, OR store as `api_key`). **Decision:** extend `Encryption.@sensitive_fields` with `"password"` (Task C2) so SMTP passwords encrypt. host `smtp-relay.brevo.com`, port `587` as defaults.
-- `smtp` (generic): `auth_type: :credentials`, fields `host`, `port`, `username`, `password`.
+- SMTP password encryption: extend `Encryption.@sensitive_fields` with `"password"` (Task C2).
 
 - **⚠ `:credentials` gate (GLM finding, verified):** `has_credentials?/1` recognizes `:credentials`-type connections only via a **nested `"credentials"` map** or a `status ∈ [connected, configured]`. Flat `host/port/username/password` fields alone leave the connection `"disconnected"` → `get_credentials/1` fails. Mitigation (both): (a) every headless save is followed by `validate_connection/2` (stamps `"connected"`); (b) each provider test asserts end-to-end `add_connection → save_setup → validate → get_credentials == {:ok, _}`. If that proves brittle, the alternative is a small core generalization of `has_credentials?/1` — decide at implementation with a failing test in hand.
-- [ ] **Steps:** failing test asserting the three providers + fields (capabilities `[:email_send]` atoms, `oauth_config: nil`) **+ the end-to-end get_credentials assertion per provider** → implement provider maps (Brevo API/SMTP defaults per verified facts) → pass → commit `feat(integrations): register brevo_api, brevo_smtp, smtp providers`.
+- [ ] **Steps:** failing test asserting the two providers + fields (capabilities `[:email_send]` atoms, `oauth_config: nil`) **+ the end-to-end get_credentials assertion per provider, incl. TWO named connections of the same `smtp` provider coexisting** → implement provider maps → pass → commit `feat(integrations): register universal smtp and brevo_api providers`.
 
 ### Task C2: Encrypt SMTP passwords — extend sensitive fields
 
@@ -267,13 +269,13 @@ def deliver_via_integration(email, integration_uuid, opts \\ []) do
 end
 ```
 - **⚠ Do NOT route through `deliver_email/2` (GLM finding, verified):** its `deliver_with_runtime_config/3` is **hardcoded to SES** (`config[:adapter] == Swoosh.Adapters.AmazonSES`, creds only from `Provider.current().get_aws_*`) — a Brevo/SMTP send through it would ignore or misroute per-call config. Replicating the interceptor seam directly preserves tracking (Decision #7) without the SES-only override. *(Stage B's SES path deliberately stays on `deliver_email/2` — B2's rewired getters feed `deliver_with_runtime_config` for free.)*
-- Adapter map: `"aws_ses"→Swoosh.Adapters.AmazonSES`, `"smtp"|"brevo_smtp"→Swoosh.Adapters.SMTP`, `"brevo_api"→Swoosh.Adapters.Brevo` (api_key). `Swoosh.Adapters.Brevo` verified present in swoosh 1.26.3; `gen_smtp` is a hard dep of phoenix_kit itself, so the SMTP adapter runtime is available.
+- Adapter map: `"aws_ses"→Swoosh.Adapters.AmazonSES`, `"smtp"→Swoosh.Adapters.SMTP`, `"brevo_api"→Swoosh.Adapters.Brevo` (api_key). `Swoosh.Adapters.Brevo` verified present in swoosh 1.26.3; `gen_smtp` is a hard dep of phoenix_kit itself, so the SMTP adapter runtime is available.
 
 - [ ] **Steps:** failing test (each provider builds the expected adapter config; delivery captured by `Swoosh.Adapters.Test`; interceptor called) → implement `swoosh_config_for/1` + `deliver_via_integration/3` → pass → commit `feat(mailer): deliver via a chosen Integration (SES/SMTP/Brevo)`.
 
 ### Task C4: Live-test Brevo API + SMTP on Hydra Force
 
-- [ ] Add a `brevo_api` connection (real `xkeysib` key from `~/.config/brevo.env`) and a `brevo_smtp` connection; send a test email each via `deliver_via_integration/3`; confirm 201 (API) / accepted (SMTP). Record results. (Mind the ~300/rolling rate limit.)
+- [ ] Add a `brevo_api` connection (real `xkeysib` key from `~/.config/brevo.env`) and a generic `smtp` connection named "Brevo SMTP" (`smtp-relay.brevo.com:587`, `xsmtpsib-…` password); send a test email each via `deliver_via_integration/3`; confirm 201 (API) / accepted (SMTP). Record results. (Mind the ~300/rolling rate limit.)
 
 ---
 
@@ -287,7 +289,7 @@ end
 - Test: core migration test (up creates table + sets comment '143'; down drops + '142').
 
 **Interfaces:**
-- Produces table `phoenix_kit_newsletters_send_profiles`: `uuid` (PK, uuid_generate_v7), `name`, `integration_uuid` (references the Integrations settings row UUID — stored as UUID, no FK since integrations live in `phoenix_kit_settings.key`), `provider_kind` (aws_ses|smtp|brevo_api|brevo_smtp), `from_name`, `from_email`, `reply_to`, `signature_html`, `signature_text`, `rate_per_hour` (int), `rate_per_day` (int), `pause_seconds` (int), `advanced` (jsonb, per-type extras: SES queue/config-set, etc.), `enabled` (bool), `inserted_at`, `updated_at`.
+- Produces table `phoenix_kit_newsletters_send_profiles`: `uuid` (PK, uuid_generate_v7), `name`, `integration_uuid` (references the Integrations settings row UUID — stored as UUID, no FK since integrations live in `phoenix_kit_settings.key`), `provider_kind` (aws_ses|smtp|brevo_api), `from_name`, `from_email`, `reply_to`, `signature_html`, `signature_text`, `rate_per_hour` (int), `rate_per_day` (int), `pause_seconds` (int), `advanced` (jsonb, per-type extras: SES queue/config-set, etc.), `enabled` (bool), **`is_default` (bool, default false — the "service default" profile; at most one, enforced by partial unique index)**, `inserted_at`, `updated_at`.
 
 - [ ] **Step 1: Write failing migration test** (run `V143.up` on a test prefix, assert table exists + `COMMENT ON TABLE …phoenix_kit IS '143'`).
 - [ ] **Step 2: FAIL**
@@ -308,10 +310,12 @@ defmodule PhoenixKit.Migrations.Postgres.V143 do
       rate_per_hour INTEGER, rate_per_day INTEGER, pause_seconds INTEGER DEFAULT 0,
       advanced JSONB NOT NULL DEFAULT '{}'::jsonb,
       enabled BOOLEAN NOT NULL DEFAULT TRUE,
+      is_default BOOLEAN NOT NULL DEFAULT FALSE,
       inserted_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
       updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
     )""")
     execute("CREATE INDEX IF NOT EXISTS idx_nl_send_profiles_integration ON #{p}phoenix_kit_newsletters_send_profiles(integration_uuid)")
+    execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_nl_send_profiles_default ON #{p}phoenix_kit_newsletters_send_profiles(is_default) WHERE is_default = TRUE")
     execute("ALTER TABLE #{p}phoenix_kit_newsletters_broadcasts ADD COLUMN IF NOT EXISTS send_profile_uuid UUID")
     execute("COMMENT ON TABLE #{p}phoenix_kit IS '143'")
   end
@@ -336,7 +340,7 @@ end
 - Test: `send_profile_test.exs`
 
 **Interfaces:**
-- Produces: `PhoenixKit.Newsletters.SendProfile` schema mirroring the V143 columns; changeset validates `name`, `integration_uuid`, `provider_kind ∈ ~w(aws_ses smtp brevo_api brevo_smtp)`, non-negative rates.
+- Produces: `PhoenixKit.Newsletters.SendProfile` schema mirroring the V143 columns; changeset validates `name`, `integration_uuid`, `provider_kind ∈ ~w(aws_ses smtp brevo_api)`, non-negative rates; context adds `get_default_send_profile/0` and `set_default_send_profile/1` (clears the previous default in a transaction — the partial unique index backstops races).
 
 - [ ] **Step 1: Failing changeset test** (required fields; provider_kind inclusion; multiple profiles may share one `integration_uuid`; **consistency: `provider_kind` must match the referenced integration's actual provider** — validated in the changeset to prevent drift between the two sources of truth (GLM finding)).
 - [ ] **Step 2: FAIL** — [ ] **Step 3:** implement schema (UUIDv7 PK, `schema "phoenix_kit_newsletters_send_profiles"`, fields per D1, `timestamps(type: :utc_datetime)`) + context CRUD (via `RepoHelper.repo()`) + a `validate_provider_kind_matches_integration/1` changeset step that loads the integration and compares its `provider` to `provider_kind`. — [ ] **Step 4: PASS** — [ ] **Step 5: Commit** `feat(newsletters): SendProfile schema + context`.
@@ -352,7 +356,7 @@ end
 - Consumes: `Integrations.list_connections/1` for each email-capable provider to populate the integration picker; `Newsletters` SendProfile CRUD.
 - Produces: admin routes `newsletters/send-settings`, `.../new`, `.../:id/edit`.
 
-- [ ] **Steps:** failing LiveView test → implement list + editor (integration dropdown grouped by provider; fields: name, from_name, from_email, reply_to, signature_html/text, rate_per_hour/day, pause_seconds, advanced JSON per kind) → pass → commit `feat(newsletters): Send Settings admin (send profiles)`.
+- [ ] **Steps:** failing LiveView test → implement list + editor (integration dropdown grouped by provider — multiple same-provider connections listed by name, e.g. "SMTP 1/2/3"; fields: name, from_name, from_email, reply_to, signature_html/text, rate_per_hour/day, pause_seconds, advanced JSON per kind; **"make default" action** — the service-default profile, badge in the list) → pass → commit `feat(newsletters): Send Settings admin (send profiles)`.
 
 ### Task D4: Route the newsletters sender through a SendProfile → integration
 
@@ -365,7 +369,7 @@ end
 - Consumes: `Newsletters.get_send_profile!/1`, `Mailer.deliver_via_integration/3`.
 - Produces: per-broadcast send-method selection; signature appended to body; from/reply-to from the profile.
 
-- [ ] **Steps:** (`send_profile_uuid` already ships in V143 — see D1) → failing worker test → implement profile-aware `send_email/4` (apply from_name/reply_to/signature; deliver via `Mailer.deliver_via_integration/3`; fallback to legacy single-Mailer `deliver_email/2` when no profile selected) → pass → commit `feat(newsletters): send broadcasts via selected Send Profile/integration`.
+- [ ] **Steps:** (`send_profile_uuid` already ships in V143 — see D1) → failing worker test → implement profile-aware `send_email/4` with resolution order: **broadcast's `send_profile_uuid` → default profile (`get_default_send_profile/0`) → legacy single-Mailer `deliver_email/2`** (apply from_name/reply_to/signature; deliver via `Mailer.deliver_via_integration/3`) → pass → commit `feat(newsletters): send broadcasts via selected Send Profile/integration`.
 
 ### Task D5: Live-test end-to-end on Hydra Force
 
@@ -412,10 +416,10 @@ end
 
 1. **Spec coverage:** migrations-in-core-V143 ✓ (D1); forks→Hydra Force via path deps ✓ (A2); AWS creds→Integrations ✓ (B1–B5); Brevo API+SMTP + generic SMTP ✓ (C1–C4); Integrations = keys only, settings elsewhere ✓ (SendProfile D1–D4); multiple profiles per integration ✓ (D2 test, D5); per-type advanced settings ✓ (`advanced` jsonb). **Deferred (flagged):** Contacts import (arbitrary addresses) = a LATER phase, not here.
 2. **Placeholder scan:** replace any `…`/legacy-body references with the real current function bodies when implementing (B2 `legacy_*`).
-3. **Type consistency:** `provider_kind` values `~w(aws_ses smtp brevo_api brevo_smtp)` used identically in D1/D2/C3; `emails_aws_integration_uuid` setting key consistent B2/B3/B4.
+3. **Type consistency:** `provider_kind` values `~w(aws_ses smtp brevo_api)` used identically in D1/D2/C3; `emails_aws_integration_uuid` setting key consistent B2/B3/B4.
 4. **Ambiguity:** SMTP password encryption resolved by extending `@sensitive_fields` (C2); Brevo API vs SMTP are distinct providers/keys (C1).
 
 ## Open questions for reviewers
-- Should generic `smtp` and `brevo_smtp` be one provider (host/port free) or two (Brevo defaults prefilled)? Plan assumes Brevo-SMTP as a convenience preset of generic SMTP.
+- ~~Should generic `smtp` and `brevo_smtp` be one provider or two?~~ **RESOLVED by user (2026-07-12): ONE universal `smtp` provider** — vendors differ only by connection values; multiple named connections ("SMTP 1/2/3", "Brevo SMTP") + a default ("service") profile selection. Brevo keeps only its API provider.
 - `send_profile_uuid` on `broadcasts` vs a global default profile — plan adds per-broadcast selection with a fallback; confirm.
 - Rate enforcement (`rate_per_hour/day`, `pause_seconds`) is *stored* here but *enforced* in the later throttling phase (Phase 4/5 of the v2 spec). Confirm we defer enforcement.
