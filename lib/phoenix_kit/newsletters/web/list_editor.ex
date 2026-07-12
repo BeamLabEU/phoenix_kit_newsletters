@@ -7,6 +7,7 @@ defmodule PhoenixKit.Newsletters.Web.ListEditor do
   use Gettext, backend: PhoenixKit.Newsletters.Gettext
 
   import PhoenixKitWeb.Components.Core.AdminPageHeader
+  import PhoenixKitWeb.Components.Core.Checkbox
   import PhoenixKitWeb.Components.Core.Icon
   import PhoenixKitWeb.Components.Core.Input
   import PhoenixKitWeb.Components.Core.PkLink
