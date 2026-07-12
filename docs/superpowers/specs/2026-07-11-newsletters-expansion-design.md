@@ -179,3 +179,17 @@ Two independent GLM-5.2 reviews (`component-architect`, `reviewer`; `--effort ma
 5. **Per-method limits ≠ global Oban concurrency** → atomic usage-claim; merge limits into Phase 4; add **broadcast idempotency** unique index (Broadcaster currently can duplicate deliveries; insert_all + Oban.insert_all in one txn can orphan rows).
 
 **Also adopted:** `template_uuid` collision (split/polymorphic); drop `List.kind`/resolve by UNION; `Contact.email` global-unique + citext extension; union-aware counters; macro HTML-escaping; parent `Storage` for attachments; suppression enforcement performance; long-enqueue-transaction scale fix; `route_module` additions; explicit backward-compat + concurrency tests. **YAGNI cuts:** Campaign/drip, spintax, spam-check (defer/cut v1).
+
+---
+
+## Appendix C — User refinements (2026-07-12) — SUPERSEDES where noted
+
+After reading v2, the user set concrete direction that overrides/clarifies parts of the plan. The detailed first-phase plan is authored to THIS:
+
+- **Migrations home — CORRECTED (supersedes Decision #6 and the `migration_module/0` references in §5/§7/§8):** new tables/columns are added in the **core `phoenix_kit` module's versioned migrations**, consistent with how the newsletters tables already live in core (`v79`/`v84`). Core is now at **`@current_version` 142** (verified in the updated fork — my earlier "111" was from a stale `deps` copy), so the next migration is **`v143`** (and up). Not `migration_module/0`.
+- **Dev/test target = Hydra Force** (`hydroforce-build-debug`). Wire in **three modules from the FORKS (not hex): `phoenix_kit` (core), `phoenix_kit_emails`, `phoenix_kit_newsletters`** (all `timujinne/*`). Prerequisite: ensure all three forks are updated & merged from upstream first. *(Done for core: fast-forwarded +48 → 1.7.186 and pushed; emails & newsletters already 0/0 with upstream.)* Each phase is **live-tested on Hydra Force**.
+- **Integrations-centric sending (supersedes/expands the §5 `SendMethod` model):**
+  - **Core `PhoenixKit.Integrations` stores ONLY connection credentials (keys).** Move the **AWS SES credentials out of the `emails` module into Integrations**; rework `emails` ↔ Core accordingly. Add integration providers for **Brevo (modern API + SMTP)** and **generic SMTP**, and allow adding more services (SMTP or API) later. (We already have a Brevo API instruction to follow.)
+  - **All send settings live OUTSIDE integrations, in a newsletters "Send Settings" block.** A send-setting/"send profile" **references an integration (account)** and carries the delivery parameters: send **rate/frequency**, **from-name**, **signature**, **reply-to**, etc. **Multiple profiles may reference the SAME integration** (same account, different cadence/signatures). Parameters are **per integration type**: SES → queue/advanced throttling; SMTP → universal set; API → its own options.
+- **Process (this and each phase):** expand the phase in detail → **GLM agent review** (our container agents — their fixes were valuable) → then develop with **live testing each stage on Hydra Force** → **final GLM review** during/after development.
+- **Scope note / assumption:** this message focused entirely on the **environment + Integrations/sending foundation**; **Contacts import (old Phase 1a/1b) is treated as a LATER phase**. Flagged for user confirmation at review.
