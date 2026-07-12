@@ -29,3 +29,20 @@ config :phoenix_kit,
 
 # Disable swoosh api client as it is only required for production adapters
 config :swoosh, :api_client, false
+
+# D4's legacy (no send profile) DeliveryWorker path calls
+# PhoenixKit.Mailer.deliver_email/1, which resolves its adapter from this
+# config — route it to the Test adapter so backward-compat tests can
+# assert on the captured email. The profile-routed path is unaffected:
+# deliver_via_integration/3 resolves a real adapter from the integration's
+# stored provider regardless of this setting.
+config :phoenix_kit, PhoenixKit.Mailer, adapter: Swoosh.Adapters.Test
+
+# DeliveryWorker.build_variables/2 signs an unsubscribe token via
+# Phoenix.Token.sign(PhoenixKit.Config.get(:endpoint, PhoenixKitWeb.Endpoint), ...),
+# which needs a running Endpoint process by default — this package ships
+# none standalone. Phoenix.Token's `context` type also accepts a raw
+# secret string directly (Phoenix.Token.sign/4 docs), which needs no
+# running process, so point :endpoint at one instead of a module.
+config :phoenix_kit,
+  endpoint: "test_endpoint_secret_key_base_at_least_64_bytes_long_for_newsletters_tests"

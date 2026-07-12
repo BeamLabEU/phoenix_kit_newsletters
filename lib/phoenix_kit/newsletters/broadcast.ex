@@ -26,6 +26,7 @@ defmodule PhoenixKit.Newsletters.Broadcast do
     field(:template_uuid, UUIDv7)
     field(:list_uuid, UUIDv7)
     field(:created_by_user_uuid, UUIDv7)
+    field(:send_profile_uuid, UUIDv7)
 
     belongs_to(:list, PhoenixKit.Newsletters.List,
       foreign_key: :list_uuid,
@@ -40,6 +41,13 @@ defmodule PhoenixKit.Newsletters.Broadcast do
 
     belongs_to(:created_by, PhoenixKit.Users.Auth.User,
       foreign_key: :created_by_user_uuid,
+      references: :uuid,
+      define_field: false,
+      type: UUIDv7
+    )
+
+    belongs_to(:send_profile, PhoenixKit.Newsletters.SendProfile,
+      foreign_key: :send_profile_uuid,
       references: :uuid,
       define_field: false,
       type: UUIDv7
@@ -70,7 +78,8 @@ defmodule PhoenixKit.Newsletters.Broadcast do
       :bounced_count,
       :template_uuid,
       :list_uuid,
-      :created_by_user_uuid
+      :created_by_user_uuid,
+      :send_profile_uuid
     ])
     |> validate_required([:subject, :list_uuid])
     |> validate_length(:subject, min: 1, max: 998)

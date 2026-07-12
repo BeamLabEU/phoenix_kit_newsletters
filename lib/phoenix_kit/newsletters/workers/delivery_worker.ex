@@ -29,6 +29,7 @@ defmodule PhoenixKit.Newsletters.Workers.DeliveryWorker do
   @email_template_mod PhoenixKit.Modules.Emails.Template
 
   alias PhoenixKit.Newsletters
+  alias PhoenixKit.Newsletters.Broadcast
   alias PhoenixKit.Newsletters.Delivery
   alias PhoenixKit.Utils.Date, as: UtilsDate
   alias PhoenixKit.Utils.Routes
@@ -137,6 +138,30 @@ defmodule PhoenixKit.Newsletters.Workers.DeliveryWorker do
   end
 
   defp send_email(broadcast, user, html_body, text_body) do
+    case resolve_send_profile(broadcast) do
+      nil -> send_email_legacy(broadcast, user, html_body, text_body)
+      profile -> deliver_profile_email(profile, broadcast, user, html_body, text_body)
+    end
+  end
+
+  @doc false
+  # Resolution order: the broadcast's own send_profile_uuid, falling back
+  # to the service-wide default profile, falling back to nil (the legacy
+  # single-Mailer path below). Not `defp` so it can be unit-tested
+  # directly — mirrors core `PhoenixKit.Mailer.swoosh_config_for/1`'s
+  # rationale (`@doc false` because it's an internal seam, not public API).
+  def resolve_send_profile(%Broadcast{send_profile_uuid: uuid})
+      when is_binary(uuid) and uuid != "" do
+    Newsletters.get_send_profile(uuid) || Newsletters.get_default_send_profile()
+  end
+
+  def resolve_send_profile(%Broadcast{}) do
+    Newsletters.get_default_send_profile()
+  end
+
+  # No profile resolved — unchanged from the original single-Mailer
+  # behavior, so existing user-list broadcasts keep sending identically.
+  defp send_email_legacy(broadcast, user, html_body, text_body) do
     from_email = PhoenixKit.Settings.get_setting("from_email", "noreply@example.com")
     from_name = PhoenixKit.Settings.get_setting("from_name", "Newsletter")
 
@@ -148,6 +173,49 @@ defmodule PhoenixKit.Newsletters.Workers.DeliveryWorker do
     |> Swoosh.Email.text_body(text_body)
     |> PhoenixKit.Mailer.deliver_email()
   end
+
+  defp deliver_profile_email(profile, broadcast, user, html_body, text_body) do
+    profile
+    |> build_profile_email(broadcast, user, html_body, text_body)
+    |> PhoenixKit.Mailer.deliver_via_integration(profile.integration_uuid)
+  end
+
+  @doc false
+  # Builds the Swoosh.Email for a profile-routed send: identity
+  # (from name/email, falling back to the legacy settings), reply-to,
+  # and the profile's signature appended to both bodies. Not `defp` so
+  # it can be unit-tested directly without triggering real delivery —
+  # same rationale as `resolve_send_profile/1` above. Actual delivery
+  # via the resolved integration (SES/SMTP/Brevo) is exercised live in
+  # D5 against real credentials: `deliver_via_integration/3` resolves a
+  # real Swoosh adapter from the integration's stored provider, so
+  # there's no Swoosh.Adapters.Test seam for that leg.
+  def build_profile_email(profile, broadcast, user, html_body, text_body) do
+    from_name = profile.from_name || PhoenixKit.Settings.get_setting("from_name", "Newsletter")
+
+    from_email =
+      profile.from_email || PhoenixKit.Settings.get_setting("from_email", "noreply@example.com")
+
+    Swoosh.Email.new()
+    |> Swoosh.Email.to(user.email)
+    |> Swoosh.Email.from({from_name, from_email})
+    |> Swoosh.Email.subject(broadcast.subject)
+    |> Swoosh.Email.html_body(append_signature(html_body, profile.signature_html))
+    |> Swoosh.Email.text_body(append_signature(text_body, profile.signature_text))
+    |> maybe_reply_to(profile.reply_to)
+  end
+
+  defp maybe_reply_to(email, reply_to) when is_binary(reply_to) and reply_to != "" do
+    Swoosh.Email.reply_to(email, reply_to)
+  end
+
+  defp maybe_reply_to(email, _reply_to), do: email
+
+  defp append_signature(body, signature) when is_binary(signature) and signature != "" do
+    (body || "") <> signature
+  end
+
+  defp append_signature(body, _signature), do: body
 
   defp handle_failure(delivery_uuid, broadcast_uuid, reason) do
     case get_delivery(delivery_uuid) do
