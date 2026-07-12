@@ -58,6 +58,7 @@ defmodule PhoenixKitNewsletters.MixProject do
       {:phoenix_live_view, "~> 1.1"},
       {:gettext, "~> 1.0"},
       {:oban, "~> 2.20"},
+      {:earmark, "~> 1.4"},
       {:uuidv7, "~> 1.0"},
 
       # Dev/test
