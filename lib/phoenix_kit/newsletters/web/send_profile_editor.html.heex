@@ -108,56 +108,41 @@
             </fieldset>
 
             <fieldset class="fieldset justify-end">
-              <label class="label cursor-pointer justify-start gap-3">
-                <input
-                  type="checkbox"
-                  id={@form[:enabled].id}
-                  name={@form[:enabled].name}
-                  value="true"
-                  checked={@form[:enabled].value}
-                  class="checkbox"
-                />
-                <span>{gettext("Enabled")}</span>
-              </label>
+              <.checkbox field={@form[:enabled]} label={gettext("Enabled")}>
+                <:description>
+                  {gettext("Disabled profiles are never used to send, not even as the default.")}
+                </:description>
+              </.checkbox>
             </fieldset>
 
             <fieldset class="fieldset md:col-span-2">
-              <label class="label" for={@form[:signature_html].id}>
-                {gettext("Signature (HTML)")}
-              </label>
-              <textarea
-                id={@form[:signature_html].id}
-                name={@form[:signature_html].name}
+              <.textarea
+                field={@form[:signature_html]}
+                label={gettext("Signature (HTML)")}
                 rows="3"
                 placeholder="<p>Best,<br>The Team</p>"
-                class="textarea w-full font-mono text-sm"
-              >{Phoenix.HTML.Form.normalize_value("textarea", @form[:signature_html].value)}</textarea>
+                class="font-mono text-sm"
+              />
             </fieldset>
 
             <fieldset class="fieldset md:col-span-2">
-              <label class="label" for={@form[:signature_text].id}>
-                {gettext("Signature (plain text)")}
-              </label>
-              <textarea
-                id={@form[:signature_text].id}
-                name={@form[:signature_text].name}
+              <.textarea
+                field={@form[:signature_text]}
+                label={gettext("Signature (plain text)")}
                 rows="3"
                 placeholder={gettext("Best,\nThe Team")}
-                class="textarea w-full"
-              >{Phoenix.HTML.Form.normalize_value("textarea", @form[:signature_text].value)}</textarea>
+              />
             </fieldset>
 
             <fieldset class="fieldset md:col-span-2">
-              <label class="label" for={@form[:advanced].id}>
-                {gettext("Advanced (JSON)")}
-              </label>
-              <textarea
-                id={@form[:advanced].id}
-                name={@form[:advanced].name}
+              <.textarea
+                field={@form[:advanced]}
+                value={advanced_json(@form[:advanced].value)}
+                label={gettext("Advanced (JSON)")}
                 rows="4"
                 placeholder="{}"
-                class="textarea w-full font-mono text-sm"
-              >{advanced_json(@form[:advanced].value)}</textarea>
+                class="font-mono text-sm"
+              />
               <p class="text-xs text-base-content/60 mt-1">
                 {gettext("Provider-specific extras, e.g. an SES configuration set")}
               </p>

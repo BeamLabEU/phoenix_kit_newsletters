@@ -7,9 +7,11 @@ defmodule PhoenixKit.Newsletters.Web.SendProfileEditor do
   use Gettext, backend: PhoenixKit.Newsletters.Gettext
 
   import PhoenixKitWeb.Components.Core.AdminPageHeader
+  import PhoenixKitWeb.Components.Core.Checkbox
   import PhoenixKitWeb.Components.Core.Icon
   import PhoenixKitWeb.Components.Core.Input
   import PhoenixKitWeb.Components.Core.PkLink
+  import PhoenixKitWeb.Components.Core.Textarea
 
   alias PhoenixKit.Integrations
   alias PhoenixKit.Newsletters
