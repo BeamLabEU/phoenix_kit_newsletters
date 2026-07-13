@@ -196,4 +196,52 @@ defmodule PhoenixKit.Newsletters.Workers.DeliveryWorkerTest do
       )
     end
   end
+
+  describe "permanent_failure?/1 — blocked/unusable sends must not retry nor count as bounces" do
+    test "blocklisted recipients and unusable integrations are permanent" do
+      assert DeliveryWorker.permanent_failure?({:blocked, :blocklist})
+      assert DeliveryWorker.permanent_failure?(:deleted)
+      assert DeliveryWorker.permanent_failure?(:not_configured)
+      assert DeliveryWorker.permanent_failure?(:unsupported_provider)
+      assert DeliveryWorker.permanent_failure?({:unsupported_provider, "nope"})
+      assert DeliveryWorker.permanent_failure?({:invalid_smtp_port, "abc"})
+    end
+
+    test "ordinary delivery failures stay transient (still retried and counted)" do
+      refute DeliveryWorker.permanent_failure?(:timeout)
+      refute DeliveryWorker.permanent_failure?({:error, :econnrefused})
+      refute DeliveryWorker.permanent_failure?("smtp 421 try again")
+    end
+  end
+
+  describe "resolve_send_profile/1 honours the `enabled` kill-switch" do
+    test "a disabled pinned profile is skipped in favour of the enabled default" do
+      integration_uuid = add_integration()
+
+      disabled =
+        create_send_profile(%{
+          name: "disabled pinned",
+          integration_uuid: integration_uuid,
+          enabled: false
+        })
+
+      default =
+        create_send_profile(%{name: "enabled default", integration_uuid: integration_uuid})
+
+      {:ok, default} = Newsletters.set_default_send_profile(default)
+
+      resolved = DeliveryWorker.resolve_send_profile(%Broadcast{send_profile_uuid: disabled.uuid})
+
+      assert resolved.uuid == default.uuid
+    end
+
+    test "a disabled DEFAULT profile resolves to nothing (falls back to the legacy path)" do
+      profile = create_send_profile(%{name: "default then disabled"})
+      {:ok, profile} = Newsletters.set_default_send_profile(profile)
+      {:ok, _} = Newsletters.update_send_profile(profile, %{enabled: false})
+
+      assert Newsletters.get_default_send_profile() == nil
+      assert DeliveryWorker.resolve_send_profile(%Broadcast{}) == nil
+    end
+  end
 end

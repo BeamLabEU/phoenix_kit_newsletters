@@ -8,7 +8,10 @@ defmodule PhoenixKit.Newsletters.Delivery do
 
   @primary_key {:uuid, UUIDv7, autogenerate: true}
 
-  @valid_statuses ["pending", "sent", "delivered", "opened", "bounced", "failed"]
+  # "blocked" = the recipient is on the suppression list; the send was
+  # correctly refused. Distinct from "failed"/"bounced" so it never
+  # pollutes bounce metrics.
+  @valid_statuses ["pending", "sent", "delivered", "opened", "bounced", "failed", "blocked"]
 
   schema "phoenix_kit_newsletters_deliveries" do
     field(:status, :string, default: "pending")

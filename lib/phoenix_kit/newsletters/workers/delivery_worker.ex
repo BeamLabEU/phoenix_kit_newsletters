@@ -31,6 +31,7 @@ defmodule PhoenixKit.Newsletters.Workers.DeliveryWorker do
   alias PhoenixKit.Newsletters
   alias PhoenixKit.Newsletters.Broadcast
   alias PhoenixKit.Newsletters.Delivery
+  alias PhoenixKit.Newsletters.SendProfile
   alias PhoenixKit.Utils.Date, as: UtilsDate
   alias PhoenixKit.Utils.Routes
 
@@ -55,9 +56,49 @@ defmodule PhoenixKit.Newsletters.Workers.DeliveryWorker do
       :ok
     else
       {:error, reason} ->
-        Logger.error("DeliveryWorker: Failed delivery #{delivery_uuid}: #{inspect(reason)}")
-        handle_failure(delivery_uuid, broadcast_uuid, reason)
-        {:error, inspect(reason)}
+        if permanent_failure?(reason) do
+          # Permanent conditions — a blocklisted recipient, or a profile whose
+          # integration is gone/unusable. Retrying cannot help, and neither is
+          # a delivery that bounced: counting them would re-inflate
+          # bounced_count on every later broadcast for the very addresses the
+          # blocklist already caught once, corrupting the deliverability
+          # metric the blocklist exists to protect. Cancel instead of burning
+          # all 3 Oban attempts.
+          Logger.warning(
+            "DeliveryWorker: permanent failure for #{delivery_uuid}: #{inspect(reason)}"
+          )
+
+          record_permanent_failure(delivery_uuid, reason)
+          {:cancel, inspect(reason)}
+        else
+          Logger.error("DeliveryWorker: Failed delivery #{delivery_uuid}: #{inspect(reason)}")
+          handle_failure(delivery_uuid, broadcast_uuid, reason)
+          {:error, inspect(reason)}
+        end
+    end
+  end
+
+  @doc false
+  # Blocklisted recipient, or the send profile's integration is deleted /
+  # misconfigured. Neither improves on retry, and neither is a bounce.
+  def permanent_failure?({:blocked, _reason}), do: true
+  def permanent_failure?(:deleted), do: true
+  def permanent_failure?(:not_configured), do: true
+  def permanent_failure?(:unsupported_provider), do: true
+  def permanent_failure?({:unsupported_provider, _}), do: true
+  def permanent_failure?({:invalid_smtp_port, _}), do: true
+  def permanent_failure?(_), do: false
+
+  defp record_permanent_failure(delivery_uuid, reason) do
+    status = if match?({:blocked, _}, reason), do: "blocked", else: "failed"
+
+    case get_delivery(delivery_uuid) do
+      {:ok, delivery} ->
+        # Deliberately does NOT touch :bounced_count.
+        Newsletters.update_delivery_status(delivery, status, %{error: inspect(reason)})
+
+      _ ->
+        :ok
     end
   end
 
@@ -152,7 +193,18 @@ defmodule PhoenixKit.Newsletters.Workers.DeliveryWorker do
   # rationale (`@doc false` because it's an internal seam, not public API).
   def resolve_send_profile(%Broadcast{send_profile_uuid: uuid})
       when is_binary(uuid) and uuid != "" do
-    Newsletters.get_send_profile(uuid) || Newsletters.get_default_send_profile()
+    case Newsletters.get_send_profile(uuid) do
+      %SendProfile{enabled: true} = profile ->
+        profile
+
+      # A disabled (or deleted) pinned profile must NOT send. `enabled` is an
+      # operator kill-switch — e.g. the profile's from_email got blacklisted by
+      # a provider and sending from it must stop NOW, without deleting the
+      # profile. Fall through to the default profile, then to the legacy
+      # mailer; never silently send from a sender the operator switched off.
+      _disabled_or_missing ->
+        Newsletters.get_default_send_profile()
+    end
   end
 
   def resolve_send_profile(%Broadcast{}) do

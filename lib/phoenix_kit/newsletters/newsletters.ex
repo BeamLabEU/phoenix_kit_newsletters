@@ -452,8 +452,10 @@ defmodule PhoenixKit.Newsletters do
   Returns the service-wide default send profile, or `nil` if none is set.
   """
   def get_default_send_profile do
+    # `enabled` is an operator kill-switch — a disabled profile must never be
+    # resolved for sending, not even when it is the default.
     SendProfile
-    |> where([sp], sp.is_default == true)
+    |> where([sp], sp.is_default == true and sp.enabled == true)
     |> repo().one()
   end
 
