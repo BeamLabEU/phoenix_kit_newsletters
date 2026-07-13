@@ -237,7 +237,7 @@ Additional files per PR directory:
 - **PhoenixKit** (`~> 1.7`) — Module behaviour, Settings API, shared components, RepoHelper, Utils (Date, UUID, Routes), Users.Auth.User, Users.Roles
 - **Phoenix LiveView** (`~> 1.1`) — Admin LiveViews
 - **Oban** (`~> 2.20`) — Background job processing (email delivery)
-- **Earmark** (`~> 1.4`) — Markdown to HTML rendering for broadcast content
+- **MDEx** (`~> 0.13`) — Markdown to HTML rendering for broadcast content (sanitized via `PhoenixKit.Utils.HtmlSanitizer`)
 - **UUIDv7** (`~> 1.0`) — UUIDv7 primary key generation
 - **ex_doc** (`~> 0.39`, dev only) — Documentation generation
 - **credo** (`~> 1.7`, dev/test) — Static analysis / code quality

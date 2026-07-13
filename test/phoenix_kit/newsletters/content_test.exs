@@ -5,7 +5,7 @@ defmodule PhoenixKit.Newsletters.ContentTest do
 
   describe "render_markdown/1" do
     test "converts markdown to HTML" do
-      assert "<p>\nHello <strong>world</strong></p>\n" =
+      assert "<p>Hello <strong>world</strong></p>" =
                Content.render_markdown("Hello **world**")
     end
 
@@ -15,6 +15,16 @@ defmodule PhoenixKit.Newsletters.ContentTest do
 
     test "handles empty string" do
       assert "" = Content.render_markdown("")
+    end
+
+    test "strips script tags embedded as raw HTML" do
+      html = Content.render_markdown("Hi\n\n<script>alert(1)</script>")
+      refute html =~ "<script"
+    end
+
+    test "strips event-handler attributes embedded as raw HTML" do
+      html = Content.render_markdown(~s|<img src="x" onerror="alert(1)">|)
+      refute html =~ "onerror"
     end
   end
 
