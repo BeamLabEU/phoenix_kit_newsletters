@@ -423,3 +423,53 @@ end
 - ~~Should generic `smtp` and `brevo_smtp` be one provider or two?~~ **RESOLVED by user (2026-07-12): ONE universal `smtp` provider** — vendors differ only by connection values; multiple named connections ("SMTP 1/2/3", "Brevo SMTP") + a default ("service") profile selection. Brevo keeps only its API provider.
 - `send_profile_uuid` on `broadcasts` vs a global default profile — plan adds per-broadcast selection with a fallback; confirm.
 - Rate enforcement (`rate_per_hour/day`, `pause_seconds`) is *stored* here but *enforced* in the later throttling phase (Phase 4/5 of the v2 spec). Confirm we defer enforcement.
+
+---
+
+## STATUS: Phase 1 COMPLETE (2026-07-13)
+
+All stages implemented, live-tested on the Hydra Force dev app, and reviewed. Branch
+`feature/newsletters-sending-foundation` in all three repos (core / emails / newsletters),
+each merged with `upstream/main` and pushed to the `timujinne` forks.
+
+| Stage | Result |
+|---|---|
+| A — forks wired into the dev app (path deps), baseline migrated | ✅ (+ fixed an upstream regression: retired `earmark` → **MDEx**) |
+| B — AWS SES credentials → Integrations | ✅ live: `migrate_legacy` ran, legacy plaintext blanked, SES sends from encrypted creds |
+| C — universal `smtp` + `brevo_api`, `deliver_via_integration/3` | ✅ live: Brevo-API and Brevo-SMTP sends |
+| D — core **V143**, `SendProfile`, Send Settings admin, profile-aware worker | ✅ live: 142→143 applied; 2 profiles on 1 integration; default exclusivity; profile-aware send |
+| E — blocklist integrity (hard-bounce → blocklist; enforced at send) | ✅ live: refused on both delivery paths; delivers after removal |
+
+**Tests:** core 158/0 · emails 34/1 (one pre-existing failure on `main`) · newsletters 77/0.
+
+### Four review rounds, all archived in `../specs/reviews/`
+Each round was run as **two independent GLM-5.2 agents** (`component-architect` + `reviewer`,
+`--effort max`), and every load-bearing claim was re-verified against the code before acting on it.
+
+1. **Spec review** → migrations belong in core; reuse `Integrations` + its encryption; the original
+   "Phase 1 unlocks arbitrary-address mailing" claim was false (recipients were user-bound).
+2. **Plan review** → the credential gate rejects flat fields; `add_connection/3` returns
+   `{:ok, %{uuid: …}}`; `deliver_via_integration/3` must not route through the SES-only
+   `deliver_email/2`; `TIMESTAMPTZ`.
+3. **Stage B+C implementation review** → SMTP port 465 needs `ssl: true` (it was hanging);
+   the tracking interceptor mis-attributed the provider.
+4. **Final review** → blocked recipients inflated `bounced_count` 3× and burned 3 Oban attempts;
+   the `enabled` toggle was decorative (and its raw checkbox couldn't even be unchecked); the
+   blocklist was bypassable via `cc`/`bcc`; *Test Connection* validated nothing.
+
+**Bugs found that were nobody's assignment** (i.e. the reviews and the live tests earned their keep):
+Integrations encryption was silently disabled — every secret was stored in **plaintext**; SMTP 465
+hung; soft bounces were mis-classified (SES sends `"Transient"`, the code matched `"temporary"`);
+the retired `earmark` dep had been dropped upstream while the code still called it.
+
+### Merge order (hard dependency)
+`newsletters` calls `Mailer.deliver_via_integration/3` and needs V143 — neither is in any released
+`phoenix_kit`, so it does **not** compile against hex. Required order:
+**core → publish `phoenix_kit` to hex → emails → newsletters** (and bump the newsletters
+`{:phoenix_kit, "~> 1.7"}` floor to the released version before merging it).
+
+### Deliberately deferred (documented, not forgotten)
+Rate/pacing enforcement (the `SendProfile` rate fields are stored but inert) → **Phase 5**, where
+per-profile atomic caps live; per-profile SES `configuration_set` (the `advanced` jsonb is inert) →
+Phase 5; Brevo open/click tracking → Phase 7; `aws_ses`/`smtp` connection validation (needs SigV4 /
+a real SMTP handshake) → follow-up.
