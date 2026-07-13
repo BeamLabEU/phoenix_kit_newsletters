@@ -54,7 +54,7 @@ defmodule PhoenixKitNewsletters.MixProject do
   defp deps do
     [
       # Core
-      {:phoenix_kit, "~> 1.7 and >= 1.7.184"},
+      {:phoenix_kit, "~> 1.7.189"},
       {:phoenix_live_view, "~> 1.1"},
       {:gettext, "~> 1.0"},
       {:oban, "~> 2.20"},
