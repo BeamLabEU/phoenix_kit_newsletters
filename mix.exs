@@ -18,7 +18,7 @@ defmodule PhoenixKitNewsletters.MixProject do
         "Newsletters module for PhoenixKit — email broadcasts and subscription management",
 
       # Dialyzer
-      dialyzer: [plt_add_apps: [:phoenix_kit]],
+      dialyzer: [plt_add_apps: [:phoenix_kit], ignore_warnings: ".dialyzer_ignore.exs"],
 
       # Docs
       name: "PhoenixKitNewsletters",
@@ -54,7 +54,7 @@ defmodule PhoenixKitNewsletters.MixProject do
   defp deps do
     [
       # Core
-      {:phoenix_kit, "~> 1.7.189"},
+      {:phoenix_kit, "~> 1.7 and >= 1.7.189"},
       {:phoenix_live_view, "~> 1.1"},
       {:gettext, "~> 1.0"},
       {:oban, "~> 2.20"},
