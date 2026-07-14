@@ -15,9 +15,12 @@ defmodule PhoenixKit.Newsletters.SendProfile do
   use PhoenixKit.SchemaPrefix
   import Ecto.Changeset
 
-  @primary_key {:uuid, UUIDv7, autogenerate: true}
+  alias PhoenixKit.Integrations.Providers
+  alias PhoenixKit.Newsletters.ProviderOptions
 
-  @valid_provider_kinds ~w(aws_ses smtp brevo_api)
+  @type t :: %__MODULE__{}
+
+  @primary_key {:uuid, UUIDv7, autogenerate: true}
 
   schema "phoenix_kit_newsletters_send_profiles" do
     field(:name, :string)
@@ -57,18 +60,48 @@ defmodule PhoenixKit.Newsletters.SendProfile do
       :is_default
     ])
     |> validate_required([:name, :integration_uuid, :provider_kind])
-    |> validate_inclusion(:provider_kind, @valid_provider_kinds)
+    |> validate_inclusion(:provider_kind, valid_provider_kinds())
     |> validate_number(:rate_per_hour, greater_than_or_equal_to: 0)
     |> validate_number(:rate_per_day, greater_than_or_equal_to: 0)
     |> validate_number(:pause_seconds, greater_than_or_equal_to: 0)
     |> validate_provider_kind_matches_integration()
+    |> cast_advanced()
     |> unique_constraint(:is_default,
       name: :idx_nl_send_profiles_default,
       message: "another profile is already the default"
     )
   end
 
-  def valid_provider_kinds, do: @valid_provider_kinds
+  @doc """
+  The provider kinds a send profile may point at.
+
+  Derived from the core Integrations registry rather than hardcoded, so an
+  email provider added there — built-in, or contributed by another module
+  via `integration_providers/0` — becomes selectable in Send Settings
+  without a change here. `:email_send` is the capability that makes a
+  provider a *sender*; an AI or storage provider must never be pickable.
+  """
+  def valid_provider_kinds do
+    :email_send
+    |> Providers.with_capability()
+    |> Enum.map(& &1.key)
+  end
+
+  # `advanced` holds provider-specific send settings. Re-cast it through
+  # ProviderOptions so only keys the chosen provider actually declares can
+  # be persisted: without this, params could smuggle arbitrary keys into a
+  # JSONB column that the delivery worker later feeds to a Swoosh adapter.
+  # Also drops stale keys when a profile is repointed at another provider.
+  defp cast_advanced(changeset) do
+    case fetch_change(changeset, :advanced) do
+      {:ok, advanced} ->
+        provider_kind = get_field(changeset, :provider_kind)
+        put_change(changeset, :advanced, ProviderOptions.cast(provider_kind, advanced))
+
+      :error ->
+        changeset
+    end
+  end
 
   # Cross-field consistency: the profile's declared provider_kind must
   # match the actual provider of the integration it points at, so the two

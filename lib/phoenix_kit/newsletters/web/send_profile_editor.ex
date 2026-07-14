@@ -15,11 +15,10 @@ defmodule PhoenixKit.Newsletters.Web.SendProfileEditor do
 
   alias PhoenixKit.Integrations
   alias PhoenixKit.Newsletters
+  alias PhoenixKit.Newsletters.ProviderOptions
   alias PhoenixKit.Newsletters.SendProfile
   alias PhoenixKit.Settings
   alias PhoenixKit.Utils.Routes
-
-  @provider_kinds SendProfile.valid_provider_kinds()
 
   @impl true
   def mount(_params, _session, socket) do
@@ -47,7 +46,7 @@ defmodule PhoenixKit.Newsletters.Web.SendProfileEditor do
      socket
      |> assign(:page_title, gettext("Edit send profile: %{name}", name: send_profile.name))
      |> assign(:send_profile, send_profile)
-     |> assign(:form, to_form(SendProfile.changeset(send_profile, %{})))}
+     |> assign_form(SendProfile.changeset(send_profile, %{}))}
   rescue
     Ecto.NoResultsError ->
       {:noreply,
@@ -61,7 +60,7 @@ defmodule PhoenixKit.Newsletters.Web.SendProfileEditor do
      socket
      |> assign(:page_title, gettext("New send profile"))
      |> assign(:send_profile, nil)
-     |> assign(:form, to_form(SendProfile.changeset(%SendProfile{}, %{})))}
+     |> assign_form(SendProfile.changeset(%SendProfile{}, %{}))}
   end
 
   @impl true
@@ -69,7 +68,7 @@ defmodule PhoenixKit.Newsletters.Web.SendProfileEditor do
     params = normalize_params(params, socket.assigns.connections_by_provider)
     target = socket.assigns.send_profile || %SendProfile{}
     changeset = SendProfile.changeset(target, params) |> Map.put(:action, :validate)
-    {:noreply, assign(socket, :form, to_form(changeset))}
+    {:noreply, assign_form(socket, changeset)}
   end
 
   @impl true
@@ -90,14 +89,29 @@ defmodule PhoenixKit.Newsletters.Web.SendProfileEditor do
          |> push_navigate(to: Routes.path("/admin/newsletters/send-settings"))}
 
       {:error, changeset} ->
-        {:noreply, assign(socket, :form, to_form(changeset))}
+        {:noreply, assign_form(socket, changeset)}
     end
   end
 
   # --- Private ---
 
+  # Which per-provider fields to render follows the provider the changeset
+  # resolved to, so the form can't offer a setting the chosen provider (and
+  # therefore its Swoosh adapter) doesn't understand.
+  defp assign_form(socket, changeset) do
+    provider_kind = Ecto.Changeset.get_field(changeset, :provider_kind)
+
+    socket
+    |> assign(:form, to_form(changeset))
+    |> assign(:provider_kind, provider_kind)
+    |> assign(:provider_fields, ProviderOptions.fields_for(provider_kind))
+    |> assign(:advanced, Ecto.Changeset.get_field(changeset, :advanced) || %{})
+  end
+
+  # Every email provider the Integrations registry knows about — not a
+  # hardcoded three — so a newly registered sender shows up here on its own.
   defp load_connections do
-    Map.new(@provider_kinds, fn provider ->
+    Map.new(SendProfile.valid_provider_kinds(), fn provider ->
       {provider, Integrations.list_connections(provider)}
     end)
   end
@@ -105,7 +119,12 @@ defmodule PhoenixKit.Newsletters.Web.SendProfileEditor do
   defp normalize_params(params, connections_by_provider) do
     params
     |> resolve_provider_kind(connections_by_provider)
-    |> parse_advanced_json()
+    # A provider with no settings of its own (SMTP) renders no inputs, so the
+    # key is simply absent. Default it to empty rather than leaving it out:
+    # that makes the schema re-cast `advanced` on every save, which is what
+    # prunes a stale SES configuration set after a profile is repointed at
+    # an SMTP connection.
+    |> Map.put_new("advanced", %{})
   end
 
   # The form only exposes an integration picker (grouped by provider) —
@@ -127,26 +146,6 @@ defmodule PhoenixKit.Newsletters.Web.SendProfileEditor do
       if Enum.any?(connections, &(&1.uuid == uuid)), do: provider
     end)
   end
-
-  # The "advanced" textarea submits raw JSON text; the schema field is a
-  # map. Decode here so the changeset receives a map (matching its cast
-  # type) — an empty textarea becomes %{}, and text that isn't a valid
-  # JSON object is left as a string so Ecto's normal :map cast reports it
-  # as invalid rather than silently discarding it.
-  defp parse_advanced_json(%{"advanced" => ""} = params), do: Map.put(params, "advanced", %{})
-
-  defp parse_advanced_json(%{"advanced" => json} = params) when is_binary(json) do
-    case Jason.decode(json) do
-      {:ok, decoded} when is_map(decoded) -> Map.put(params, "advanced", decoded)
-      _ -> params
-    end
-  end
-
-  defp parse_advanced_json(params), do: params
-
-  defp advanced_json(nil), do: "{}"
-  defp advanced_json(map) when is_map(map), do: Jason.encode!(map, pretty: true)
-  defp advanced_json(other) when is_binary(other), do: other
 
   # Human-readable optgroup label for the integration picker — sourced
   # from the provider registry so it stays in sync with whatever name

@@ -105,6 +105,11 @@
                 {gettext("Pause between sends (seconds)")}
               </label>
               <.input field={@form[:pause_seconds]} type="number" min="0" class="input w-full" />
+              <p class="text-xs text-base-content/60 mt-1">
+                {gettext(
+                  "Sends are spaced out to respect these limits — the tightest of the three wins. Leave empty for no limit."
+                )}
+              </p>
             </fieldset>
 
             <fieldset class="fieldset justify-end">
@@ -134,19 +139,41 @@
               />
             </fieldset>
 
-            <fieldset class="fieldset md:col-span-2">
-              <.textarea
-                field={@form[:advanced]}
-                value={advanced_json(@form[:advanced].value)}
-                label={gettext("Advanced (JSON)")}
-                rows="4"
-                placeholder="{}"
-                class="font-mono text-sm"
-              />
-              <p class="text-xs text-base-content/60 mt-1">
-                {gettext("Provider-specific extras, e.g. an SES configuration set")}
-              </p>
+            <%!-- Provider-specific send settings. Rendered from
+                  ProviderOptions.fields_for/1, which declares only options the
+                  chosen provider's Swoosh adapter actually reads — so the form
+                  cannot offer a setting that would silently do nothing. --%>
+            <fieldset :if={@provider_fields != []} class="fieldset md:col-span-2">
+              <div class="divider text-xs text-base-content/60 mb-0">
+                {gettext("%{provider} settings", provider: provider_label(@provider_kind))}
+              </div>
+
+              <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div :for={field <- @provider_fields}>
+                  <label class="label" for={"send_profile_advanced_#{field.key}"}>
+                    {field.label}
+                  </label>
+                  <input
+                    type={if field.type == :number, do: "number", else: "text"}
+                    id={"send_profile_advanced_#{field.key}"}
+                    name={"send_profile[advanced][#{field.key}]"}
+                    value={ProviderOptions.to_input_value(field, @advanced)}
+                    placeholder={field.placeholder}
+                    class="input w-full"
+                  />
+                  <p class="text-xs text-base-content/60 mt-1">{field.help}</p>
+                </div>
+              </div>
             </fieldset>
+
+            <p
+              :if={@provider_kind == "smtp"}
+              class="md:col-span-2 text-xs text-base-content/60"
+            >
+              {gettext(
+                "SMTP has no per-profile provider settings — relay, port and TLS come from the integration itself."
+              )}
+            </p>
           </div>
 
           <div class="flex justify-end gap-2 mt-6">

@@ -31,6 +31,7 @@ defmodule PhoenixKit.Newsletters.Workers.DeliveryWorker do
   alias PhoenixKit.Newsletters
   alias PhoenixKit.Newsletters.Broadcast
   alias PhoenixKit.Newsletters.Delivery
+  alias PhoenixKit.Newsletters.ProviderOptions
   alias PhoenixKit.Newsletters.SendProfile
   alias PhoenixKit.Utils.Date, as: UtilsDate
   alias PhoenixKit.Utils.Routes
@@ -255,6 +256,19 @@ defmodule PhoenixKit.Newsletters.Workers.DeliveryWorker do
     |> Swoosh.Email.html_body(append_signature(html_body, profile.signature_html))
     |> Swoosh.Email.text_body(append_signature(text_body, profile.signature_text))
     |> maybe_reply_to(profile.reply_to)
+    |> put_provider_options(profile)
+  end
+
+  # The profile's provider-specific settings (SES configuration set, Brevo
+  # sender ID/tags) only reach the provider through the email's
+  # provider_options — until this existed, `advanced` was written by the
+  # form and then read by nobody.
+  defp put_provider_options(email, profile) do
+    profile.provider_kind
+    |> ProviderOptions.to_provider_options(profile.advanced)
+    |> Enum.reduce(email, fn {key, value}, acc ->
+      Swoosh.Email.put_provider_option(acc, key, value)
+    end)
   end
 
   defp maybe_reply_to(email, reply_to) when is_binary(reply_to) and reply_to != "" do
