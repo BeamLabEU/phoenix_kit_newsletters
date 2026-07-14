@@ -12,6 +12,7 @@ defmodule PhoenixKit.Newsletters.SendProfile do
   """
 
   use Ecto.Schema
+  use PhoenixKit.SchemaPrefix
   import Ecto.Changeset
 
   @primary_key {:uuid, UUIDv7, autogenerate: true}
