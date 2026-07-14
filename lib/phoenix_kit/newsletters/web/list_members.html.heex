@@ -7,6 +7,12 @@
   project_title={@project_title}
 >
 <div class="container flex-col mx-auto px-4 py-6">
+  <div class="mb-4">
+    <.pk_link navigate="/admin/newsletters/lists" class="btn btn-ghost btn-sm">
+      <.icon name="hero-arrow-left" class="w-4 h-4" /> {gettext("Lists")}
+    </.pk_link>
+  </div>
+
   <%!-- Confirm Modal --%>
   <%= if @show_confirm_modal do %>
     <div class="modal modal-open">

@@ -7,6 +7,7 @@ defmodule PhoenixKit.Newsletters.Web.BroadcastEditor do
   use Gettext, backend: PhoenixKit.Newsletters.Gettext
 
   import PhoenixKitWeb.Components.Core.Icon
+  import PhoenixKitWeb.Components.Core.PkLink
 
   # Optional soft dependencies — guarded by Code.ensure_loaded? at runtime
   # Use module atoms directly (not alias) to avoid compile-time warnings

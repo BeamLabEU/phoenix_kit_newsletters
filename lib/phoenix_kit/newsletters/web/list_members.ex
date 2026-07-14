@@ -7,6 +7,7 @@ defmodule PhoenixKit.Newsletters.Web.ListMembers do
   use Gettext, backend: PhoenixKit.Newsletters.Gettext
 
   import PhoenixKitWeb.Components.Core.Icon
+  import PhoenixKitWeb.Components.Core.PkLink
   import PhoenixKitWeb.Components.Core.TableDefault
 
   alias PhoenixKit.Newsletters
