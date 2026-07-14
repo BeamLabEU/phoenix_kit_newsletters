@@ -2,22 +2,11 @@
   flash={@flash}
   phoenix_kit_current_scope={assigns[:phoenix_kit_current_scope]}
   page_title={@page_title}
+  page_subtitle={@page_subtitle}
   current_path={@url_path}
   project_title={@project_title}
 >
 <div class="container flex-col mx-auto px-4 py-6">
-  <.admin_page_header
-    back={Routes.path("/admin/newsletters/lists")}
-    title={@list.name}
-    subtitle={
-      ngettext(
-        "%{count} active subscriber",
-        "%{count} active subscribers",
-        @list.subscriber_count
-      )
-    }
-  />
-
   <%!-- Confirm Modal --%>
   <%= if @show_confirm_modal do %>
     <div class="modal modal-open">

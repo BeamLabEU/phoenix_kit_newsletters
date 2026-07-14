@@ -6,7 +6,6 @@ defmodule PhoenixKit.Newsletters.Web.ListMembers do
   use Phoenix.LiveView
   use Gettext, backend: PhoenixKit.Newsletters.Gettext
 
-  import PhoenixKitWeb.Components.Core.AdminPageHeader
   import PhoenixKitWeb.Components.Core.Icon
   import PhoenixKitWeb.Components.Core.TableDefault
 
@@ -21,6 +20,7 @@ defmodule PhoenixKit.Newsletters.Web.ListMembers do
       socket =
         socket
         |> assign(:page_title, gettext("Members"))
+        |> assign(:page_subtitle, nil)
         |> assign(:project_title, Settings.get_project_title())
         |> assign(:list, nil)
         |> assign(:members, [])
@@ -64,6 +64,14 @@ defmodule PhoenixKit.Newsletters.Web.ListMembers do
              |> assign(
                :page_title,
                gettext("%{name} — Members", name: list.name)
+             )
+             |> assign(
+               :page_subtitle,
+               ngettext(
+                 "%{count} active subscriber",
+                 "%{count} active subscribers",
+                 list.subscriber_count
+               )
              )
              |> assign(:list, list)
              |> assign(:members, members)}

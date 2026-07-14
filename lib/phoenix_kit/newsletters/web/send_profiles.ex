@@ -6,7 +6,6 @@ defmodule PhoenixKit.Newsletters.Web.SendProfiles do
   use Phoenix.LiveView
   use Gettext, backend: PhoenixKit.Newsletters.Gettext
 
-  import PhoenixKitWeb.Components.Core.AdminPageHeader
   import PhoenixKitWeb.Components.Core.Icon
   import PhoenixKitWeb.Components.Core.PkLink
   import PhoenixKitWeb.Components.Core.TableDefault
@@ -21,6 +20,10 @@ defmodule PhoenixKit.Newsletters.Web.SendProfiles do
       socket =
         socket
         |> assign(:page_title, gettext("Send Settings"))
+        |> assign(
+          :page_subtitle,
+          gettext("Manage send profiles used to deliver newsletter broadcasts")
+        )
         |> assign(:project_title, Settings.get_project_title())
         |> assign(:send_profiles, [])
         |> assign(:show_confirm_modal, false)

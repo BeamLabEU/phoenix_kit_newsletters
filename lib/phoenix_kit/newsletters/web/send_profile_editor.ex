@@ -6,7 +6,6 @@ defmodule PhoenixKit.Newsletters.Web.SendProfileEditor do
   use Phoenix.LiveView
   use Gettext, backend: PhoenixKit.Newsletters.Gettext
 
-  import PhoenixKitWeb.Components.Core.AdminPageHeader
   import PhoenixKitWeb.Components.Core.Checkbox
   import PhoenixKitWeb.Components.Core.Icon
   import PhoenixKitWeb.Components.Core.Input
@@ -46,6 +45,7 @@ defmodule PhoenixKit.Newsletters.Web.SendProfileEditor do
     {:noreply,
      socket
      |> assign(:page_title, gettext("Edit send profile: %{name}", name: send_profile.name))
+     |> assign(:page_subtitle, gettext("Edit send profile settings"))
      |> assign(:send_profile, send_profile)
      |> assign(:form, to_form(SendProfile.changeset(send_profile, %{})))}
   rescue
@@ -60,6 +60,7 @@ defmodule PhoenixKit.Newsletters.Web.SendProfileEditor do
     {:noreply,
      socket
      |> assign(:page_title, gettext("New send profile"))
+     |> assign(:page_subtitle, gettext("Create a new send profile"))
      |> assign(:send_profile, nil)
      |> assign(:form, to_form(SendProfile.changeset(%SendProfile{}, %{})))}
   end

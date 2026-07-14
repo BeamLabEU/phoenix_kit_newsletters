@@ -6,7 +6,6 @@ defmodule PhoenixKit.Newsletters.Web.BroadcastEditor do
   use Phoenix.LiveView
   use Gettext, backend: PhoenixKit.Newsletters.Gettext
 
-  import PhoenixKitWeb.Components.Core.AdminPageHeader
   import PhoenixKitWeb.Components.Core.Icon
 
   # Optional soft dependencies — guarded by Code.ensure_loaded? at runtime
@@ -25,6 +24,10 @@ defmodule PhoenixKit.Newsletters.Web.BroadcastEditor do
       socket =
         socket
         |> assign(:page_title, gettext("New broadcast"))
+        |> assign(
+          :page_subtitle,
+          gettext("Compose and send a broadcast email to your newsletter list")
+        )
         |> assign(:project_title, Settings.get_project_title())
         |> assign(:lists, [])
         |> assign(:templates, [])
