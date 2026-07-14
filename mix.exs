@@ -1,7 +1,7 @@
 defmodule PhoenixKitNewsletters.MixProject do
   use Mix.Project
 
-  @version "0.1.4"
+  @version "0.1.5"
   @source_url "https://github.com/BeamLabEU/phoenix_kit_newsletters"
 
   def project do
@@ -18,7 +18,7 @@ defmodule PhoenixKitNewsletters.MixProject do
         "Newsletters module for PhoenixKit — email broadcasts and subscription management",
 
       # Dialyzer
-      dialyzer: [plt_add_apps: [:phoenix_kit]],
+      dialyzer: [plt_add_apps: [:phoenix_kit], ignore_warnings: ".dialyzer_ignore.exs"],
 
       # Docs
       name: "PhoenixKitNewsletters",
@@ -54,12 +54,17 @@ defmodule PhoenixKitNewsletters.MixProject do
   defp deps do
     [
       # Core
-      {:phoenix_kit, "~> 1.7 and >= 1.7.184"},
+      {:phoenix_kit, "~> 1.7 and >= 1.7.189"},
       {:phoenix_live_view, "~> 1.1"},
       {:gettext, "~> 1.0"},
       {:oban, "~> 2.20"},
       {:mdex, "~> 0.13"},
       {:uuidv7, "~> 1.0"},
+
+      # Optional rustler pin so the transitive `mdex_native` NIF can
+      # source-build on hosts where its precompiled variant doesn't
+      # match the local NIF version. Matches the parent app's pin.
+      {:rustler, ">= 0.0.0", optional: true},
 
       # Dev/test
       {:ex_doc, "~> 0.39", only: :dev, runtime: false},

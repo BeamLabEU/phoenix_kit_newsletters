@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.1.5 - 2026-07-13
+
+### Security
+- Replaced Earmark (retired, `EEF-CVE-2026-48591` — stored XSS via unescaped HTML attribute values) with MDEx for markdown-to-HTML rendering in `Content.render_markdown/1` and `render_markdown_strict/1`. Output now also runs through `PhoenixKit.Utils.HtmlSanitizer.sanitize/1` — newsletter HTML goes out to every list member by email, not just a trusted-admin preview, so it's sanitized unconditionally.
+
+### Changed
+- `earmark` dependency replaced with `mdex ~> 0.13` (matches `phoenix_kit` core and `phoenix_kit_publishing`), plus an optional `rustler` pin so the transitive `mdex_native` NIF can source-build on hosts whose precompiled variant doesn't match.
+- `render_markdown_strict/1`'s error branch now returns `{:error, reason}` (an `MDEx.DecodeError`/`MDEx.InvalidInputError` struct) instead of Earmark's list of error tuples; no in-repo caller pattern-matched the previous shape.
+
+### Fixed
+- Loosened the `phoenix_kit` dependency back to `~> 1.7 and >= 1.7.189` — a prior commit had tightened it to `~> 1.7.189`, which caps consumers below `1.8.0`; the floor-with-open-ceiling form keeps the runtime schema-prefix requirement without blocking future minor releases.
+- Added `.dialyzer_ignore.exs` (and wired it into `mix.exs`) for the known upstream `Gettext.Backend`/`Expo.PluralForms` `call_without_opaque` false positive, matching every other `phoenix_kit_*` package — `mix precommit` was failing dialyzer without it.
+
 ## 0.1.4 - 2026-05-25
 
 ### Added
