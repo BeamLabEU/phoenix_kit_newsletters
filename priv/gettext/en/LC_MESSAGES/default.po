@@ -990,6 +990,6 @@ msgid "Disabled profiles are never used to send, not even as the default."
 msgstr ""
 
 #: lib/phoenix_kit/newsletters/web/broadcast_details.ex:29
-#, elixir-autogen, elixir-format, fuzzy
+#, elixir-autogen, elixir-format
 msgid "Broadcast details"
-msgstr "Broadcasts"
+msgstr "Broadcast details"

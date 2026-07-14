@@ -994,9 +994,7 @@ msgstr "Обновить профиль отправки"
 #: lib/phoenix_kit/newsletters/web/send_profile_editor.html.heex:104
 #, elixir-autogen, elixir-format
 msgid "Disabled profiles are never used to send, not even as the default."
-msgstr ""
-"Отключённые профили никогда не используются для отправки — даже как профиль по "
-"умолчанию."
+msgstr "Отключённые профили никогда не используются для отправки — даже как профиль по умолчанию."
 
 #: lib/phoenix_kit/newsletters/web/broadcast_details.ex:29
 #, elixir-autogen, elixir-format
