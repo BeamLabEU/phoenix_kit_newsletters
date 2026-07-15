@@ -473,3 +473,71 @@ Rate/pacing enforcement (the `SendProfile` rate fields are stored but inert) →
 per-profile atomic caps live; per-profile SES `configuration_set` (the `advanced` jsonb is inert) →
 Phase 5; Brevo open/click tracking → Phase 7; `aws_ses`/`smtp` connection validation (needs SigV4 /
 a real SMTP handshake) → follow-up.
+
+
+---
+
+## STATUS UPDATE (2026-07-15) — post-merge follow-up and current PR state
+
+The 2026-07-13 record above stands. What changed since:
+
+### The core PR split in two, and the follow-up found the real bug
+
+- **core #633 is MERGED** and released to hex as **`1.7.190`** — that is the Phase-1
+  foundation (Integrations-backed credentials, V145, `deliver_via_integration/3`).
+- A follow-up core PR **#636** was opened because a defect surfaced that #633's own
+  tests could not have caught: **the universal `smtp` provider shipped in 1.7.190
+  could not send at all** (gen_smtp supplies no TLS options; OTP `:ssl` now defaults
+  to `verify_peer` with no CA store), and "Test Connection" validated nothing. The
+  old `tls: :if_available` had been masking it by silently sending in **plaintext**.
+- #636 also went through **four more review rounds**. GLM-5.2 was returning 529 the
+  whole time, so these were **Opus** agents (the playbook's overload fallback). The
+  final round arrived *after* the branch was declared ready and earned its keep:
+  1. **A shipped crash.** `retries: [max_attempts: 2]` did not cap ExAws retries — the
+     shallow `Map.merge` dropped the backoff keys, so the retry evaluated
+     `nil * :math.pow(2, n)` and raised; a broad `rescue` swallowed it → zero retries,
+     wrong diagnosis in the log.
+  2. **A leak I introduced fixing the previous round.** Bounding the check with
+     `Task.async` linked it to the LiveView (a crash killed the operator's page);
+     replacing it with a bare `spawn_monitor` fixed that and let the check outlive the
+     page — parked in gen_smtp's 20-minute timeout holding its socket. The answer is
+     LiveView's own `start_async` shape (link **and** monitor, unlink before dying),
+     now in `PhoenixKit.Integrations.Probe` with tests in **both** directions.
+  3. **`AccessDenied` showed a bare green tick** while the caveat went only to the log
+     — a key from the wrong AWS account passed. A check can now pass *with a note*
+     that reaches the operator on screen.
+- Root cause of both late findings, in the reviewer's words: *"green PRs did not catch
+  these because neither had a test."* The fixes therefore ship with the seams that make
+  them testable (injectable CA store, injectable SES requester, pure/public error
+  mapping). Affected core suites: **86 → 107 tests, 0 failures.**
+
+### Reviews are now published the way this project does it
+
+Not only as PR comments: each repo carries the review in-tree at
+`dev_docs/pull_requests/<year>/<pr>-<slug>/CLAUDE_REVIEW.md` (the convention upstream
+uses — discovered when a merge brought in PR #635's review doc). Present for #636
+(core), #16 (emails), #15 (newsletters). The phase-level GLM artefacts remain under
+`docs/superpowers/specs/reviews/`.
+
+### Current PR state — all green, none merged yet
+
+| PR | | state |
+|---|---|---|
+| core #633 | Phase-1 foundation | **MERGED → hex 1.7.190** |
+| core #636 | SMTP-couldn't-send + validators + Probe | OPEN, MERGEABLE/CLEAN |
+| emails #16 | SES creds → Integrations | OPEN, MERGEABLE/CLEAN |
+| newsletters #15 | Send Profiles + profile-aware send | OPEN, MERGEABLE/CLEAN |
+
+Maintainer **@ddon** said on #15 *"waiting this pr to be finished"* — the merges are
+blocked on us, and all three have now been told the work is complete. Merge order is
+unchanged and a hard dependency: **core #636 → publish hex → emails #16 →
+newsletters #15**. All branches are kept merged up to `upstream/main` (which moved
+~11 commits/day through this window); the only recurring conflict is the top of
+`CHANGELOG.md`, resolved by keeping both sections.
+
+### Phases 2–9 remain
+
+Unstarted. The roadmap is in the spec, `§7 Phased roadmap`. Next by the plan is
+**Phase 2 — Contacts** (arbitrary-address mailing: `Contact` + lists, CSV/XLSX/TXT
+import, recipient-agnostic delivery on top of the Phase-1 send path), but it builds on
+the Phase-1 send path and is best started once these three PRs merge.
