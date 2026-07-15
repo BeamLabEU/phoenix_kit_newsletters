@@ -12,8 +12,8 @@ defmodule PhoenixKit.Newsletters.Workers.DeliveryWorkerProviderOptionsTest do
 
   use ExUnit.Case, async: true
 
+  alias PhoenixKit.Email.SendProfile
   alias PhoenixKit.Newsletters.Broadcast
-  alias PhoenixKit.Newsletters.SendProfile
   alias PhoenixKit.Newsletters.Workers.DeliveryWorker
   alias PhoenixKit.Users.Auth.User
 

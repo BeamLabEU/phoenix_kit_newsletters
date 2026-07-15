@@ -19,6 +19,7 @@ defmodule PhoenixKit.Newsletters.Workers.DeliveryWorkerTest do
 
   import Swoosh.TestAssertions
 
+  alias PhoenixKit.Email.SendProfiles
   alias PhoenixKit.Integrations
   alias PhoenixKit.Newsletters
   alias PhoenixKit.Newsletters.Broadcast
@@ -36,7 +37,7 @@ defmodule PhoenixKit.Newsletters.Workers.DeliveryWorkerTest do
     integration_uuid = Map.get(attrs, :integration_uuid) || add_integration()
 
     base = %{name: "Test profile", integration_uuid: integration_uuid, provider_kind: "smtp"}
-    {:ok, profile} = Newsletters.create_send_profile(Map.merge(base, attrs))
+    {:ok, profile} = SendProfiles.create_send_profile(Map.merge(base, attrs))
     profile
   end
 
@@ -97,7 +98,7 @@ defmodule PhoenixKit.Newsletters.Workers.DeliveryWorkerTest do
 
     test "falls back to the default profile when the broadcast's uuid doesn't resolve" do
       default_profile = create_send_profile(%{name: "Default"})
-      {:ok, _} = Newsletters.set_default_send_profile(default_profile)
+      {:ok, _} = SendProfiles.set_default_send_profile(default_profile)
 
       broadcast = %Broadcast{send_profile_uuid: Ecto.UUID.generate()}
 
@@ -107,7 +108,7 @@ defmodule PhoenixKit.Newsletters.Workers.DeliveryWorkerTest do
 
     test "falls back to the default profile when the broadcast has no send_profile_uuid" do
       default_profile = create_send_profile(%{name: "Default"})
-      {:ok, _} = Newsletters.set_default_send_profile(default_profile)
+      {:ok, _} = SendProfiles.set_default_send_profile(default_profile)
 
       broadcast = %Broadcast{send_profile_uuid: nil}
 
@@ -228,7 +229,7 @@ defmodule PhoenixKit.Newsletters.Workers.DeliveryWorkerTest do
       default =
         create_send_profile(%{name: "enabled default", integration_uuid: integration_uuid})
 
-      {:ok, default} = Newsletters.set_default_send_profile(default)
+      {:ok, default} = SendProfiles.set_default_send_profile(default)
 
       resolved = DeliveryWorker.resolve_send_profile(%Broadcast{send_profile_uuid: disabled.uuid})
 
@@ -237,10 +238,10 @@ defmodule PhoenixKit.Newsletters.Workers.DeliveryWorkerTest do
 
     test "a disabled DEFAULT profile resolves to nothing (falls back to the legacy path)" do
       profile = create_send_profile(%{name: "default then disabled"})
-      {:ok, profile} = Newsletters.set_default_send_profile(profile)
-      {:ok, _} = Newsletters.update_send_profile(profile, %{enabled: false})
+      {:ok, profile} = SendProfiles.set_default_send_profile(profile)
+      {:ok, _} = SendProfiles.update_send_profile(profile, %{enabled: false})
 
-      assert Newsletters.get_default_send_profile() == nil
+      assert SendProfiles.get_default_send_profile() == nil
       assert DeliveryWorker.resolve_send_profile(%Broadcast{}) == nil
     end
   end

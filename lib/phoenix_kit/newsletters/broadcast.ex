@@ -47,7 +47,7 @@ defmodule PhoenixKit.Newsletters.Broadcast do
       type: UUIDv7
     )
 
-    belongs_to(:send_profile, PhoenixKit.Newsletters.SendProfile,
+    belongs_to(:send_profile, PhoenixKit.Email.SendProfile,
       foreign_key: :send_profile_uuid,
       references: :uuid,
       define_field: false,

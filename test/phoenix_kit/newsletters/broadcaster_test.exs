@@ -1,9 +1,9 @@
 defmodule PhoenixKit.Newsletters.BroadcasterTest do
   use ExUnit.Case, async: true
 
+  alias PhoenixKit.Email.SendProfile
   alias PhoenixKit.Newsletters.Broadcast
   alias PhoenixKit.Newsletters.Broadcaster
-  alias PhoenixKit.Newsletters.SendProfile
 
   describe "module structure" do
     test "Broadcaster module is loadable and exports send/1" do

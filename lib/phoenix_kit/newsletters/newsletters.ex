@@ -170,41 +170,6 @@ defmodule PhoenixKit.Newsletters do
         visible: false,
         live_view: {Web.ListMembers, :index},
         gettext_backend: PhoenixKit.Newsletters.Gettext
-      ),
-      Tab.new!(
-        id: :admin_newsletters_send_settings,
-        label: "Send Settings",
-        icon: "hero-paper-airplane",
-        path: "newsletters/send-settings",
-        priority: 523,
-        level: :admin,
-        permission: "newsletters",
-        parent: :admin_newsletters,
-        match: :prefix,
-        live_view: {Web.SendProfiles, :index},
-        gettext_backend: PhoenixKit.Newsletters.Gettext
-      ),
-      Tab.new!(
-        id: :admin_newsletters_send_settings_new,
-        label: "New send profile",
-        path: "newsletters/send-settings/new",
-        level: :admin,
-        permission: "newsletters",
-        parent: :admin_newsletters,
-        visible: false,
-        live_view: {Web.SendProfileEditor, :new},
-        gettext_backend: PhoenixKit.Newsletters.Gettext
-      ),
-      Tab.new!(
-        id: :admin_newsletters_send_settings_edit,
-        label: "Edit send profile",
-        path: "newsletters/send-settings/:id/edit",
-        level: :admin,
-        permission: "newsletters",
-        parent: :admin_newsletters,
-        visible: false,
-        live_view: {Web.SendProfileEditor, :edit},
-        gettext_backend: PhoenixKit.Newsletters.Gettext
       )
     ]
   end
@@ -225,8 +190,7 @@ defmodule PhoenixKit.Newsletters do
     Content,
     Delivery,
     List,
-    ListMember,
-    SendProfile
+    ListMember
   }
 
   import Ecto.Query
@@ -418,65 +382,6 @@ defmodule PhoenixKit.Newsletters do
     |> where([d], d.message_id == ^message_id)
     |> preload(:broadcast)
     |> repo().one()
-  end
-
-  # ============================================================================
-  # Send Profiles
-  # ============================================================================
-
-  def list_send_profiles do
-    SendProfile
-    |> order_by([sp], asc: sp.name)
-    |> repo().all()
-  end
-
-  def get_send_profile!(uuid), do: repo().get!(SendProfile, uuid)
-
-  def get_send_profile(uuid), do: repo().get(SendProfile, uuid)
-
-  def create_send_profile(attrs) do
-    %SendProfile{}
-    |> SendProfile.changeset(attrs)
-    |> repo().insert()
-  end
-
-  def update_send_profile(%SendProfile{} = send_profile, attrs) do
-    send_profile
-    |> SendProfile.changeset(attrs)
-    |> repo().update()
-  end
-
-  def delete_send_profile(%SendProfile{} = send_profile), do: repo().delete(send_profile)
-
-  @doc """
-  Returns the service-wide default send profile, or `nil` if none is set.
-  """
-  def get_default_send_profile do
-    # `enabled` is an operator kill-switch — a disabled profile must never be
-    # resolved for sending, not even when it is the default.
-    SendProfile
-    |> where([sp], sp.is_default == true and sp.enabled == true)
-    |> repo().one()
-  end
-
-  @doc """
-  Makes `send_profile` the service-wide default, clearing any previous
-  default in the same transaction. Bypasses the regular changeset
-  (raw `is_default` flips only) since no other field changes — the
-  partial unique index on `is_default` backstops concurrent races.
-  """
-  def set_default_send_profile(%SendProfile{uuid: uuid}) do
-    repo().transaction(fn ->
-      SendProfile
-      |> where([sp], sp.is_default == true and sp.uuid != ^uuid)
-      |> repo().update_all(set: [is_default: false])
-
-      SendProfile
-      |> where([sp], sp.uuid == ^uuid)
-      |> repo().update_all(set: [is_default: true])
-
-      get_send_profile!(uuid)
-    end)
   end
 
   # ============================================================================

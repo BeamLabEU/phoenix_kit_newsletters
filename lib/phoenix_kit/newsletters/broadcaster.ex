@@ -21,8 +21,9 @@ defmodule PhoenixKit.Newsletters.Broadcaster do
 
   import Ecto.Query
 
+  alias PhoenixKit.Email.SendProfile
   alias PhoenixKit.Newsletters
-  alias PhoenixKit.Newsletters.{Broadcast, Content, Delivery, ListMember, SendProfile}
+  alias PhoenixKit.Newsletters.{Broadcast, Content, Delivery, ListMember}
   alias PhoenixKit.Newsletters.Workers.DeliveryWorker
   alias PhoenixKit.Utils.Date, as: UtilsDate
 

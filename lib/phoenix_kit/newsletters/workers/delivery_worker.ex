@@ -28,11 +28,12 @@ defmodule PhoenixKit.Newsletters.Workers.DeliveryWorker do
   # Optional soft dependency — use module atom to avoid compile-time warnings
   @email_template_mod PhoenixKit.Modules.Emails.Template
 
+  alias PhoenixKit.Email.ProviderOptions
+  alias PhoenixKit.Email.SendProfile
+  alias PhoenixKit.Email.SendProfiles
   alias PhoenixKit.Newsletters
   alias PhoenixKit.Newsletters.Broadcast
   alias PhoenixKit.Newsletters.Delivery
-  alias PhoenixKit.Newsletters.ProviderOptions
-  alias PhoenixKit.Newsletters.SendProfile
   alias PhoenixKit.Utils.Date, as: UtilsDate
   alias PhoenixKit.Utils.Routes
 
@@ -194,7 +195,7 @@ defmodule PhoenixKit.Newsletters.Workers.DeliveryWorker do
   # rationale (`@doc false` because it's an internal seam, not public API).
   def resolve_send_profile(%Broadcast{send_profile_uuid: uuid})
       when is_binary(uuid) and uuid != "" do
-    case Newsletters.get_send_profile(uuid) do
+    case SendProfiles.get_send_profile(uuid) do
       %SendProfile{enabled: true} = profile ->
         profile
 
@@ -204,12 +205,12 @@ defmodule PhoenixKit.Newsletters.Workers.DeliveryWorker do
       # profile. Fall through to the default profile, then to the legacy
       # mailer; never silently send from a sender the operator switched off.
       _disabled_or_missing ->
-        Newsletters.get_default_send_profile()
+        SendProfiles.get_default_send_profile()
     end
   end
 
   def resolve_send_profile(%Broadcast{}) do
-    Newsletters.get_default_send_profile()
+    SendProfiles.get_default_send_profile()
   end
 
   # No profile resolved — unchanged from the original single-Mailer
