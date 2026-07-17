@@ -6,7 +6,6 @@ defmodule PhoenixKit.Newsletters.Web.BroadcastDetails do
   use Phoenix.LiveView
   use Gettext, backend: PhoenixKit.Newsletters.Gettext
 
-  import PhoenixKitWeb.Components.Core.AdminPageHeader
   import PhoenixKitWeb.Components.Core.Icon
   import PhoenixKitWeb.Components.Core.PkLink
   import PhoenixKitWeb.Components.Core.TableDefault
@@ -24,6 +23,11 @@ defmodule PhoenixKit.Newsletters.Web.BroadcastDetails do
       socket =
         socket
         |> assign(:broadcast_id, nil)
+        # Fallback title for the chrome breadcrumb until the broadcast loads
+        # (handle_params overwrites it with the subject) — replaces the old
+        # in-content <h1> fallback that was removed with the page header.
+        |> assign(:page_title, gettext("Broadcast details"))
+        |> assign(:page_subtitle, nil)
         |> assign(:project_title, Settings.get_project_title())
         |> assign(:broadcast, nil)
         |> assign(:deliveries, [])
