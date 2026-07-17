@@ -83,156 +83,7 @@
     </div>
   </div>
 
-  <%!-- Filters --%>
-  <div class="bg-base-200 rounded-lg p-4 mb-6">
-    <div class="flex gap-2 items-center">
-      <span class="text-sm font-medium">{gettext("Filter by status:")}</span>
-      <label class="select select-sm">
-        <select
-          phx-change="filter_status"
-          name="status"
-        >
-          <option value="" selected={@status_filter == ""}>{gettext("All")}</option>
-          <option value="active" selected={@status_filter == "active"}>{gettext("Active")}</option>
-          <option value="unsubscribed" selected={@status_filter == "unsubscribed"}>
-            {gettext("Unsubscribed")}
-          </option>
-        </select>
-      </label>
-    </div>
-  </div>
-
-  <%!-- Members Table (desktop) --%>
-  <%= if length(@members) > 0 do %>
-    <div class="hidden md:block">
-      <.table_default variant="zebra" size="sm" class="w-full">
-        <.table_default_header>
-          <.table_default_row>
-            <.table_default_header_cell>{gettext("Email")}</.table_default_header_cell>
-            <.table_default_header_cell>{gettext("Status")}</.table_default_header_cell>
-            <.table_default_header_cell>{gettext("Subscribed at")}</.table_default_header_cell>
-            <.table_default_header_cell>{gettext("Actions")}</.table_default_header_cell>
-          </.table_default_row>
-        </.table_default_header>
-
-        <.table_default_body>
-          <%= for member <- @members do %>
-            <.table_default_row>
-              <.table_default_cell class="font-mono text-xs">
-                <%= if member.user do %>
-                  {member.user.email}
-                <% else %>
-                  <span class="text-base-content/50">{gettext("(unknown)")}</span>
-                <% end %>
-              </.table_default_cell>
-              <.table_default_cell>
-                <%= if member.status == "active" do %>
-                  <span class="badge badge-sm badge-success">{gettext("Active")}</span>
-                <% else %>
-                  <span class="badge badge-sm badge-ghost">{gettext("Unsubscribed")}</span>
-                <% end %>
-              </.table_default_cell>
-              <.table_default_cell class="text-xs">
-                <%= if member.subscribed_at do %>
-                  {Calendar.strftime(member.subscribed_at, "%Y-%m-%d %H:%M")}
-                <% end %>
-              </.table_default_cell>
-              <.table_default_cell>
-                <div class="flex gap-1">
-                  <%= if member.status == "active" do %>
-                    <button
-                      phx-click="show_confirm"
-                      phx-value-action="unsubscribe"
-                      phx-value-uuid={member.uuid}
-                      class="btn btn-xs btn-outline btn-warning"
-                      title={gettext("Unsubscribe")}
-                    >
-                      <.icon
-                        name="hero-arrow-left-on-rectangle"
-                        class="w-3 h-3 hidden sm:inline"
-                      />
-                      <span class="sm:hidden whitespace-nowrap">{gettext("Unsubscribe")}</span>
-                    </button>
-                  <% end %>
-                  <button
-                    phx-click="show_confirm"
-                    phx-value-action="remove"
-                    phx-value-uuid={member.uuid}
-                    class="btn btn-xs btn-outline btn-error"
-                    title={gettext("Remove")}
-                  >
-                    <.icon name="hero-trash" class="w-3 h-3 hidden sm:inline" />
-                    <span class="sm:hidden whitespace-nowrap">{gettext("Remove")}</span>
-                  </button>
-                </div>
-              </.table_default_cell>
-            </.table_default_row>
-          <% end %>
-        </.table_default_body>
-      </.table_default>
-    </div>
-
-    <%!-- Members Cards (mobile) --%>
-    <div class="md:hidden mb-6">
-      <div class="space-y-3">
-        <%= for member <- @members do %>
-          <div class="card card-border card-sm bg-base-100">
-            <div class="card-body gap-3">
-              <%!-- Header: email + status --%>
-              <div class="flex items-start justify-between gap-2">
-                <span class="font-medium text-sm truncate">
-                  <%= if member.user do %>
-                    {member.user.email}
-                  <% else %>
-                    <span class="text-base-content/50">{gettext("(unknown)")}</span>
-                  <% end %>
-                </span>
-                <%= if member.status == "active" do %>
-                  <span class="badge badge-sm badge-success">{gettext("Active")}</span>
-                <% else %>
-                  <span class="badge badge-sm badge-ghost">{gettext("Unsubscribed")}</span>
-                <% end %>
-              </div>
-
-              <%!-- Body: key/value grid --%>
-              <div class="grid grid-cols-2 gap-x-4 gap-y-2 text-sm">
-                <div class="text-base-content/60">{gettext("Subscribed at")}</div>
-                <div>
-                  <%= if member.subscribed_at do %>
-                    {Calendar.strftime(member.subscribed_at, "%Y-%m-%d %H:%M")}
-                  <% else %>
-                    -
-                  <% end %>
-                </div>
-              </div>
-
-              <%!-- Footer: actions --%>
-              <div class="card-actions justify-end pt-1 border-t border-base-200">
-                <%= if member.status == "active" do %>
-                  <button
-                    phx-click="show_confirm"
-                    phx-value-action="unsubscribe"
-                    phx-value-uuid={member.uuid}
-                    class="btn btn-xs btn-outline btn-warning"
-                  >
-                    <.icon name="hero-arrow-left-on-rectangle" class="w-3 h-3" /> {gettext("Unsubscribe")}
-                  </button>
-                <% end %>
-                <button
-                  phx-click="show_confirm"
-                  phx-value-action="remove"
-                  phx-value-uuid={member.uuid}
-                  class="btn btn-xs btn-outline btn-error"
-                >
-                  <.icon name="hero-trash" class="w-3 h-3" /> {gettext("Remove")}
-                </button>
-              </div>
-            </div>
-          </div>
-        <% end %>
-      </div>
-    </div>
-  <% else %>
+  <%= if @members == [] do %>
     <div class="text-center py-12">
       <.icon name="hero-users" class="w-16 h-16 mx-auto mb-4 opacity-30" />
       <h3 class="text-lg font-medium text-base-content mb-2">{gettext("No members found")}</h3>
@@ -244,6 +95,149 @@
         <% end %>
       </p>
     </div>
+  <% else %>
+    <.table_default
+      id="list-members-table"
+      variant="zebra"
+      size="sm"
+      class="w-full"
+      toggleable
+      items={@members}
+      card_title={
+        fn member ->
+          if member.user, do: member.user.email, else: gettext("(unknown)")
+        end
+      }
+      card_fields={
+        fn member ->
+          [
+            %{
+              label: gettext("Subscribed at"),
+              value:
+                if(member.subscribed_at,
+                  do: Calendar.strftime(member.subscribed_at, "%Y-%m-%d %H:%M"),
+                  else: "-"
+                )
+            }
+          ]
+        end
+      }
+    >
+      <:toolbar_title>
+        <label class="select select-sm">
+          <select phx-change="filter_status" name="status">
+            <option value="" selected={@status_filter == ""}>{gettext("All")}</option>
+            <option value="active" selected={@status_filter == "active"}>
+              {gettext("Active")}
+            </option>
+            <option value="unsubscribed" selected={@status_filter == "unsubscribed"}>
+              {gettext("Unsubscribed")}
+            </option>
+          </select>
+        </label>
+      </:toolbar_title>
+
+      <:card_header :let={member}>
+        <div class="flex items-start justify-between gap-2">
+          <span class="font-medium text-sm truncate">
+            <%= if member.user do %>
+              {member.user.email}
+            <% else %>
+              <span class="text-base-content/50">{gettext("(unknown)")}</span>
+            <% end %>
+          </span>
+          <%= if member.status == "active" do %>
+            <span class="badge badge-sm badge-success">{gettext("Active")}</span>
+          <% else %>
+            <span class="badge badge-sm badge-ghost">{gettext("Unsubscribed")}</span>
+          <% end %>
+        </div>
+      </:card_header>
+      <:card_actions :let={member}>
+        <%= if member.status == "active" do %>
+          <button
+            phx-click="show_confirm"
+            phx-value-action="unsubscribe"
+            phx-value-uuid={member.uuid}
+            class="btn btn-xs btn-outline btn-warning"
+          >
+            <.icon name="hero-arrow-left-on-rectangle" class="w-3 h-3" /> {gettext("Unsubscribe")}
+          </button>
+        <% end %>
+        <button
+          phx-click="show_confirm"
+          phx-value-action="remove"
+          phx-value-uuid={member.uuid}
+          class="btn btn-xs btn-outline btn-error"
+        >
+          <.icon name="hero-trash" class="w-3 h-3" /> {gettext("Remove")}
+        </button>
+      </:card_actions>
+
+      <.table_default_header>
+        <.table_default_row>
+          <.table_default_header_cell>{gettext("Email")}</.table_default_header_cell>
+          <.table_default_header_cell>{gettext("Status")}</.table_default_header_cell>
+          <.table_default_header_cell>{gettext("Subscribed at")}</.table_default_header_cell>
+          <.table_default_header_cell>{gettext("Actions")}</.table_default_header_cell>
+        </.table_default_row>
+      </.table_default_header>
+
+      <.table_default_body>
+        <%= for member <- @members do %>
+          <.table_default_row>
+            <.table_default_cell class="font-mono text-xs">
+              <%= if member.user do %>
+                {member.user.email}
+              <% else %>
+                <span class="text-base-content/50">{gettext("(unknown)")}</span>
+              <% end %>
+            </.table_default_cell>
+            <.table_default_cell>
+              <%= if member.status == "active" do %>
+                <span class="badge badge-sm badge-success">{gettext("Active")}</span>
+              <% else %>
+                <span class="badge badge-sm badge-ghost">{gettext("Unsubscribed")}</span>
+              <% end %>
+            </.table_default_cell>
+            <.table_default_cell class="text-xs">
+              <%= if member.subscribed_at do %>
+                {Calendar.strftime(member.subscribed_at, "%Y-%m-%d %H:%M")}
+              <% end %>
+            </.table_default_cell>
+            <.table_default_cell>
+              <div class="flex gap-1">
+                <%= if member.status == "active" do %>
+                  <button
+                    phx-click="show_confirm"
+                    phx-value-action="unsubscribe"
+                    phx-value-uuid={member.uuid}
+                    class="btn btn-xs btn-outline btn-warning"
+                    title={gettext("Unsubscribe")}
+                  >
+                    <.icon
+                      name="hero-arrow-left-on-rectangle"
+                      class="w-3 h-3 hidden sm:inline"
+                    />
+                    <span class="sm:hidden whitespace-nowrap">{gettext("Unsubscribe")}</span>
+                  </button>
+                <% end %>
+                <button
+                  phx-click="show_confirm"
+                  phx-value-action="remove"
+                  phx-value-uuid={member.uuid}
+                  class="btn btn-xs btn-outline btn-error"
+                  title={gettext("Remove")}
+                >
+                  <.icon name="hero-trash" class="w-3 h-3 hidden sm:inline" />
+                  <span class="sm:hidden whitespace-nowrap">{gettext("Remove")}</span>
+                </button>
+              </div>
+            </.table_default_cell>
+          </.table_default_row>
+        <% end %>
+      </.table_default_body>
+    </.table_default>
   <% end %>
 </div>
 </PhoenixKitWeb.Components.LayoutWrapper.app_layout>
