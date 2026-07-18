@@ -83,4 +83,22 @@ defmodule PhoenixKit.Newsletters.BroadcasterTest do
       assert Broadcaster.send_interval_seconds(profile) == 0
     end
   end
+
+  describe "valid_recipient?/1" do
+    test "true when only user_uuid is present (newsletters_list path)" do
+      assert Broadcaster.valid_recipient?(%{user_uuid: "uuid", recipient_email: nil})
+    end
+
+    test "true when only recipient_email is present (crm_list path)" do
+      assert Broadcaster.valid_recipient?(%{user_uuid: nil, recipient_email: "a@example.com"})
+    end
+
+    test "true when both are present" do
+      assert Broadcaster.valid_recipient?(%{user_uuid: "uuid", recipient_email: "a@example.com"})
+    end
+
+    test "false when neither is present — process_batch/5 must reject this before insert_all bypasses Delivery's changeset validation" do
+      refute Broadcaster.valid_recipient?(%{user_uuid: nil, recipient_email: nil})
+    end
+  end
 end

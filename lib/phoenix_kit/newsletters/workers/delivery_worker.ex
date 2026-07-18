@@ -40,9 +40,12 @@ defmodule PhoenixKit.Newsletters.Workers.DeliveryWorker do
 
   @impl Oban.Worker
   def perform(%Oban.Job{
-        args: %{"delivery_uuid" => delivery_uuid, "broadcast_uuid" => broadcast_uuid}
+        args: %{"delivery_uuid" => delivery_uuid, "broadcast_uuid" => broadcast_uuid},
+        attempt: attempt,
+        max_attempts: max_attempts
       }) do
     with {:ok, delivery} <- get_delivery(delivery_uuid),
+         {:ok, delivery} <- guard_unsent(delivery),
          {:ok, broadcast} <- get_broadcast(broadcast_uuid),
          {:ok, recipient} <- get_recipient(delivery),
          {unsubscribe_url, list_unsubscribe_url} = build_unsubscribe_url(recipient, broadcast),
@@ -67,6 +70,18 @@ defmodule PhoenixKit.Newsletters.Workers.DeliveryWorker do
 
       :ok
     else
+      # A retry (Oban's own, or a re-enqueue) landing on a delivery that
+      # already succeeded — most plausibly the DB write for "sent" landed
+      # but this same job was retried anyway (a crash/restart racing the
+      # ack). Not a failure: skip re-sending rather than emailing the
+      # recipient twice.
+      {:error, {:already_sent, %Delivery{uuid: uuid}}} ->
+        Logger.info(
+          "DeliveryWorker: delivery #{uuid} already marked sent — skipping duplicate send"
+        )
+
+        :ok
+
       {:error, reason} ->
         if permanent_failure?(reason) do
           # Permanent conditions — a blocklisted recipient, or a profile whose
@@ -84,11 +99,16 @@ defmodule PhoenixKit.Newsletters.Workers.DeliveryWorker do
           {:cancel, inspect(reason)}
         else
           Logger.error("DeliveryWorker: Failed delivery #{delivery_uuid}: #{inspect(reason)}")
-          handle_failure(delivery_uuid, broadcast_uuid, reason)
+          handle_failure(delivery_uuid, broadcast_uuid, reason, attempt >= max_attempts)
           {:error, inspect(reason)}
         end
     end
   end
+
+  # Idempotency guard: a delivery whose status is already "sent" must
+  # never be re-sent, regardless of why perform/1 got invoked again.
+  defp guard_unsent(%Delivery{status: "sent"} = delivery), do: {:error, {:already_sent, delivery}}
+  defp guard_unsent(delivery), do: {:ok, delivery}
 
   @doc false
   # Blocklisted recipient, or the send profile's integration is deleted /
@@ -407,14 +427,23 @@ defmodule PhoenixKit.Newsletters.Workers.DeliveryWorker do
 
   defp append_signature(body, _signature), do: body
 
-  defp handle_failure(delivery_uuid, broadcast_uuid, reason) do
+  @doc false
+  # `terminal?` is `attempt >= max_attempts` from the current Oban.Job —
+  # only counted as a bounce once Oban has genuinely given up. An
+  # intermediate transient failure that a later retry recovers from was
+  # never actually a lost delivery; counting it here would inflate
+  # bounced_count with no way to correct it afterward (a later successful
+  # retry only ever increments sent_count, never touches bounced_count).
+  # Not `defp` so it can be unit-tested directly — same rationale as
+  # `resolve_send_profile/1` above.
+  def handle_failure(delivery_uuid, broadcast_uuid, reason, terminal?) do
     case get_delivery(delivery_uuid) do
       {:ok, delivery} ->
         Newsletters.update_delivery_status(delivery, "failed", %{
           error: inspect(reason)
         })
 
-        update_broadcast_counter(broadcast_uuid, :bounced_count)
+        if terminal?, do: update_broadcast_counter(broadcast_uuid, :bounced_count)
 
       _ ->
         :ok

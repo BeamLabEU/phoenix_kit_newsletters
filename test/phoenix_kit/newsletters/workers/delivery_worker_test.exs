@@ -395,4 +395,125 @@ defmodule PhoenixKit.Newsletters.Workers.DeliveryWorkerTest do
       assert DeliveryWorker.resolve_send_profile(%Broadcast{}) == nil
     end
   end
+
+  describe "perform/1 — idempotency and bounce-counter correctness under retry" do
+    setup do
+      PhoenixKit.Settings.update_setting("from_name", "My Newsletter")
+      PhoenixKit.Settings.update_setting("from_email", "news@example.com")
+      :ok
+    end
+
+    test "a delivery already marked sent is not re-sent, even if perform/1 runs again" do
+      user = create_user()
+      broadcast = create_broadcast(%{subject: "Already sent", html_body: "<p>Hi</p>"})
+      delivery = create_delivery(broadcast, user)
+
+      {:ok, delivery} =
+        Newsletters.update_delivery_status(delivery, "sent", %{
+          sent_at: DateTime.utc_now(),
+          message_id: "already-sent-message-id"
+        })
+
+      job = %Oban.Job{
+        args: %{"delivery_uuid" => delivery.uuid, "broadcast_uuid" => broadcast.uuid}
+      }
+
+      assert :ok = DeliveryWorker.perform(job)
+
+      refute_email_sent()
+
+      updated_broadcast = Repo.get(Broadcast, broadcast.uuid)
+      assert updated_broadcast.sent_count == 0
+
+      updated_delivery = Repo.get(Delivery, delivery.uuid)
+      assert updated_delivery.message_id == "already-sent-message-id"
+    end
+
+    test "a non-terminal transient failure (more retries left) marks the delivery failed but does not bump bounced_count" do
+      user = create_user()
+      broadcast = create_broadcast(%{subject: "Will fail", html_body: "<p>Hi</p>"})
+      delivery = create_delivery(broadcast, user)
+
+      DeliveryWorker.handle_failure(delivery.uuid, broadcast.uuid, "timeout", false)
+
+      updated_delivery = Repo.get(Delivery, delivery.uuid)
+      assert updated_delivery.status == "failed"
+
+      updated_broadcast = Repo.get(Broadcast, broadcast.uuid)
+      assert updated_broadcast.bounced_count == 0
+    end
+
+    test "a terminal transient failure (last attempt) marks the delivery failed and bumps bounced_count exactly once" do
+      user = create_user()
+      broadcast = create_broadcast(%{subject: "Will fail terminally", html_body: "<p>Hi</p>"})
+      delivery = create_delivery(broadcast, user)
+
+      DeliveryWorker.handle_failure(delivery.uuid, broadcast.uuid, "timeout", true)
+
+      updated_delivery = Repo.get(Delivery, delivery.uuid)
+      assert updated_delivery.status == "failed"
+
+      updated_broadcast = Repo.get(Broadcast, broadcast.uuid)
+      assert updated_broadcast.bounced_count == 1
+    end
+
+    test "perform/1 threads a real transient failure through to handle_failure/4 (wiring check)" do
+      user = create_user()
+      broadcast = create_broadcast(%{subject: "Wired through perform/1", html_body: "<p>Hi</p>"})
+      delivery = create_delivery(broadcast, user)
+
+      # Point the job at a broadcast_uuid that doesn't exist so
+      # get_broadcast/1 fails transiently (:broadcast_not_found — not one of
+      # permanent_failure?/1's atoms) without needing to corrupt the
+      # delivery itself — the delivery stays a normal, valid row
+      # throughout, proving perform/1's `attempt`/`max_attempts` field
+      # destructuring and the {:error, reason} -> handle_failure/4 wiring
+      # compile and run end-to-end. The terminal?-gated bounce-count logic
+      # itself is covered precisely by the two handle_failure/4 unit tests
+      # above (this job's broadcast_uuid doesn't exist, so
+      # update_broadcast_counter/2 here is a real no-op, not a meaningful
+      # assertion).
+      job = %Oban.Job{
+        args: %{"delivery_uuid" => delivery.uuid, "broadcast_uuid" => Ecto.UUID.generate()},
+        attempt: 3,
+        max_attempts: 3
+      }
+
+      assert {:error, _reason} = DeliveryWorker.perform(job)
+
+      updated_delivery = Repo.get(Delivery, delivery.uuid)
+      assert updated_delivery.status == "failed"
+    end
+
+    test "a successful retry after a non-terminal failure sends exactly once and never inflates bounced_count" do
+      user = create_user()
+      broadcast = create_broadcast(%{subject: "Recovers on retry", html_body: "<p>Hi</p>"})
+      delivery = create_delivery(broadcast, user)
+
+      # Simulate attempt 1 having failed for an unrelated transient reason —
+      # same terminal-ness bookkeeping as a real Oban retry, just without
+      # actually forcing send_email/6 to fail (there's no seam for that on
+      # the legacy path's real Swoosh call besides no-recipient, which
+      # would leave the delivery unsendable on the retry too).
+      {:ok, delivery} =
+        Newsletters.update_delivery_status(delivery, "failed", %{error: "timeout"})
+
+      job = %Oban.Job{
+        args: %{"delivery_uuid" => delivery.uuid, "broadcast_uuid" => broadcast.uuid},
+        attempt: 2,
+        max_attempts: 3
+      }
+
+      assert :ok = DeliveryWorker.perform(job)
+
+      updated_delivery = Repo.get(Delivery, delivery.uuid)
+      assert updated_delivery.status == "sent"
+
+      updated_broadcast = Repo.get(Broadcast, broadcast.uuid)
+      assert updated_broadcast.sent_count == 1
+      assert updated_broadcast.bounced_count == 0
+
+      assert_email_sent(to: user.email, subject: "Recovers on retry")
+    end
+  end
 end

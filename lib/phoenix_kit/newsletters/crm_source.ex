@@ -228,16 +228,24 @@ defmodule PhoenixKit.Newsletters.CRMSource do
   """
   @spec remove_from_list(struct(), struct()) :: {:ok, struct()} | {:error, :not_member}
   def remove_from_list(contact, list) do
-    soft_call(@lists_mod, :remove_from_list, [contact, list, []])
+    if available?() do
+      soft_call(@lists_mod, :remove_from_list, [contact, list, []])
+    else
+      {:error, :not_member}
+    end
   end
 
   @doc """
   Opts a contact out entirely — applies across every CRM list the contact
   belongs to (opt-out lives on the contact, not the membership). Idempotent.
   """
-  @spec opt_out(struct()) :: {:ok, struct()} | {:error, Ecto.Changeset.t()}
+  @spec opt_out(struct()) :: {:ok, struct()} | {:error, Ecto.Changeset.t() | :unavailable}
   def opt_out(contact) do
-    soft_call(@lists_mod, :opt_out, [contact, [source: "unsubscribe_link"]])
+    if available?() do
+      soft_call(@lists_mod, :opt_out, [contact, [source: "unsubscribe_link"]])
+    else
+      {:error, :unavailable}
+    end
   end
 
   defp repo, do: PhoenixKit.RepoHelper.repo()

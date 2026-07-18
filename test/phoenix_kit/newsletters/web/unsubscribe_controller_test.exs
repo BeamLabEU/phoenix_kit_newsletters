@@ -63,20 +63,24 @@ defmodule PhoenixKit.Newsletters.Web.UnsubscribeControllerTest do
     end
   end
 
-  # Note: Tests for unsubscribe/2 with token, process_unsubscribe/2, and
-  # one_click_unsubscribe/2 require a running PhoenixKitWeb.Endpoint (for
-  # Phoenix.Token.verify) and, for one_click_unsubscribe/2, the dedicated
-  # CSRF-exempt route wired in Web.Routes — these were verified live
-  # against a running host app rather than here. That includes confirming:
-  #   - the one-click POST is reachable without a session/CSRF token
-  #     (unlike the shared /newsletters/unsubscribe POST, which stays
-  #     behind the host's normal :browser pipeline);
-  #   - a crm_list token's GET never mutates (a corporate link-scanner
-  #     GETting the emailed link must not silently unsubscribe someone) —
-  #     confirmed the membership status is unchanged after a GET, and only
-  #     flips on the follow-up POST scope=list;
-  #   - idempotency end-to-end: a second GET after the POST shows "already
-  #     unsubscribed" instead of the confirm prompt, and a second POST
-  #     re-renders "unsubscribed" without crashing or re-decrementing the
-  #     list's subscriber_count cache.
+  # Note: unsubscribe/2 with a real token and process_unsubscribe/2 are
+  # NOT covered here (only their missing-token branches, above, which need
+  # no CRM fixtures at all). Contrary to an earlier assumption in this
+  # file, Phoenix.Token does NOT actually require a running
+  # PhoenixKitWeb.Endpoint to sign/verify — config/test.exs configures
+  # `:endpoint` as a raw secret string, which Phoenix.Token accepts
+  # directly (see OneClickUnsubscribeTest's moduledoc, which discovered
+  # this while fixing the exact "no tests, comment claims coverage it
+  # doesn't have" gap GLM flagged for one_click_unsubscribe/2). The real
+  # reason these two aren't covered here is simpler: they need real CRM
+  # fixtures (PhoenixKitCRM.Contacts/Lists), which needs DataCase, and
+  # this file is plain ExUnit.Case for the token-free tests above — not a
+  # hard blocker, just not done. one_click_unsubscribe/2 (the endpoint
+  # GLM's review specifically flagged) now has full DataCase-backed
+  # coverage in web/one_click_unsubscribe_test.exs: GET never mutates,
+  # POST does, garbage/missing tokens don't crash, repeat POSTs are
+  # idempotent. The remaining live-verification claims (both token
+  # flavors' end-to-end behavior against a running host app) still stand
+  # from earlier phases, but are no longer the only coverage this
+  # controller has.
 end

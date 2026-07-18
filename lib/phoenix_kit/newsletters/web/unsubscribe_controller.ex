@@ -117,16 +117,16 @@ defmodule PhoenixKit.Newsletters.Web.UnsubscribeController do
     |> redirect(to: Routes.path("/"))
   end
 
-  # GET/POST /newsletters/unsubscribe/one-click — the List-Unsubscribe and
-  # List-Unsubscribe-Post header target (DeliveryWorker). This is a
-  # dedicated, always-CSRF-exempt endpoint (see Web.Routes) precisely
+  # POST /newsletters/unsubscribe/one-click — the List-Unsubscribe-Post
+  # header target (DeliveryWorker), always CSRF-exempt (see Web.Routes)
   # because it must accept a cold, session-less POST straight from the
-  # mail client per RFC 8058 — the interactive /newsletters/unsubscribe
-  # route above stays behind the host's normal :browser/CSRF pipeline and
-  # is unaffected. Idempotent (CRMSource.remove_from_list/2 no-ops on an
-  # already-removed membership) and defensive against any other claim
-  # shape or an invalid/expired token — always resolves without raising.
-  def one_click_unsubscribe(conn, %{"token" => token}) do
+  # mail client per RFC 8058. Mutation happens ONLY here, only on POST —
+  # never on GET (see the GET clause below). Idempotent
+  # (CRMSource.remove_from_list/2 no-ops on an already-removed membership)
+  # and defensive against any other claim shape or an invalid/expired
+  # token — always resolves without raising. Mail clients don't parse the
+  # response — always 200, quickly, regardless of what the token held.
+  def one_click_unsubscribe(%{method: "POST"} = conn, %{"token" => token}) do
     case verify_token(token) do
       {:ok, %{contact_uuid: contact_uuid, crm_list_uuid: crm_list_uuid}} ->
         with %{} = list <- CRMSource.get_list(crm_list_uuid),
@@ -138,17 +138,26 @@ defmodule PhoenixKit.Newsletters.Web.UnsubscribeController do
         :ok
     end
 
-    respond_one_click(conn)
+    send_resp(conn, 200, "")
   end
 
-  def one_click_unsubscribe(conn, _params), do: respond_one_click(conn)
+  def one_click_unsubscribe(%{method: "POST"} = conn, _params), do: send_resp(conn, 200, "")
 
-  # Mail clients POST here and don't parse the response — always 200,
-  # quickly, regardless of what the token held. A human's browser landing
-  # here via a GET fallback (a mail client that doesn't support one-click
-  # POST but does open the List-Unsubscribe URL) gets sent home instead.
-  defp respond_one_click(%{method: "POST"} = conn), do: send_resp(conn, 200, "")
-  defp respond_one_click(conn), do: redirect(conn, to: Routes.path("/"))
+  # GET /newsletters/unsubscribe/one-click — the List-Unsubscribe header
+  # (without -Post) also points here, and a mail client that doesn't
+  # support one-click POST falls back to opening this URL in a browser.
+  # Deliberately NEVER mutates: this is exactly the footgun already fixed
+  # for the body-link flavor (fd7354a) — a corporate link-scanner/
+  # antivirus tool GETting every URL it finds, including header values,
+  # would otherwise silently unsubscribe people. Redirects to the same
+  # interactive confirm landing page the body link uses (same token, so
+  # the human still gets a real "are you sure" step and an actual POST
+  # button before anything changes).
+  def one_click_unsubscribe(conn, %{"token" => token}) do
+    redirect(conn, to: Routes.path("/newsletters/unsubscribe?token=#{token}"))
+  end
+
+  def one_click_unsubscribe(conn, _params), do: redirect(conn, to: Routes.path("/"))
 
   # --- Private ---
 

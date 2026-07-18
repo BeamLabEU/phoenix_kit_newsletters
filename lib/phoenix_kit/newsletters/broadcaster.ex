@@ -90,10 +90,17 @@ defmodule PhoenixKit.Newsletters.Broadcaster do
         sent_at: UtilsDate.utc_now()
       })
 
-    # Count total recipients — a CRM-sourced broadcast counts its resolved
-    # sendable CRM members; a newsletters-list broadcast counts active
-    # ListMembers, same as before.
-    total = count_recipients(broadcast)
+    # A CRM-sourced broadcast resolves its recipients once, upfront, and
+    # reuses that same list for both the total_recipients count and the
+    # actual enqueue below (was two separate identical queries). A
+    # newsletters-list broadcast gets nil here and keeps its existing
+    # separate count-query/stream-query split instead — a plain COUNT is
+    # cheap and streaming avoids loading a potentially large list into
+    # memory at once, neither of which applies to CRM (already
+    # materializes fully — see enqueue_all_recipients/4's moduledoc note).
+    recipients = resolve_recipients(broadcast)
+
+    total = count_recipients(broadcast, recipients)
     {:ok, broadcast} = Newsletters.update_broadcast(broadcast, %{total_recipients: total})
 
     # Resolve the very profile the worker will send with, so the throttle we
@@ -104,7 +111,7 @@ defmodule PhoenixKit.Newsletters.Broadcaster do
       |> send_interval_seconds()
 
     # Process in batches using transaction-wrapped stream
-    case repo.transaction(fn -> enqueue_all_recipients(broadcast, repo, interval) end) do
+    case repo.transaction(fn -> enqueue_all_recipients(broadcast, recipients, repo, interval) end) do
       {:ok, _} ->
         Logger.info(
           "Broadcaster: Enqueued #{total} deliveries for broadcast #{broadcast.uuid}" <>
@@ -152,34 +159,42 @@ defmodule PhoenixKit.Newsletters.Broadcaster do
     " (throttled to 1 per #{interval}s — the last one goes out in ~#{span} min)"
   end
 
-  defp count_recipients(%Broadcast{source_type: "crm_list", crm_list_uuid: crm_list_uuid}) do
-    crm_list_uuid
-    |> CRMSource.sendable_recipients()
-    |> length()
+  defp resolve_recipients(%Broadcast{source_type: "crm_list", crm_list_uuid: crm_list_uuid}) do
+    CRMSource.sendable_recipients(crm_list_uuid)
   end
 
-  defp count_recipients(%Broadcast{list_uuid: list_uuid}) do
+  defp resolve_recipients(%Broadcast{}), do: nil
+
+  defp count_recipients(%Broadcast{source_type: "crm_list"}, recipients), do: length(recipients)
+
+  defp count_recipients(%Broadcast{list_uuid: list_uuid}, _recipients) do
     Newsletters.count_active_members(list_uuid)
   end
 
-  # A crm_list broadcast resolves its recipients from CRMSource (already a
-  # fully-materialized, deduplicated list — CRM lists run in the low
+  # A crm_list broadcast's recipients are already resolved (by
+  # resolve_recipients/1, called once in do_send/1) — already a
+  # fully-materialized, deduplicated list (CRM lists run in the low
   # thousands, not worth streaming), each carrying an email but no
   # user_uuid. A newsletters_list broadcast keeps the original streamed
-  # user_uuid path. Both funnel into the same process_batch/5, which only
-  # cares that each recipient map has a user_uuid and/or recipient_email.
-  defp enqueue_all_recipients(%Broadcast{source_type: "crm_list"} = broadcast, repo, interval) do
-    broadcast.crm_list_uuid
-    |> CRMSource.sendable_recipients()
+  # user_uuid path instead. Both funnel into the same process_batch/5,
+  # which only cares that each recipient map has a user_uuid and/or
+  # recipient_email.
+  defp enqueue_all_recipients(
+         %Broadcast{source_type: "crm_list"} = broadcast,
+         recipients,
+         repo,
+         interval
+       ) do
+    recipients
     |> Enum.map(fn %{email: email} -> %{user_uuid: nil, recipient_email: email} end)
     |> Enum.chunk_every(@batch_size)
-    |> Enum.reduce(0, fn recipients, offset ->
-      process_batch(broadcast, recipients, repo, interval, offset)
-      offset + length(recipients)
+    |> Enum.reduce(0, fn batch, offset ->
+      process_batch(broadcast, batch, repo, interval, offset)
+      offset + length(batch)
     end)
   end
 
-  defp enqueue_all_recipients(broadcast, repo, interval) do
+  defp enqueue_all_recipients(broadcast, _recipients, repo, interval) do
     broadcast.list_uuid
     |> stream_active_members()
     |> Stream.map(fn user_uuid -> %{user_uuid: user_uuid, recipient_email: nil} end)
@@ -200,8 +215,9 @@ defmodule PhoenixKit.Newsletters.Broadcaster do
   defp process_batch(broadcast, recipients, repo, interval, offset) do
     now = UtilsDate.utc_now()
 
-    deliveries =
-      Enum.map(recipients, fn recipient ->
+    {deliveries, skipped} =
+      recipients
+      |> Enum.map(fn recipient ->
         Map.merge(recipient, %{
           uuid: UUIDv7.generate(),
           broadcast_uuid: broadcast.uuid,
@@ -210,6 +226,15 @@ defmodule PhoenixKit.Newsletters.Broadcaster do
           updated_at: now
         })
       end)
+      |> Enum.split_with(&valid_recipient?/1)
+
+    if skipped != [] do
+      Logger.warning(
+        "Broadcaster: skipped #{length(skipped)} recipient(s) with neither user_uuid nor " <>
+          "recipient_email for broadcast #{broadcast.uuid} (insert_all bypasses Delivery's " <>
+          "changeset validation, so this must be checked explicitly)"
+      )
+    end
 
     {_count, inserted} = repo.insert_all(Delivery, deliveries, returning: [:uuid])
 
@@ -233,6 +258,19 @@ defmodule PhoenixKit.Newsletters.Broadcaster do
   # behavior. Otherwise space recipient N out by N intervals.
   defp schedule_opts(0, _index), do: []
   defp schedule_opts(interval, index), do: [schedule_in: index * interval]
+
+  @doc false
+  # Mirrors Delivery.changeset/2's "at least one" validation, which
+  # insert_all never runs. Neither current recipient source can actually
+  # produce a both-nil row today (CRMSource.sendable_recipients/1 filters
+  # `not is_nil(m.email)`; stream_active_members/1 selects a NOT NULL
+  # column) — this is a defensive backstop against a future source, or
+  # corrupt data, silently inserting an unaddressable delivery. Not `defp`
+  # so it can be unit-tested directly — same rationale as
+  # `resolve_send_profile/1`/`build_profile_email/5` in DeliveryWorker.
+  def valid_recipient?(%{user_uuid: user_uuid, recipient_email: recipient_email}) do
+    not is_nil(user_uuid) or not is_nil(recipient_email)
+  end
 
   defp repo, do: PhoenixKit.RepoHelper.repo()
 end
