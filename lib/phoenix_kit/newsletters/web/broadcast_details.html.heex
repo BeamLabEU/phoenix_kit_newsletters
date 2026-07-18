@@ -97,6 +97,10 @@
       </div>
 
       <%!-- CRM list preflight --%>
+      <p :if={@crm_list && @crm_list.status != "active"} class="text-sm text-warning mb-2">
+        <.icon name="hero-exclamation-triangle" class="w-3 h-3 inline" />
+        {gettext("This list is archived and cannot be sent to.")}
+      </p>
       <p :if={@crm_preflight} class="text-sm text-base-content/70 mb-6">
         {gettext(
           "%{total} members: %{sendable} sendable, %{no_email} no email, %{unsendable} unsubscribed/opted-out",

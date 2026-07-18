@@ -75,6 +75,10 @@
                 </option>
               </select>
             </label>
+            <p :if={@crm_list_archived?} class="text-xs text-warning mt-1">
+              <.icon name="hero-exclamation-triangle" class="w-3 h-3 inline" />
+              {gettext("This list is archived and cannot be sent to.")}
+            </p>
             <p :if={@preflight} class="text-xs text-base-content/60 mt-1">
               {gettext(
                 "%{total} members: %{sendable} sendable, %{no_email} no email, %{unsendable} unsubscribed/opted-out",

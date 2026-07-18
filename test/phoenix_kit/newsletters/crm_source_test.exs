@@ -132,6 +132,36 @@ defmodule PhoenixKit.Newsletters.CRMSourceTest do
     assert CRMSource.preflight(list.uuid) == %{total: 0, sendable: 0, no_email: 0, unsendable: 0}
   end
 
+  test "an archived list is never sendable — sendable_recipients/1 empties out and preflight folds everyone into unsendable",
+       %{list: list} do
+    contact = add_contact()
+    add_member(list, contact)
+
+    assert CRMSource.sendable_recipients(list.uuid) == [
+             %{contact_uuid: contact.uuid, email: contact.email}
+           ]
+
+    {:ok, _list} = Lists.archive_list(list)
+
+    assert CRMSource.sendable_recipients(list.uuid) == []
+    # total still reflects the real membership — archiving doesn't erase
+    # history, it just makes every member currently unsendable.
+    assert CRMSource.preflight(list.uuid) == %{total: 1, sendable: 0, no_email: 0, unsendable: 1}
+  end
+
+  # No real duplicates can occur (the CITEXT unique index above), but the
+  # result order should still be a stable, deterministic contract rather
+  # than "whatever Postgres feels like" — ordered by member uuid (UUIDv7,
+  # so this is also oldest-membership-first).
+  test "sendable_recipients/1 returns members in a stable, deterministic order", %{list: list} do
+    first = add_member(list, add_contact())
+    second = add_member(list, add_contact())
+
+    assert [%{contact_uuid: a}, %{contact_uuid: b}] = CRMSource.sendable_recipients(list.uuid)
+    assert a == first.contact_uuid
+    assert b == second.contact_uuid
+  end
+
   test "get_contact/1 resolves a real contact and nil for an unknown/nil uuid" do
     contact = add_contact()
 

@@ -34,6 +34,7 @@ defmodule PhoenixKit.Newsletters.CRMSource do
   # compile-time schema introspection this needs to dodge.
   defp list_member_schema, do: Module.concat([PhoenixKitCRM, Schemas, ListMember])
   defp contact_schema, do: Module.concat([PhoenixKitCRM, Schemas, Contact])
+  defp list_schema, do: Module.concat([PhoenixKitCRM, Schemas, ContactList])
 
   @doc "Whether the CRM module is installed."
   @spec available?() :: boolean()
@@ -66,7 +67,7 @@ defmodule PhoenixKit.Newsletters.CRMSource do
   since two memberships could in principle share a mailbox. The list's own
   per-list email uniqueness index makes an in-list duplicate rare, but the
   dedup stays as a defensive guarantee against ever double-sending to one
-  address.
+  address. Empty for an archived list — see `sendable_query/1`.
 
   Returns `[%{contact_uuid: uuid, email: string}]`.
   """
@@ -106,50 +107,84 @@ defmodule PhoenixKit.Newsletters.CRMSource do
     end
   end
 
+  # Joins the list itself (not just member+contact) and requires
+  # `status == "active"` — an archived list is never sendable, regardless
+  # of how many subscribed/opted-in members it still has. `order_by` on
+  # `m.uuid` (ListMember's uuid is UUIDv7, so this is also chronological
+  # by add-time) makes "which duplicate wins" a stable, deterministic
+  # contract for `sendable_recipients/1`'s `Enum.uniq_by` rather than
+  # depending on whatever order Postgres happens to return rows in.
   defp sendable_query(crm_list_uuid) do
     member = list_member_schema()
     contact = contact_schema()
+    list = list_schema()
 
     from(m in member,
       join: c in ^contact,
       on: c.uuid == m.contact_uuid,
+      join: l in ^list,
+      on: l.uuid == m.list_uuid,
       where: m.list_uuid == ^crm_list_uuid,
       where: m.status == "subscribed",
       where: is_nil(c.opted_out_at),
       where: not is_nil(m.email),
+      where: l.status == "active",
+      order_by: [asc: m.uuid],
       select: %{contact_uuid: m.contact_uuid, email: m.email}
     )
   end
 
+  # `total` counts every member regardless of the list's own status (so an
+  # archived list still shows its real membership count, not a
+  # misleadingly-zeroed one); `sendable`/`no_email` additionally require
+  # `l.status == "active"`, and `unsendable` picks up everything an
+  # archived list excludes from those two — keeping
+  # total == sendable + no_email + unsendable an invariant either way.
+  # credo:disable-for-next-line Credo.Check.Refactor.CyclomaticComplexity
   defp run_preflight_query(crm_list_uuid) do
     member = list_member_schema()
     contact = contact_schema()
+    list = list_schema()
 
     from(m in member,
       join: c in ^contact,
       on: c.uuid == m.contact_uuid,
+      join: l in ^list,
+      on: l.uuid == m.list_uuid,
       where: m.list_uuid == ^crm_list_uuid,
       select: %{
         total: count(m.uuid),
         sendable:
           filter(
             count(m.uuid),
-            m.status == "subscribed" and is_nil(c.opted_out_at) and not is_nil(m.email)
+            m.status == "subscribed" and is_nil(c.opted_out_at) and not is_nil(m.email) and
+              l.status == "active"
           ),
         no_email:
           filter(
             count(m.uuid),
-            m.status == "subscribed" and is_nil(c.opted_out_at) and is_nil(m.email)
+            m.status == "subscribed" and is_nil(c.opted_out_at) and is_nil(m.email) and
+              l.status == "active"
           ),
-        unsendable: filter(count(m.uuid), m.status != "subscribed" or not is_nil(c.opted_out_at))
+        unsendable:
+          filter(
+            count(m.uuid),
+            m.status != "subscribed" or not is_nil(c.opted_out_at) or l.status != "active"
+          )
       }
     )
     |> repo().one()
-    |> case do
-      nil -> %{total: 0, sendable: 0, no_email: 0, unsendable: 0}
-      result -> result
-    end
+    |> normalize_preflight_result()
   end
+
+  # Ecto's `dynamic/2` can't be interpolated inside `filter/2` (only at the
+  # top level of where/having/select/etc.), so the three conditions above
+  # can't be extracted into reusable dynamics — hence the disable: this is
+  # inherent domain complexity (three mutually-exclusive, jointly-exhaustive
+  # partition conditions, sharing state deliberately since the moduledoc's
+  # total == sendable + no_email + unsendable invariant depends on it).
+  defp normalize_preflight_result(nil), do: %{total: 0, sendable: 0, no_email: 0, unsendable: 0}
+  defp normalize_preflight_result(result), do: result
 
   @doc "Fetches a CRM contact by uuid. Returns nil if not found, invalid, or CRM isn't installed."
   @spec get_contact(String.t() | nil) :: struct() | nil

@@ -85,5 +85,20 @@ defmodule PhoenixKit.Newsletters.BroadcasterCRMTest do
       actual_emails = deliveries |> Enum.map(& &1.recipient_email) |> MapSet.new()
       assert actual_emails == expected_emails
     end
+
+    test "refuses to send once the list is archived between creation and send, and doesn't corrupt the broadcast's status",
+         %{list: list} do
+      broadcast = create_crm_sourced_broadcast(list.uuid)
+      assert broadcast.status == "draft"
+
+      {:ok, _list} = Lists.archive_list(list)
+
+      assert {:error, {:crm_list_not_active, "archived"}} = Broadcaster.send(broadcast)
+
+      reloaded = Newsletters.get_broadcast!(broadcast.uuid)
+      assert reloaded.status == "draft"
+      assert reloaded.total_recipients == 0
+      assert Newsletters.list_deliveries(broadcast.uuid) == []
+    end
   end
 end

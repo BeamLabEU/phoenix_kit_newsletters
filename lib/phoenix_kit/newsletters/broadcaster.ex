@@ -37,16 +37,43 @@ defmodule PhoenixKit.Newsletters.Broadcaster do
   creates delivery records, and enqueues Oban jobs.
   """
   def send(%Broadcast{status: "draft"} = broadcast) do
-    do_send(broadcast)
+    send_if_valid(broadcast)
   end
 
   def send(%Broadcast{status: "scheduled"} = broadcast) do
-    do_send(broadcast)
+    send_if_valid(broadcast)
   end
 
   def send(%Broadcast{status: status}) do
     {:error, {:invalid_status, status}}
   end
+
+  defp send_if_valid(broadcast) do
+    case validate_recipient_source(broadcast) do
+      :ok -> do_send(broadcast)
+      {:error, _reason} = error -> error
+    end
+  end
+
+  # An archived CRM list must never receive a send. CRMSource's own
+  # sendable_query/1 already excludes an archived list's members (so
+  # do_send/1 would just resolve to 0 recipients), but refusing explicitly
+  # up front — before status flips to "sending" — keeps the broadcast's
+  # own status honest instead of quietly "succeeding" at sending to no
+  # one. A missing list (deleted, or CRM not installed) is unchanged from
+  # before: proceeds and resolves to 0 recipients, matching how a deleted
+  # newsletters_list already behaves.
+  defp validate_recipient_source(%Broadcast{
+         source_type: "crm_list",
+         crm_list_uuid: crm_list_uuid
+       }) do
+    case CRMSource.get_list(crm_list_uuid) do
+      %{status: status} when status != "active" -> {:error, {:crm_list_not_active, status}}
+      _ -> :ok
+    end
+  end
+
+  defp validate_recipient_source(%Broadcast{}), do: :ok
 
   defp do_send(broadcast) do
     repo = repo()
