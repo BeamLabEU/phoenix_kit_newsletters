@@ -128,9 +128,7 @@
       <%!-- Deliveries Table (desktop) --%>
       <h2 class="text-lg font-semibold mb-3">{gettext("Deliveries")}</h2>
       <%= if @deliveries == [] do %>
-        <div class="text-center py-10 text-base-content/50">
-          <p>{gettext("No deliveries yet")}</p>
-        </div>
+        <.empty_state variant="compact" title={gettext("No deliveries yet")} />
       <% else %>
         <div class="hidden md:block">
           <.table_default variant="zebra" size="sm" class="w-full">

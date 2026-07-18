@@ -14,28 +14,32 @@ msgstr ""
 msgid "Newsletters"
 msgstr "Newsletters"
 
-#: lib/phoenix_kit/newsletters/web/broadcasts.ex:22
+#: lib/phoenix_kit/newsletters/web/broadcast_details.ex:32
+#: lib/phoenix_kit/newsletters/web/broadcast_editor.ex:32
+#: lib/phoenix_kit/newsletters/web/broadcasts.ex:23
 #, elixir-autogen
 msgid "Broadcasts"
 msgstr "Broadcasts"
 
-#: lib/phoenix_kit/newsletters/web/broadcast_editor.ex:26
-#: lib/phoenix_kit/newsletters/web/broadcasts.html.heex:29
+#: lib/phoenix_kit/newsletters/web/broadcast_editor.ex:27
+#: lib/phoenix_kit/newsletters/web/broadcasts.html.heex:65
 #, elixir-autogen
 msgid "New broadcast"
 msgstr "New broadcast"
 
-#: lib/phoenix_kit/newsletters/web/broadcast_editor.ex:62
+#: lib/phoenix_kit/newsletters/web/broadcast_editor.ex:65
 #, elixir-autogen
 msgid "Edit broadcast"
 msgstr "Edit broadcast"
 
-#: lib/phoenix_kit/newsletters/newsletters.ex
+#: lib/phoenix_kit/newsletters/web/list_editor.ex:25
+#: lib/phoenix_kit/newsletters/web/list_members.ex:25
+#, elixir-autogen
 msgid "Lists"
 msgstr "Lists"
 
-#: lib/phoenix_kit/newsletters/web/list_editor.ex:57
-#: lib/phoenix_kit/newsletters/web/lists.html.heex:13
+#: lib/phoenix_kit/newsletters/web/list_editor.ex:59
+#: lib/phoenix_kit/newsletters/web/lists.html.heex:54
 #, elixir-autogen
 msgid "New list"
 msgstr "New list"
@@ -48,433 +52,409 @@ msgstr "Edit list"
 msgid "List members"
 msgstr "List members"
 
-#: lib/phoenix_kit/newsletters/web/send_profiles.ex:22
-#, elixir-autogen, fuzzy
-msgid "Send Settings"
-msgstr "Sending"
-
-#: lib/phoenix_kit/newsletters/web/send_profile_editor.ex:62
-#: lib/phoenix_kit/newsletters/web/send_profiles.html.heex:13
-#, elixir-autogen
-msgid "New send profile"
-msgstr ""
-
 #: lib/phoenix_kit/newsletters/newsletters.ex
 msgid "Edit send profile"
 msgstr ""
 
 ## --- Common admin UI ---
-#: lib/phoenix_kit/newsletters/web/broadcast_details.ex:46
-#: lib/phoenix_kit/newsletters/web/broadcast_editor.ex:47
-#: lib/phoenix_kit/newsletters/web/broadcasts.ex:32
-#: lib/phoenix_kit/newsletters/web/list_editor.ex:31
-#: lib/phoenix_kit/newsletters/web/list_members.ex:40
-#: lib/phoenix_kit/newsletters/web/lists.ex:36
-#: lib/phoenix_kit/newsletters/web/send_profile_editor.ex:36
-#: lib/phoenix_kit/newsletters/web/send_profiles.ex:39
+#: lib/phoenix_kit/newsletters/web/broadcast_details.ex:49
+#: lib/phoenix_kit/newsletters/web/broadcast_editor.ex:50
+#: lib/phoenix_kit/newsletters/web/broadcasts.ex:33
+#: lib/phoenix_kit/newsletters/web/list_editor.ex:33
+#: lib/phoenix_kit/newsletters/web/list_members.ex:43
+#: lib/phoenix_kit/newsletters/web/lists.ex:37
 #, elixir-autogen
 msgid "Newsletters module is not enabled"
 msgstr "Newsletters module is not enabled"
 
-#: lib/phoenix_kit/newsletters/web/broadcast_details.html.heex:17
-#: lib/phoenix_kit/newsletters/web/list_editor.html.heex:77
-#: lib/phoenix_kit/newsletters/web/list_members.html.heex:17
-#: lib/phoenix_kit/newsletters/web/lists.html.heex:24
-#: lib/phoenix_kit/newsletters/web/send_profile_editor.html.heex:145
-#: lib/phoenix_kit/newsletters/web/send_profiles.html.heex:24
+#: lib/phoenix_kit/newsletters/web/broadcast_details.html.heex:19
+#: lib/phoenix_kit/newsletters/web/broadcast_editor.html.heex:84
+#: lib/phoenix_kit/newsletters/web/list_editor.html.heex:79
+#: lib/phoenix_kit/newsletters/web/list_members.html.heex:19
+#: lib/phoenix_kit/newsletters/web/lists.html.heex:17
 #, elixir-autogen
 msgid "Cancel"
 msgstr "Cancel"
 
-#: lib/phoenix_kit/newsletters/web/broadcast_details.html.heex:27
+#: lib/phoenix_kit/newsletters/web/broadcast_details.html.heex:29
 #, elixir-autogen
 msgid "Loading..."
 msgstr "Loading..."
 
-#: lib/phoenix_kit/newsletters/web/broadcast_details.html.heex:38
-#: lib/phoenix_kit/newsletters/web/lists.html.heex:83
-#: lib/phoenix_kit/newsletters/web/lists.html.heex:86
-#: lib/phoenix_kit/newsletters/web/lists.html.heex:148
-#: lib/phoenix_kit/newsletters/web/send_profiles.html.heex:95
-#: lib/phoenix_kit/newsletters/web/send_profiles.html.heex:98
-#: lib/phoenix_kit/newsletters/web/send_profiles.html.heex:163
+#: lib/phoenix_kit/newsletters/web/broadcast_details.html.heex:40
+#: lib/phoenix_kit/newsletters/web/lists.html.heex:84
+#: lib/phoenix_kit/newsletters/web/lists.html.heex:144
+#: lib/phoenix_kit/newsletters/web/lists.html.heex:147
 #, elixir-autogen
 msgid "Edit"
 msgstr "Edit"
 
-#: lib/phoenix_kit/newsletters/web/lists.html.heex:93
-#: lib/phoenix_kit/newsletters/web/lists.html.heex:96
-#: lib/phoenix_kit/newsletters/web/lists.html.heex:156
-#: lib/phoenix_kit/newsletters/web/send_profiles.html.heex:105
-#: lib/phoenix_kit/newsletters/web/send_profiles.html.heex:108
-#: lib/phoenix_kit/newsletters/web/send_profiles.html.heex:171
+#: lib/phoenix_kit/newsletters/web/lists.html.heex:92
+#: lib/phoenix_kit/newsletters/web/lists.html.heex:154
+#: lib/phoenix_kit/newsletters/web/lists.html.heex:157
 #, elixir-autogen
 msgid "Delete"
 msgstr "Delete"
 
-#: lib/phoenix_kit/newsletters/web/broadcast_details.html.heex:54
+#: lib/phoenix_kit/newsletters/web/broadcast_details.html.heex:56
 #, elixir-autogen
 msgid "Refresh"
 msgstr "Refresh"
 
-#: lib/phoenix_kit/newsletters/web/broadcast_details.html.heex:63
+#: lib/phoenix_kit/newsletters/web/broadcast_details.html.heex:65
 #: lib/phoenix_kit/newsletters/web/broadcast_details.html.heex:138
-#: lib/phoenix_kit/newsletters/web/broadcasts.html.heex:47
-#: lib/phoenix_kit/newsletters/web/list_editor.html.heex:54
-#: lib/phoenix_kit/newsletters/web/list_members.html.heex:106
-#: lib/phoenix_kit/newsletters/web/lists.html.heex:39
-#: lib/phoenix_kit/newsletters/web/send_profiles.html.heex:41
+#: lib/phoenix_kit/newsletters/web/broadcasts.html.heex:90
+#: lib/phoenix_kit/newsletters/web/list_editor.html.heex:56
+#: lib/phoenix_kit/newsletters/web/list_members.html.heex:175
+#: lib/phoenix_kit/newsletters/web/lists.html.heex:100
 #, elixir-autogen
 msgid "Status"
 msgstr "Status"
 
-#: lib/phoenix_kit/newsletters/web/broadcast_details.html.heex:69
-#: lib/phoenix_kit/newsletters/web/broadcasts.html.heex:46
-#: lib/phoenix_kit/newsletters/web/broadcasts.html.heex:118
+#: lib/phoenix_kit/newsletters/web/broadcast_details.html.heex:71
+#: lib/phoenix_kit/newsletters/web/broadcasts.html.heex:33
+#: lib/phoenix_kit/newsletters/web/broadcasts.html.heex:89
 #, elixir-autogen
 msgid "List"
 msgstr "List"
 
-#: lib/phoenix_kit/newsletters/web/list_editor.html.heex:17
-#: lib/phoenix_kit/newsletters/web/lists.html.heex:37
-#: lib/phoenix_kit/newsletters/web/send_profile_editor.html.heex:17
-#: lib/phoenix_kit/newsletters/web/send_profiles.html.heex:37
+#: lib/phoenix_kit/newsletters/web/list_editor.html.heex:19
+#: lib/phoenix_kit/newsletters/web/lists.html.heex:98
 #, elixir-autogen
 msgid "Name"
 msgstr "Name"
 
-#: lib/phoenix_kit/newsletters/web/list_editor.html.heex:43
+#: lib/phoenix_kit/newsletters/web/list_editor.html.heex:45
 #, elixir-autogen
 msgid "Description"
 msgstr "Description"
 
-#: lib/phoenix_kit/newsletters/web/list_editor.html.heex:29
-#: lib/phoenix_kit/newsletters/web/lists.html.heex:38
-#: lib/phoenix_kit/newsletters/web/lists.html.heex:129
+#: lib/phoenix_kit/newsletters/web/list_editor.html.heex:31
+#: lib/phoenix_kit/newsletters/web/lists.html.heex:46
+#: lib/phoenix_kit/newsletters/web/lists.html.heex:99
 #, elixir-autogen
 msgid "Slug"
 msgstr "Slug"
 
-#: lib/phoenix_kit/newsletters/web/list_editor.html.heex:61
-#: lib/phoenix_kit/newsletters/web/list_members.html.heex:90
-#: lib/phoenix_kit/newsletters/web/list_members.html.heex:124
-#: lib/phoenix_kit/newsletters/web/list_members.html.heex:185
-#: lib/phoenix_kit/newsletters/web/lists.html.heex:62
-#: lib/phoenix_kit/newsletters/web/lists.html.heex:121
+#: lib/phoenix_kit/newsletters/web/list_editor.html.heex:63
+#: lib/phoenix_kit/newsletters/web/list_members.html.heex:126
+#: lib/phoenix_kit/newsletters/web/list_members.html.heex:145
+#: lib/phoenix_kit/newsletters/web/list_members.html.heex:193
+#: lib/phoenix_kit/newsletters/web/lists.html.heex:67
+#: lib/phoenix_kit/newsletters/web/lists.html.heex:123
 #, elixir-autogen
 msgid "Active"
 msgstr "Active"
 
-#: lib/phoenix_kit/newsletters/web/list_editor.html.heex:64
-#: lib/phoenix_kit/newsletters/web/lists.html.heex:64
-#: lib/phoenix_kit/newsletters/web/lists.html.heex:123
+#: lib/phoenix_kit/newsletters/web/list_editor.html.heex:66
+#: lib/phoenix_kit/newsletters/web/lists.html.heex:69
+#: lib/phoenix_kit/newsletters/web/lists.html.heex:125
 #, elixir-autogen
 msgid "Archived"
 msgstr "Archived"
 
-#: lib/phoenix_kit/newsletters/web/lists.html.heex:40
-#: lib/phoenix_kit/newsletters/web/lists.html.heex:132
+#: lib/phoenix_kit/newsletters/web/lists.html.heex:47
+#: lib/phoenix_kit/newsletters/web/lists.html.heex:101
 #, elixir-autogen
 msgid "Subscribers"
 msgstr "Subscribers"
 
-#: lib/phoenix_kit/newsletters/web/list_members.html.heex:108
-#: lib/phoenix_kit/newsletters/web/lists.html.heex:41
-#: lib/phoenix_kit/newsletters/web/send_profiles.html.heex:42
+#: lib/phoenix_kit/newsletters/web/list_members.html.heex:177
+#: lib/phoenix_kit/newsletters/web/lists.html.heex:102
 #, elixir-autogen
 msgid "Actions"
 msgstr "Actions"
 
-#: lib/phoenix_kit/newsletters/web/list_members.html.heex:65
+#: lib/phoenix_kit/newsletters/web/list_members.html.heex:67
 #, elixir-autogen
 msgid "Add"
 msgstr "Add"
 
-#: lib/phoenix_kit/newsletters/web/list_members.html.heex:156
-#: lib/phoenix_kit/newsletters/web/list_members.html.heex:159
-#: lib/phoenix_kit/newsletters/web/list_members.html.heex:221
+#: lib/phoenix_kit/newsletters/web/list_members.html.heex:168
+#: lib/phoenix_kit/newsletters/web/list_members.html.heex:225
+#: lib/phoenix_kit/newsletters/web/list_members.html.heex:228
 #, elixir-autogen
 msgid "Remove"
 msgstr "Remove"
 
-#: lib/phoenix_kit/newsletters/web/list_members.ex:22
+#: lib/phoenix_kit/newsletters/web/list_members.ex:23
 #: lib/phoenix_kit/newsletters/web/lists.html.heex:78
-#: lib/phoenix_kit/newsletters/web/lists.html.heex:142
+#: lib/phoenix_kit/newsletters/web/lists.html.heex:139
 #, elixir-autogen
 msgid "Members"
 msgstr "Members"
 
-#: lib/phoenix_kit/newsletters/web/list_members.ex:240
+#: lib/phoenix_kit/newsletters/web/list_members.ex:243
 #, elixir-autogen
 msgid "Confirm"
 msgstr "Confirm"
 
-#: lib/phoenix_kit/newsletters/web/list_members.ex:240
+#: lib/phoenix_kit/newsletters/web/list_members.ex:243
 #, elixir-autogen
 msgid "Are you sure?"
 msgstr "Are you sure?"
 
-#: lib/phoenix_kit/newsletters/web/list_members.html.heex:89
+#: lib/phoenix_kit/newsletters/web/list_members.html.heex:124
 #, elixir-autogen
 msgid "All"
 msgstr "All"
 
 ## --- Broadcast statuses / delivery statuses ---
-#: lib/phoenix_kit/newsletters/web/broadcast_details.ex:138
-#: lib/phoenix_kit/newsletters/web/broadcast_editor.ex:245
-#: lib/phoenix_kit/newsletters/web/broadcasts.ex:80
-#: lib/phoenix_kit/newsletters/web/broadcasts.html.heex:19
+#: lib/phoenix_kit/newsletters/web/broadcast_details.ex:141
+#: lib/phoenix_kit/newsletters/web/broadcast_editor.ex:248
+#: lib/phoenix_kit/newsletters/web/broadcasts.ex:81
+#: lib/phoenix_kit/newsletters/web/broadcasts.html.heex:49
 #, elixir-autogen
 msgid "Draft"
 msgstr "Draft"
 
-#: lib/phoenix_kit/newsletters/web/broadcast_details.ex:139
-#: lib/phoenix_kit/newsletters/web/broadcast_editor.ex:246
-#: lib/phoenix_kit/newsletters/web/broadcasts.ex:81
-#: lib/phoenix_kit/newsletters/web/broadcasts.html.heex:20
+#: lib/phoenix_kit/newsletters/web/broadcast_details.ex:142
+#: lib/phoenix_kit/newsletters/web/broadcast_editor.ex:249
+#: lib/phoenix_kit/newsletters/web/broadcasts.ex:82
+#: lib/phoenix_kit/newsletters/web/broadcasts.html.heex:51
 #, elixir-autogen
 msgid "Scheduled"
 msgstr "Scheduled"
 
-#: lib/phoenix_kit/newsletters/web/broadcast_details.ex:140
-#: lib/phoenix_kit/newsletters/web/broadcast_editor.ex:247
-#: lib/phoenix_kit/newsletters/web/broadcasts.ex:82
-#: lib/phoenix_kit/newsletters/web/broadcasts.html.heex:21
+#: lib/phoenix_kit/newsletters/web/broadcast_details.ex:143
+#: lib/phoenix_kit/newsletters/web/broadcast_editor.ex:250
+#: lib/phoenix_kit/newsletters/web/broadcasts.ex:83
+#: lib/phoenix_kit/newsletters/web/broadcasts.html.heex:54
 #, elixir-autogen
 msgid "Sending"
 msgstr "Sending"
 
-#: lib/phoenix_kit/newsletters/web/broadcast_details.ex:141
-#: lib/phoenix_kit/newsletters/web/broadcast_details.ex:148
-#: lib/phoenix_kit/newsletters/web/broadcast_details.html.heex:97
-#: lib/phoenix_kit/newsletters/web/broadcast_editor.ex:248
-#: lib/phoenix_kit/newsletters/web/broadcasts.ex:83
-#: lib/phoenix_kit/newsletters/web/broadcasts.html.heex:22
-#: lib/phoenix_kit/newsletters/web/broadcasts.html.heex:48
-#: lib/phoenix_kit/newsletters/web/broadcasts.html.heex:123
+#: lib/phoenix_kit/newsletters/web/broadcast_details.ex:144
+#: lib/phoenix_kit/newsletters/web/broadcast_details.ex:151
+#: lib/phoenix_kit/newsletters/web/broadcast_details.html.heex:99
+#: lib/phoenix_kit/newsletters/web/broadcast_editor.ex:251
+#: lib/phoenix_kit/newsletters/web/broadcasts.ex:84
+#: lib/phoenix_kit/newsletters/web/broadcasts.html.heex:36
+#: lib/phoenix_kit/newsletters/web/broadcasts.html.heex:56
+#: lib/phoenix_kit/newsletters/web/broadcasts.html.heex:91
 #, elixir-autogen
 msgid "Sent"
 msgstr "Sent"
 
-#: lib/phoenix_kit/newsletters/web/broadcast_details.ex:142
-#: lib/phoenix_kit/newsletters/web/broadcast_editor.ex:249
-#: lib/phoenix_kit/newsletters/web/broadcasts.ex:84
-#: lib/phoenix_kit/newsletters/web/broadcasts.html.heex:23
+#: lib/phoenix_kit/newsletters/web/broadcast_details.ex:145
+#: lib/phoenix_kit/newsletters/web/broadcast_editor.ex:252
+#: lib/phoenix_kit/newsletters/web/broadcasts.ex:85
+#: lib/phoenix_kit/newsletters/web/broadcasts.html.heex:58
 #, elixir-autogen
 msgid "Cancelled"
 msgstr "Cancelled"
 
-#: lib/phoenix_kit/newsletters/web/broadcast_details.ex:147
+#: lib/phoenix_kit/newsletters/web/broadcast_details.ex:150
 #, elixir-autogen
 msgid "Pending"
 msgstr "Pending"
 
-#: lib/phoenix_kit/newsletters/web/broadcast_details.ex:149
-#: lib/phoenix_kit/newsletters/web/broadcast_details.html.heex:101
-#: lib/phoenix_kit/newsletters/web/broadcasts.html.heex:50
-#: lib/phoenix_kit/newsletters/web/broadcasts.html.heex:126
+#: lib/phoenix_kit/newsletters/web/broadcast_details.ex:152
+#: lib/phoenix_kit/newsletters/web/broadcast_details.html.heex:103
+#: lib/phoenix_kit/newsletters/web/broadcasts.html.heex:37
+#: lib/phoenix_kit/newsletters/web/broadcasts.html.heex:93
 #, elixir-autogen
 msgid "Delivered"
 msgstr "Delivered"
 
-#: lib/phoenix_kit/newsletters/web/broadcast_details.ex:150
-#: lib/phoenix_kit/newsletters/web/broadcast_details.html.heex:107
-#: lib/phoenix_kit/newsletters/web/broadcasts.html.heex:52
-#: lib/phoenix_kit/newsletters/web/broadcasts.html.heex:129
+#: lib/phoenix_kit/newsletters/web/broadcast_details.ex:153
+#: lib/phoenix_kit/newsletters/web/broadcast_details.html.heex:109
+#: lib/phoenix_kit/newsletters/web/broadcasts.html.heex:38
+#: lib/phoenix_kit/newsletters/web/broadcasts.html.heex:95
 #, elixir-autogen
 msgid "Opened"
 msgstr "Opened"
 
-#: lib/phoenix_kit/newsletters/web/broadcast_details.ex:151
-#: lib/phoenix_kit/newsletters/web/broadcast_details.html.heex:113
-#: lib/phoenix_kit/newsletters/web/broadcasts.html.heex:53
-#: lib/phoenix_kit/newsletters/web/broadcasts.html.heex:132
+#: lib/phoenix_kit/newsletters/web/broadcast_details.ex:154
+#: lib/phoenix_kit/newsletters/web/broadcast_details.html.heex:115
+#: lib/phoenix_kit/newsletters/web/broadcasts.html.heex:39
+#: lib/phoenix_kit/newsletters/web/broadcasts.html.heex:96
 #, elixir-autogen
 msgid "Bounced"
 msgstr "Bounced"
 
-#: lib/phoenix_kit/newsletters/web/broadcast_details.ex:152
-#: lib/phoenix_kit/newsletters/web/broadcast_details.html.heex:119
+#: lib/phoenix_kit/newsletters/web/broadcast_details.ex:155
+#: lib/phoenix_kit/newsletters/web/broadcast_details.html.heex:121
 #, elixir-autogen
 msgid "Failed"
 msgstr "Failed"
 
 ## --- Broadcasts list page ---
-#: lib/phoenix_kit/newsletters/web/broadcasts.ex:23
+#: lib/phoenix_kit/newsletters/web/broadcasts.ex:24
 #, elixir-autogen
 msgid "Create and manage email broadcasts"
 msgstr "Create and manage email broadcasts"
 
-#: lib/phoenix_kit/newsletters/web/broadcasts.html.heex:18
+#: lib/phoenix_kit/newsletters/web/broadcasts.html.heex:48
 #, elixir-autogen
 msgid "All statuses"
 msgstr "All statuses"
 
-#: lib/phoenix_kit/newsletters/web/broadcasts.html.heex:37
+#: lib/phoenix_kit/newsletters/web/broadcasts.html.heex:14
 #, elixir-autogen
 msgid "No broadcasts found"
 msgstr "No broadcasts found"
 
-#: lib/phoenix_kit/newsletters/web/broadcasts.html.heex:38
+#: lib/phoenix_kit/newsletters/web/broadcasts.html.heex:15
 #, elixir-autogen
 msgid "Create your first broadcast to get started."
 msgstr "Create your first broadcast to get started."
 
-#: lib/phoenix_kit/newsletters/web/broadcast_editor.html.heex:16
-#: lib/phoenix_kit/newsletters/web/broadcasts.html.heex:45
+#: lib/phoenix_kit/newsletters/web/broadcast_editor.html.heex:18
+#: lib/phoenix_kit/newsletters/web/broadcasts.html.heex:88
 #, elixir-autogen
 msgid "Subject"
 msgstr "Subject"
 
-#: lib/phoenix_kit/newsletters/web/broadcast_details.html.heex:83
+#: lib/phoenix_kit/newsletters/web/broadcast_details.html.heex:85
 #: lib/phoenix_kit/newsletters/web/broadcast_details.html.heex:139
 #: lib/phoenix_kit/newsletters/web/broadcast_details.html.heex:191
-#: lib/phoenix_kit/newsletters/web/broadcasts.html.heex:54
-#: lib/phoenix_kit/newsletters/web/broadcasts.html.heex:135
+#: lib/phoenix_kit/newsletters/web/broadcasts.html.heex:40
+#: lib/phoenix_kit/newsletters/web/broadcasts.html.heex:97
 #, elixir-autogen
 msgid "Sent at"
 msgstr "Sent at"
 
 ## --- Broadcast editor page ---
-#: lib/phoenix_kit/newsletters/web/broadcast_details.ex:131
-#: lib/phoenix_kit/newsletters/web/broadcast_editor.ex:76
+#: lib/phoenix_kit/newsletters/web/broadcast_details.ex:134
+#: lib/phoenix_kit/newsletters/web/broadcast_editor.ex:79
 #, elixir-autogen
 msgid "Broadcast not found"
 msgstr "Broadcast not found"
 
-#: lib/phoenix_kit/newsletters/web/broadcast_editor.ex:127
+#: lib/phoenix_kit/newsletters/web/broadcast_editor.ex:130
 #, elixir-autogen
 msgid "Broadcast is being sent"
 msgstr "Broadcast is being sent"
 
-#: lib/phoenix_kit/newsletters/web/broadcast_editor.ex:135
+#: lib/phoenix_kit/newsletters/web/broadcast_editor.ex:138
 #, elixir-autogen
 msgid "Failed to send: %{reason}"
 msgstr "Failed to send: %{reason}"
 
-#: lib/phoenix_kit/newsletters/web/broadcast_editor.ex:141
+#: lib/phoenix_kit/newsletters/web/broadcast_editor.ex:144
 #, elixir-autogen
 msgid "Failed to save: %{reason}"
 msgstr "Failed to save: %{reason}"
 
-#: lib/phoenix_kit/newsletters/web/broadcast_editor.ex:151
+#: lib/phoenix_kit/newsletters/web/broadcast_editor.ex:154
 #, elixir-autogen
 msgid "Please select a schedule date and time"
 msgstr "Please select a schedule date and time"
 
-#: lib/phoenix_kit/newsletters/web/broadcast_editor.ex:228
+#: lib/phoenix_kit/newsletters/web/broadcast_editor.ex:231
 #, elixir-autogen
 msgid "Broadcast saved as %{status}"
 msgstr "Broadcast saved as %{status}"
 
-#: lib/phoenix_kit/newsletters/web/broadcast_editor.ex:241
+#: lib/phoenix_kit/newsletters/web/broadcast_editor.ex:244
 #, elixir-autogen
 msgid "Validation failed: %{errors}"
 msgstr "Validation failed: %{errors}"
 
-#: lib/phoenix_kit/newsletters/web/broadcast_editor.ex:29
+#: lib/phoenix_kit/newsletters/web/broadcast_editor.ex:30
 #, elixir-autogen
 msgid "Compose and send a broadcast email to your newsletter list"
 msgstr "Compose and send a broadcast email to your newsletter list"
 
-#: lib/phoenix_kit/newsletters/web/broadcast_editor.html.heex:21
+#: lib/phoenix_kit/newsletters/web/broadcast_editor.html.heex:23
 #, elixir-autogen
 msgid "Enter email subject..."
 msgstr "Enter email subject..."
 
-#: lib/phoenix_kit/newsletters/web/broadcast_editor.html.heex:28
+#: lib/phoenix_kit/newsletters/web/broadcast_editor.html.heex:30
 #, elixir-autogen
 msgid "Newsletter list"
 msgstr "Newsletter list"
 
-#: lib/phoenix_kit/newsletters/web/broadcast_editor.html.heex:31
+#: lib/phoenix_kit/newsletters/web/broadcast_editor.html.heex:33
 #, elixir-autogen
 msgid "Select a list..."
 msgstr "Select a list..."
 
-#: lib/phoenix_kit/newsletters/web/broadcast_editor.html.heex:48
+#: lib/phoenix_kit/newsletters/web/broadcast_editor.html.heex:50
 #, elixir-autogen
 msgid "Email template"
 msgstr "Email template"
 
-#: lib/phoenix_kit/newsletters/web/broadcast_editor.html.heex:51
+#: lib/phoenix_kit/newsletters/web/broadcast_editor.html.heex:53
 #, elixir-autogen
 msgid "No template (plain markdown)"
 msgstr "No template (plain markdown)"
 
-#: lib/phoenix_kit/newsletters/web/broadcast_editor.html.heex:66
+#: lib/phoenix_kit/newsletters/web/broadcast_editor.html.heex:68
 #, elixir-autogen
 msgid "Content (Markdown)"
 msgstr "Content (Markdown)"
 
-#: lib/phoenix_kit/newsletters/web/broadcast_editor.html.heex:75
+#: lib/phoenix_kit/newsletters/web/broadcast_editor.html.heex:77
 #, elixir-autogen
 msgid "Write your broadcast content in Markdown..."
 msgstr "Write your broadcast content in Markdown..."
 
-#: lib/phoenix_kit/newsletters/web/broadcast_editor.html.heex:85
+#: lib/phoenix_kit/newsletters/web/broadcast_editor.html.heex:90
 #, elixir-autogen
 msgid "Save draft"
 msgstr "Save draft"
 
-#: lib/phoenix_kit/newsletters/web/broadcast_editor.html.heex:94
+#: lib/phoenix_kit/newsletters/web/broadcast_editor.html.heex:99
 #, elixir-autogen
 msgid "Send now"
 msgstr "Send now"
 
-#: lib/phoenix_kit/newsletters/web/broadcast_editor.html.heex:110
+#: lib/phoenix_kit/newsletters/web/broadcast_editor.html.heex:115
 #, elixir-autogen
 msgid "Schedule"
 msgstr "Schedule"
 
-#: lib/phoenix_kit/newsletters/web/broadcast_editor.html.heex:118
+#: lib/phoenix_kit/newsletters/web/broadcast_editor.html.heex:123
 #, elixir-autogen
 msgid "Preview"
 msgstr "Preview"
 
-#: lib/phoenix_kit/newsletters/web/broadcast_editor.html.heex:134
+#: lib/phoenix_kit/newsletters/web/broadcast_editor.html.heex:139
 #, elixir-autogen
 msgid "Preview will appear here as you type"
 msgstr "Preview will appear here as you type"
 
 ## --- Broadcast details page ---
-#: lib/phoenix_kit/newsletters/web/broadcast_details.ex:66
-#: lib/phoenix_kit/newsletters/web/broadcast_details.html.heex:49
+#: lib/phoenix_kit/newsletters/web/broadcast_details.ex:69
+#: lib/phoenix_kit/newsletters/web/broadcast_details.html.heex:51
 #, elixir-autogen
 msgid "Cancel broadcast"
 msgstr "Cancel broadcast"
 
-#: lib/phoenix_kit/newsletters/web/broadcast_details.ex:69
+#: lib/phoenix_kit/newsletters/web/broadcast_details.ex:72
 #, elixir-autogen
 msgid "This will stop any remaining deliveries for this broadcast."
 msgstr "This will stop any remaining deliveries for this broadcast."
 
-#: lib/phoenix_kit/newsletters/web/broadcast_details.ex:92
+#: lib/phoenix_kit/newsletters/web/broadcast_details.ex:95
 #, elixir-autogen
 msgid "Broadcast cancelled"
 msgstr "Broadcast cancelled"
 
-#: lib/phoenix_kit/newsletters/web/broadcast_details.ex:95
+#: lib/phoenix_kit/newsletters/web/broadcast_details.ex:98
 #, elixir-autogen
 msgid "Failed to cancel broadcast"
 msgstr "Failed to cancel broadcast"
 
-#: lib/phoenix_kit/newsletters/web/broadcast_details.html.heex:75
+#: lib/phoenix_kit/newsletters/web/broadcast_details.html.heex:77
 #, elixir-autogen
 msgid "Template"
 msgstr "Template"
 
-#: lib/phoenix_kit/newsletters/web/broadcast_details.html.heex:93
+#: lib/phoenix_kit/newsletters/web/broadcast_details.html.heex:95
 #, elixir-autogen
 msgid "Total recipients"
 msgstr "Total recipients"
 
-#: lib/phoenix_kit/newsletters/web/broadcast_details.html.heex:127
+#: lib/phoenix_kit/newsletters/web/broadcast_details.html.heex:129
 #, elixir-autogen
 msgid "Deliveries"
 msgstr "Deliveries"
 
-#: lib/phoenix_kit/newsletters/web/broadcast_details.html.heex:130
+#: lib/phoenix_kit/newsletters/web/broadcast_details.html.heex:131
 #, elixir-autogen
 msgid "No deliveries yet"
 msgstr "No deliveries yet"
@@ -502,494 +482,286 @@ msgstr "Opened at"
 msgid "Error"
 msgstr "Error"
 
-#: lib/phoenix_kit/newsletters/web/lists.ex:22
+#: lib/phoenix_kit/newsletters/web/lists.ex:23
 #, elixir-autogen
 msgid "Newsletter lists"
 msgstr "Newsletter lists"
 
-#: lib/phoenix_kit/newsletters/web/lists.ex:53
+#: lib/phoenix_kit/newsletters/web/lists.ex:54
 #, elixir-autogen
 msgid "Delete list"
 msgstr "Delete list"
 
-#: lib/phoenix_kit/newsletters/web/lists.ex:56
+#: lib/phoenix_kit/newsletters/web/lists.ex:57
 #, elixir-autogen
 msgid "This list and all its data will be permanently deleted."
 msgstr "This list and all its data will be permanently deleted."
 
-#: lib/phoenix_kit/newsletters/web/lists.ex:89
+#: lib/phoenix_kit/newsletters/web/lists.ex:90
 #, elixir-autogen
 msgid "List deleted"
 msgstr "List deleted"
 
-#: lib/phoenix_kit/newsletters/web/lists.ex:93
+#: lib/phoenix_kit/newsletters/web/lists.ex:94
 #, elixir-autogen
 msgid "Cannot delete list"
 msgstr "Cannot delete list"
 
-#: lib/phoenix_kit/newsletters/web/lists.ex:23
+#: lib/phoenix_kit/newsletters/web/lists.ex:24
 #, elixir-autogen
 msgid "Manage your email subscriber lists"
 msgstr "Manage your email subscriber lists"
 
-#: lib/phoenix_kit/newsletters/web/lists.html.heex:51
-#: lib/phoenix_kit/newsletters/web/lists.html.heex:117
-#: lib/phoenix_kit/newsletters/web/send_profiles.html.heex:52
-#: lib/phoenix_kit/newsletters/web/send_profiles.html.heex:129
+#: lib/phoenix_kit/newsletters/web/lists.html.heex:63
+#: lib/phoenix_kit/newsletters/web/lists.html.heex:112
 #, elixir-autogen
 msgid "Default"
 msgstr "Default"
 
-#: lib/phoenix_kit/newsletters/web/lists.html.heex:75
+#: lib/phoenix_kit/newsletters/web/lists.html.heex:136
 #, elixir-autogen
 msgid "View members"
 msgstr "View members"
 
-#: lib/phoenix_kit/newsletters/web/lists.html.heex:167
+#: lib/phoenix_kit/newsletters/web/lists.html.heex:28
 #, elixir-autogen
 msgid "No newsletter lists yet"
 msgstr "No newsletter lists yet"
 
-#: lib/phoenix_kit/newsletters/web/lists.html.heex:169
+#: lib/phoenix_kit/newsletters/web/lists.html.heex:29
 #, elixir-autogen
 msgid "Create your first list to start managing subscribers."
 msgstr "Create your first list to start managing subscribers."
 
-#: lib/phoenix_kit/newsletters/web/lists.html.heex:172
+#: lib/phoenix_kit/newsletters/web/lists.html.heex:32
 #, elixir-autogen
 msgid "Create first list"
 msgstr "Create first list"
 
 ## --- List editor page ---
-#: lib/phoenix_kit/newsletters/web/list_editor.ex:42
+#: lib/phoenix_kit/newsletters/web/list_editor.ex:44
 #, elixir-autogen
 msgid "Edit list: %{name}"
 msgstr "Edit list: %{name}"
 
-#: lib/phoenix_kit/newsletters/web/list_editor.ex:50
-#: lib/phoenix_kit/newsletters/web/list_members.ex:56
+#: lib/phoenix_kit/newsletters/web/list_editor.ex:52
+#: lib/phoenix_kit/newsletters/web/list_members.ex:59
 #, elixir-autogen
 msgid "List not found"
 msgstr "List not found"
 
-#: lib/phoenix_kit/newsletters/web/list_editor.ex:82
+#: lib/phoenix_kit/newsletters/web/list_editor.ex:84
 #, elixir-autogen
 msgid "List saved successfully"
 msgstr "List saved successfully"
 
-#: lib/phoenix_kit/newsletters/web/list_editor.ex:43
+#: lib/phoenix_kit/newsletters/web/list_editor.ex:45
 #, elixir-autogen
 msgid "Edit newsletter list settings"
 msgstr "Edit newsletter list settings"
 
-#: lib/phoenix_kit/newsletters/web/list_editor.ex:58
+#: lib/phoenix_kit/newsletters/web/list_editor.ex:60
 #, elixir-autogen
 msgid "Create a new newsletter list"
 msgstr "Create a new newsletter list"
 
-#: lib/phoenix_kit/newsletters/web/list_editor.html.heex:22
+#: lib/phoenix_kit/newsletters/web/list_editor.html.heex:24
 #, elixir-autogen
 msgid "My newsletter"
 msgstr "My newsletter"
 
-#: lib/phoenix_kit/newsletters/web/list_editor.html.heex:38
+#: lib/phoenix_kit/newsletters/web/list_editor.html.heex:40
 #, elixir-autogen
 msgid "Auto-generated from name if left empty"
 msgstr "Auto-generated from name if left empty"
 
-#: lib/phoenix_kit/newsletters/web/list_editor.html.heex:48
+#: lib/phoenix_kit/newsletters/web/list_editor.html.heex:50
 #, elixir-autogen
 msgid "Describe this list..."
 msgstr "Describe this list..."
 
-#: lib/phoenix_kit/newsletters/web/list_editor.html.heex:71
+#: lib/phoenix_kit/newsletters/web/list_editor.html.heex:73
 #, elixir-autogen
 msgid "Default list"
 msgstr "Default list"
 
-#: lib/phoenix_kit/newsletters/web/list_editor.html.heex:81
+#: lib/phoenix_kit/newsletters/web/list_editor.html.heex:83
 #, elixir-autogen
 msgid "Update list"
 msgstr "Update list"
 
-#: lib/phoenix_kit/newsletters/web/list_editor.html.heex:81
+#: lib/phoenix_kit/newsletters/web/list_editor.html.heex:83
 #, elixir-autogen
 msgid "Create list"
 msgstr "Create list"
 
 ## --- List members page ---
-#: lib/phoenix_kit/newsletters/web/list_members.ex:66
+#: lib/phoenix_kit/newsletters/web/list_members.ex:69
 #, elixir-autogen
 msgid "%{name} — Members"
 msgstr "%{name} — Members"
 
-#: lib/phoenix_kit/newsletters/web/list_members.ex:149
+#: lib/phoenix_kit/newsletters/web/list_members.ex:152
 #, elixir-autogen
 msgid "Member added"
 msgstr "Member added"
 
-#: lib/phoenix_kit/newsletters/web/list_members.ex:155
+#: lib/phoenix_kit/newsletters/web/list_members.ex:158
 #, elixir-autogen
 msgid "Could not add member"
 msgstr "Could not add member"
 
-#: lib/phoenix_kit/newsletters/web/list_members.ex:193
+#: lib/phoenix_kit/newsletters/web/list_members.ex:196
 #, elixir-autogen
 msgid "Member unsubscribed"
 msgstr "Member unsubscribed"
 
-#: lib/phoenix_kit/newsletters/web/list_members.ex:197
+#: lib/phoenix_kit/newsletters/web/list_members.ex:200
 #, elixir-autogen
 msgid "Could not unsubscribe member"
 msgstr "Could not unsubscribe member"
 
-#: lib/phoenix_kit/newsletters/web/list_members.ex:200
-#: lib/phoenix_kit/newsletters/web/list_members.ex:223
+#: lib/phoenix_kit/newsletters/web/list_members.ex:203
+#: lib/phoenix_kit/newsletters/web/list_members.ex:226
 #, elixir-autogen
 msgid "Member not found"
 msgstr "Member not found"
 
-#: lib/phoenix_kit/newsletters/web/list_members.ex:216
+#: lib/phoenix_kit/newsletters/web/list_members.ex:219
 #, elixir-autogen
 msgid "Member removed"
 msgstr "Member removed"
 
-#: lib/phoenix_kit/newsletters/web/list_members.ex:220
+#: lib/phoenix_kit/newsletters/web/list_members.ex:223
 #, elixir-autogen
 msgid "Could not remove member"
 msgstr "Could not remove member"
 
-#: lib/phoenix_kit/newsletters/web/list_members.ex:229
-#: lib/phoenix_kit/newsletters/web/list_members.html.heex:34
+#: lib/phoenix_kit/newsletters/web/list_members.ex:232
+#: lib/phoenix_kit/newsletters/web/list_members.html.heex:36
 #, elixir-autogen
 msgid "Add all users"
 msgstr "Add all users"
 
-#: lib/phoenix_kit/newsletters/web/list_members.ex:229
+#: lib/phoenix_kit/newsletters/web/list_members.ex:232
 #, elixir-autogen
 msgid "All registered users will be subscribed to this list."
 msgstr "All registered users will be subscribed to this list."
 
-#: lib/phoenix_kit/newsletters/web/list_members.ex:233
+#: lib/phoenix_kit/newsletters/web/list_members.ex:236
 #, elixir-autogen
 msgid "Unsubscribe member"
 msgstr "Unsubscribe member"
 
-#: lib/phoenix_kit/newsletters/web/list_members.ex:233
+#: lib/phoenix_kit/newsletters/web/list_members.ex:236
 #, elixir-autogen
 msgid "This member will be unsubscribed from the list."
 msgstr "This member will be unsubscribed from the list."
 
-#: lib/phoenix_kit/newsletters/web/list_members.ex:237
+#: lib/phoenix_kit/newsletters/web/list_members.ex:240
 #, elixir-autogen
 msgid "Remove member"
 msgstr "Remove member"
 
-#: lib/phoenix_kit/newsletters/web/list_members.ex:238
+#: lib/phoenix_kit/newsletters/web/list_members.ex:241
 #, elixir-autogen
 msgid "This member will be permanently removed from the list."
 msgstr "This member will be permanently removed from the list."
 
-#: lib/phoenix_kit/newsletters/web/list_members.html.heex:28
+#: lib/phoenix_kit/newsletters/web/list_members.html.heex:30
 #, elixir-autogen
 msgid "Add members"
 msgstr "Add members"
 
-#: lib/phoenix_kit/newsletters/web/list_members.html.heex:43
+#: lib/phoenix_kit/newsletters/web/list_members.html.heex:45
 #, elixir-autogen
 msgid "Search users by email or name..."
 msgstr "Search users by email or name..."
 
-#: lib/phoenix_kit/newsletters/web/list_members.html.heex:74
+#: lib/phoenix_kit/newsletters/web/list_members.html.heex:76
 #, elixir-autogen
 msgid "No users found matching \"%{query}\""
 msgstr "No users found matching \"%{query}\""
 
-#: lib/phoenix_kit/newsletters/web/list_members.html.heex:83
-#, elixir-autogen
-msgid "Filter by status:"
-msgstr "Filter by status:"
-
-#: lib/phoenix_kit/newsletters/web/list_members.html.heex:92
-#: lib/phoenix_kit/newsletters/web/list_members.html.heex:126
-#: lib/phoenix_kit/newsletters/web/list_members.html.heex:187
+#: lib/phoenix_kit/newsletters/web/list_members.html.heex:129
+#: lib/phoenix_kit/newsletters/web/list_members.html.heex:147
+#: lib/phoenix_kit/newsletters/web/list_members.html.heex:195
 #, elixir-autogen
 msgid "Unsubscribed"
 msgstr "Unsubscribed"
 
-#: lib/phoenix_kit/newsletters/web/list_members.html.heex:105
+#: lib/phoenix_kit/newsletters/web/list_members.html.heex:174
 #, elixir-autogen
 msgid "Email"
 msgstr "Email"
 
-#: lib/phoenix_kit/newsletters/web/list_members.html.heex:107
-#: lib/phoenix_kit/newsletters/web/list_members.html.heex:193
+#: lib/phoenix_kit/newsletters/web/list_members.html.heex:110
+#: lib/phoenix_kit/newsletters/web/list_members.html.heex:176
 #, elixir-autogen
 msgid "Subscribed at"
 msgstr "Subscribed at"
 
-#: lib/phoenix_kit/newsletters/web/list_members.html.heex:142
-#: lib/phoenix_kit/newsletters/web/list_members.html.heex:148
-#: lib/phoenix_kit/newsletters/web/list_members.html.heex:212
+#: lib/phoenix_kit/newsletters/web/list_members.html.heex:159
+#: lib/phoenix_kit/newsletters/web/list_members.html.heex:211
+#: lib/phoenix_kit/newsletters/web/list_members.html.heex:217
 #, elixir-autogen
 msgid "Unsubscribe"
 msgstr "Unsubscribe"
 
-#: lib/phoenix_kit/newsletters/web/list_members.html.heex:119
-#: lib/phoenix_kit/newsletters/web/list_members.html.heex:181
+#: lib/phoenix_kit/newsletters/web/list_members.html.heex:103
+#: lib/phoenix_kit/newsletters/web/list_members.html.heex:141
+#: lib/phoenix_kit/newsletters/web/list_members.html.heex:188
 #, elixir-autogen
 msgid "(unknown)"
 msgstr "(unknown)"
 
-#: lib/phoenix_kit/newsletters/web/list_members.html.heex:232
+#: lib/phoenix_kit/newsletters/web/list_members.html.heex:86
 #, elixir-autogen
 msgid "No members found"
 msgstr "No members found"
 
-#: lib/phoenix_kit/newsletters/web/list_members.html.heex:235
+#: lib/phoenix_kit/newsletters/web/list_members.html.heex:89
 #, elixir-autogen
 msgid "Try changing the filter above."
 msgstr "Try changing the filter above."
 
-#: lib/phoenix_kit/newsletters/web/list_members.html.heex:237
+#: lib/phoenix_kit/newsletters/web/list_members.html.heex:90
 #, elixir-autogen
 msgid "This list has no subscribers yet."
 msgstr "This list has no subscribers yet."
 
-#: lib/phoenix_kit/newsletters/web/list_members.ex:176
+#: lib/phoenix_kit/newsletters/web/list_members.ex:179
 #, elixir-autogen
 msgid "Added %{count} user to the list"
 msgid_plural "Added %{count} users to the list"
 msgstr[0] "Added %{count} user to the list"
 msgstr[1] "Added %{count} users to the list"
 
-#: lib/phoenix_kit/newsletters/web/list_members.ex:70
+#: lib/phoenix_kit/newsletters/web/list_members.ex:73
 #, elixir-autogen
 msgid "%{count} active subscriber"
 msgid_plural "%{count} active subscribers"
 msgstr[0] "%{count} active subscriber"
 msgstr[1] "%{count} active subscribers"
 
-#: lib/phoenix_kit/newsletters/web/broadcast_editor.html.heex:33
+#: lib/phoenix_kit/newsletters/web/broadcast_editor.html.heex:35
 #, elixir-autogen, elixir-format
 msgid "%{name} (%{count} subscriber)"
 msgid_plural "%{name} (%{count} subscribers)"
 msgstr[0] "%{name} (%{count} subscriber)"
 msgstr[1] "%{name} (%{count} subscribers)"
 
-#: lib/phoenix_kit/newsletters/web/send_profiles.html.heex:67
-#, elixir-autogen, elixir-format
-msgid "%{count}/hr"
-msgstr ""
-
-#: lib/phoenix_kit/newsletters/web/send_profile_editor.html.heex:57
-#, elixir-autogen, elixir-format
-msgid "Acme Newsletter"
-msgstr ""
-
-#: lib/phoenix_kit/newsletters/web/send_profile_editor.html.heex:132
-#, elixir-autogen, elixir-format
-msgid "Advanced (JSON)"
-msgstr ""
-
-#: lib/phoenix_kit/newsletters/web/send_profile_editor.html.heex:124
-#, elixir-autogen, elixir-format
-msgid "Best,\nThe Team"
-msgstr ""
-
-#: lib/phoenix_kit/newsletters/web/send_profiles.ex:112
-#, elixir-autogen, elixir-format, fuzzy
-msgid "Cannot delete send profile"
-msgstr "Cannot delete list"
-
-#: lib/phoenix_kit/newsletters/web/send_profiles.ex:61
-#, elixir-autogen, elixir-format
-msgid "Could not set default send profile"
-msgstr ""
-
-#: lib/phoenix_kit/newsletters/web/send_profile_editor.ex:63
-#, elixir-autogen, elixir-format, fuzzy
-msgid "Create a new send profile"
-msgstr "Create a new newsletter list"
-
-#: lib/phoenix_kit/newsletters/web/send_profiles.html.heex:184
-#, elixir-autogen, elixir-format
-msgid "Create a send profile to choose how broadcasts are delivered."
-msgstr ""
-
-#: lib/phoenix_kit/newsletters/web/send_profiles.html.heex:187
-#, elixir-autogen, elixir-format, fuzzy
-msgid "Create first send profile"
-msgstr "Create first list"
-
-#: lib/phoenix_kit/newsletters/web/send_profile_editor.html.heex:149
-#, elixir-autogen, elixir-format
-msgid "Create send profile"
-msgstr ""
-
-#: lib/phoenix_kit/newsletters/web/send_profiles.ex:57
-#, elixir-autogen, elixir-format
-msgid "Default send profile updated"
-msgstr ""
-
-#: lib/phoenix_kit/newsletters/web/send_profiles.ex:72
-#, elixir-autogen, elixir-format
-msgid "Delete send profile"
-msgstr ""
-
-#: lib/phoenix_kit/newsletters/web/send_profiles.html.heex:76
-#: lib/phoenix_kit/newsletters/web/send_profiles.html.heex:135
-#, elixir-autogen, elixir-format
-msgid "Disabled"
-msgstr ""
-
-#: lib/phoenix_kit/newsletters/web/send_profile_editor.ex:48
-#, elixir-autogen, elixir-format
-msgid "Edit send profile settings"
-msgstr ""
-
-#: lib/phoenix_kit/newsletters/web/send_profile_editor.ex:47
-#, elixir-autogen, elixir-format
-msgid "Edit send profile: %{name}"
-msgstr ""
-
-#: lib/phoenix_kit/newsletters/web/send_profile_editor.html.heex:102
-#: lib/phoenix_kit/newsletters/web/send_profiles.html.heex:74
-#: lib/phoenix_kit/newsletters/web/send_profiles.html.heex:133
-#, elixir-autogen, elixir-format
-msgid "Enabled"
-msgstr ""
-
-#: lib/phoenix_kit/newsletters/web/send_profiles.html.heex:39
-#: lib/phoenix_kit/newsletters/web/send_profiles.html.heex:144
-#, elixir-autogen, elixir-format
-msgid "From"
-msgstr ""
-
-#: lib/phoenix_kit/newsletters/web/send_profile_editor.html.heex:63
-#, elixir-autogen, elixir-format
-msgid "From email"
-msgstr ""
-
-#: lib/phoenix_kit/newsletters/web/send_profile_editor.html.heex:53
-#, elixir-autogen, elixir-format
-msgid "From name"
-msgstr ""
-
-#: lib/phoenix_kit/newsletters/web/send_profile_editor.html.heex:29
-#, elixir-autogen, elixir-format
-msgid "Integration"
-msgstr ""
-
-#: lib/phoenix_kit/newsletters/web/send_profiles.html.heex:86
-#: lib/phoenix_kit/newsletters/web/send_profiles.html.heex:89
-#: lib/phoenix_kit/newsletters/web/send_profiles.html.heex:156
-#, elixir-autogen, elixir-format
-msgid "Make default"
-msgstr ""
-
-#: lib/phoenix_kit/newsletters/web/send_profile_editor.html.heex:48
-#, elixir-autogen, elixir-format
-msgid "Manage integrations under Settings → Integrations"
-msgstr ""
-
-#: lib/phoenix_kit/newsletters/web/send_profiles.ex:25
-#, elixir-autogen, elixir-format
-msgid "Manage send profiles used to deliver newsletter broadcasts"
-msgstr ""
-
-#: lib/phoenix_kit/newsletters/web/send_profile_editor.html.heex:22
-#, elixir-autogen, elixir-format
-msgid "Marketing"
-msgstr ""
-
-#: lib/phoenix_kit/newsletters/web/send_profiles.html.heex:182
-#, elixir-autogen, elixir-format
-msgid "No send profiles yet"
-msgstr ""
-
-#: lib/phoenix_kit/newsletters/web/send_profile_editor.html.heex:96
-#, elixir-autogen, elixir-format
-msgid "Pause between sends (seconds)"
-msgstr ""
-
-#: lib/phoenix_kit/newsletters/web/send_profiles.html.heex:38
-#: lib/phoenix_kit/newsletters/web/send_profiles.html.heex:141
-#, elixir-autogen, elixir-format
-msgid "Provider"
-msgstr ""
-
-#: lib/phoenix_kit/newsletters/web/send_profile_editor.html.heex:138
-#, elixir-autogen, elixir-format
-msgid "Provider-specific extras, e.g. an SES configuration set"
-msgstr ""
-
-#: lib/phoenix_kit/newsletters/web/send_profiles.html.heex:40
-#, elixir-autogen, elixir-format
-msgid "Rate"
-msgstr ""
-
-#: lib/phoenix_kit/newsletters/web/send_profile_editor.html.heex:90
-#, elixir-autogen, elixir-format
-msgid "Rate per day"
-msgstr ""
-
-#: lib/phoenix_kit/newsletters/web/send_profile_editor.html.heex:84
-#, elixir-autogen, elixir-format
-msgid "Rate per hour"
-msgstr ""
-
-#: lib/phoenix_kit/newsletters/web/send_profile_editor.html.heex:73
-#, elixir-autogen, elixir-format
-msgid "Reply-to"
-msgstr ""
-
-#: lib/phoenix_kit/newsletters/web/send_profile_editor.html.heex:33
-#, elixir-autogen, elixir-format, fuzzy
-msgid "Select an integration..."
-msgstr "Select a list..."
-
-#: lib/phoenix_kit/newsletters/web/send_profiles.ex:108
-#, elixir-autogen, elixir-format
-msgid "Send profile deleted"
-msgstr ""
-
-#: lib/phoenix_kit/newsletters/web/send_profile_editor.ex:55
-#, elixir-autogen, elixir-format
-msgid "Send profile not found"
-msgstr ""
-
-#: lib/phoenix_kit/newsletters/web/send_profile_editor.ex:90
-#, elixir-autogen, elixir-format
-msgid "Send profile saved successfully"
-msgstr ""
-
-#: lib/phoenix_kit/newsletters/web/send_profile_editor.html.heex:112
-#, elixir-autogen, elixir-format
-msgid "Signature (HTML)"
-msgstr ""
-
-#: lib/phoenix_kit/newsletters/web/send_profile_editor.html.heex:122
-#, elixir-autogen, elixir-format
-msgid "Signature (plain text)"
-msgstr ""
-
-#: lib/phoenix_kit/newsletters/web/send_profiles.ex:75
-#, elixir-autogen, elixir-format
-msgid "This send profile will be permanently deleted."
-msgstr ""
-
-#: lib/phoenix_kit/newsletters/web/send_profile_editor.html.heex:149
-#, elixir-autogen, elixir-format
-msgid "Update send profile"
-msgstr ""
-
-#: lib/phoenix_kit/newsletters/web/send_profile_editor.html.heex:104
-#, elixir-autogen, elixir-format
-msgid "Disabled profiles are never used to send, not even as the default."
-msgstr ""
-
-#: lib/phoenix_kit/newsletters/web/broadcast_details.ex:29
+#: lib/phoenix_kit/newsletters/web/broadcast_details.ex:30
 #, elixir-autogen, elixir-format
 msgid "Broadcast details"
 msgstr "Broadcast details"
+
+#: lib/phoenix_kit/newsletters/web/broadcasts.html.heex:18
+#, elixir-autogen, elixir-format
+msgid "Create first broadcast"
+msgstr "Create first broadcast"
+
+#: lib/phoenix_kit/newsletters/web/broadcasts.html.heex:82
+#, elixir-autogen, elixir-format
+msgid "View"
+msgstr "View"

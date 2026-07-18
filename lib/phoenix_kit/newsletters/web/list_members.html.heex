@@ -80,17 +80,16 @@
   </div>
 
   <%= if @members == [] do %>
-    <div class="text-center py-12">
-      <.icon name="hero-users" class="w-16 h-16 mx-auto mb-4 opacity-30" />
-      <h3 class="text-lg font-medium text-base-content mb-2">{gettext("No members found")}</h3>
-      <p class="text-base-content/70">
-        <%= if @status_filter != "" do %>
-          {gettext("Try changing the filter above.")}
-        <% else %>
-          {gettext("This list has no subscribers yet.")}
-        <% end %>
-      </p>
-    </div>
+    <.empty_state
+      variant="compact"
+      icon="hero-users"
+      title={gettext("No members found")}
+      description={
+        if @status_filter != "",
+          do: gettext("Try changing the filter above."),
+          else: gettext("This list has no subscribers yet.")
+      }
+    />
   <% else %>
     <.table_default
       id="list-members-table"
