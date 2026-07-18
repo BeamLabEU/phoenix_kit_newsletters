@@ -27,6 +27,7 @@ defmodule PhoenixKit.Newsletters.CRMSource do
   import Ecto.Query
 
   @lists_mod PhoenixKitCRM.Lists
+  @contacts_mod PhoenixKitCRM.Contacts
 
   # Built via Module.concat/1 at call time, not a module attribute — see
   # the moduledoc for why a module attribute doesn't avoid the
@@ -148,6 +149,56 @@ defmodule PhoenixKit.Newsletters.CRMSource do
       nil -> %{total: 0, sendable: 0, no_email: 0, unsendable: 0}
       result -> result
     end
+  end
+
+  @doc "Fetches a CRM contact by uuid. Returns nil if not found, invalid, or CRM isn't installed."
+  @spec get_contact(String.t() | nil) :: struct() | nil
+  def get_contact(nil), do: nil
+
+  def get_contact(uuid) do
+    if available?() do
+      soft_call(@contacts_mod, :get_contact, [uuid])
+    else
+      nil
+    end
+  end
+
+  @doc """
+  The membership (any status) currently holding `email` in the CRM list —
+  used to resolve a delivery's `recipient_email` back to a `contact_uuid`
+  for the unsubscribe token, and to detect an already-unsubscribed click
+  before re-removing (idempotency messaging).
+
+  Returns nil if not found, CRM isn't installed, or the list doesn't exist.
+  """
+  @spec get_member_by_email(String.t(), String.t()) :: struct() | nil
+  def get_member_by_email(crm_list_uuid, email) do
+    with true <- available?(),
+         %{} = list <- get_list(crm_list_uuid) do
+      soft_call(@lists_mod, :get_member_by_email, [list, email])
+    else
+      _ -> nil
+    end
+  end
+
+  @doc """
+  Unsubscribes a contact from one CRM list (soft: membership status →
+  `"removed"`). Idempotent — a contact already removed from the list
+  stays `{:ok, member}`; only a contact who was NEVER a member of this
+  list at all returns `{:error, :not_member}` (a stale/crafted token).
+  """
+  @spec remove_from_list(struct(), struct()) :: {:ok, struct()} | {:error, :not_member}
+  def remove_from_list(contact, list) do
+    soft_call(@lists_mod, :remove_from_list, [contact, list, []])
+  end
+
+  @doc """
+  Opts a contact out entirely — applies across every CRM list the contact
+  belongs to (opt-out lives on the contact, not the membership). Idempotent.
+  """
+  @spec opt_out(struct()) :: {:ok, struct()} | {:error, Ecto.Changeset.t()}
+  def opt_out(contact) do
+    soft_call(@lists_mod, :opt_out, [contact, [source: "unsubscribe_link"]])
   end
 
   defp repo, do: PhoenixKit.RepoHelper.repo()

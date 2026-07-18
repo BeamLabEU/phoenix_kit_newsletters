@@ -238,6 +238,116 @@ defmodule PhoenixKit.Newsletters.Workers.DeliveryWorkerTest do
     end
   end
 
+  describe "maybe_put_list_unsubscribe_headers/3" do
+    test "adds List-Unsubscribe + List-Unsubscribe-Post for a crm_list broadcast with a resolved url" do
+      broadcast = %Broadcast{source_type: "crm_list"}
+      email = Swoosh.Email.new()
+
+      result =
+        DeliveryWorker.maybe_put_list_unsubscribe_headers(
+          email,
+          broadcast,
+          "https://example.com/newsletters/unsubscribe/one-click?token=abc"
+        )
+
+      assert result.headers["List-Unsubscribe"] ==
+               "<https://example.com/newsletters/unsubscribe/one-click?token=abc>"
+
+      assert result.headers["List-Unsubscribe-Post"] == "List-Unsubscribe=One-Click"
+    end
+
+    test "adds nothing for a crm_list broadcast when the url didn't resolve (empty string)" do
+      broadcast = %Broadcast{source_type: "crm_list"}
+      email = Swoosh.Email.new()
+
+      result = DeliveryWorker.maybe_put_list_unsubscribe_headers(email, broadcast, "")
+
+      refute Map.has_key?(result.headers, "List-Unsubscribe")
+      refute Map.has_key?(result.headers, "List-Unsubscribe-Post")
+    end
+
+    test "adds nothing for a newsletters_list broadcast, even with a resolved url" do
+      broadcast = %Broadcast{source_type: "newsletters_list"}
+      email = Swoosh.Email.new()
+
+      result =
+        DeliveryWorker.maybe_put_list_unsubscribe_headers(
+          email,
+          broadcast,
+          "https://example.com/newsletters/unsubscribe/one-click?token=abc"
+        )
+
+      refute Map.has_key?(result.headers, "List-Unsubscribe")
+      refute Map.has_key?(result.headers, "List-Unsubscribe-Post")
+    end
+  end
+
+  describe "perform/1 — List-Unsubscribe headers on the sent email" do
+    setup :set_swoosh_global
+
+    test "a crm_list send with no resolvable link adds no headers and doesn't crash; a newsletters_list send is unaffected" do
+      PhoenixKit.Settings.update_setting("from_name", "My Newsletter")
+      PhoenixKit.Settings.update_setting("from_email", "news@example.com")
+
+      # crm_list broadcast — recipient_email path. CRM isn't installed in
+      # this suite (see CRMSourceTest's moduledoc), so the personalized
+      # link can never resolve here; this proves that degrades safely
+      # (no crash, no header with an empty url) rather than the
+      # header-adding logic itself — that's maybe_put_list_unsubscribe_headers/3
+      # above, tested directly with a synthetic resolved url.
+      crm_broadcast =
+        create_broadcast(%{
+          subject: "CRM send",
+          source_type: "crm_list",
+          crm_list_uuid: Ecto.UUID.generate(),
+          list_uuid: nil,
+          html_body: "<p>Hi</p>",
+          text_body: "Hi"
+        })
+
+      {:ok, crm_delivery} =
+        %Delivery{}
+        |> Delivery.changeset(%{
+          broadcast_uuid: crm_broadcast.uuid,
+          recipient_email: "crm-recipient@example.com"
+        })
+        |> Repo.insert()
+
+      assert :ok =
+               DeliveryWorker.perform(%Oban.Job{
+                 args: %{
+                   "delivery_uuid" => crm_delivery.uuid,
+                   "broadcast_uuid" => crm_broadcast.uuid
+                 }
+               })
+
+      assert_email_sent(fn email ->
+        assert email.to == [{"", "crm-recipient@example.com"}]
+        assert Map.has_key?(email.headers, "List-Unsubscribe") == false
+      end)
+
+      # newsletters_list broadcast — the original path, must show no new
+      # headers at all (byte-for-byte prior behavior).
+      user = create_user()
+      list_broadcast = create_broadcast(%{subject: "List send", html_body: "<p>Hi</p>"})
+      list_delivery = create_delivery(list_broadcast, user)
+
+      assert :ok =
+               DeliveryWorker.perform(%Oban.Job{
+                 args: %{
+                   "delivery_uuid" => list_delivery.uuid,
+                   "broadcast_uuid" => list_broadcast.uuid
+                 }
+               })
+
+      assert_email_sent(fn email ->
+        assert email.to == [{"", user.email}]
+        assert Map.has_key?(email.headers, "List-Unsubscribe") == false
+        assert Map.has_key?(email.headers, "List-Unsubscribe-Post") == false
+      end)
+    end
+  end
+
   describe "permanent_failure?/1 — blocked/unusable sends must not retry nor count as bounces" do
     test "blocklisted recipients and unusable integrations are permanent" do
       assert DeliveryWorker.permanent_failure?({:blocked, :blocklist})

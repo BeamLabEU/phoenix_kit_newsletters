@@ -33,6 +33,7 @@ defmodule PhoenixKit.Newsletters.Workers.DeliveryWorker do
   alias PhoenixKit.Email.SendProfiles
   alias PhoenixKit.Newsletters
   alias PhoenixKit.Newsletters.Broadcast
+  alias PhoenixKit.Newsletters.CRMSource
   alias PhoenixKit.Newsletters.Delivery
   alias PhoenixKit.Utils.Date, as: UtilsDate
   alias PhoenixKit.Utils.Routes
@@ -44,8 +45,17 @@ defmodule PhoenixKit.Newsletters.Workers.DeliveryWorker do
     with {:ok, delivery} <- get_delivery(delivery_uuid),
          {:ok, broadcast} <- get_broadcast(broadcast_uuid),
          {:ok, recipient} <- get_recipient(delivery),
-         {:ok, html_body, text_body} <- render_email(broadcast, recipient),
-         {:ok, result} <- send_email(broadcast, recipient, html_body, text_body) do
+         {unsubscribe_url, list_unsubscribe_url} = build_unsubscribe_url(recipient, broadcast),
+         {:ok, html_body, text_body} <- render_email(broadcast, recipient, unsubscribe_url),
+         {:ok, result} <-
+           send_email(
+             broadcast,
+             recipient,
+             html_body,
+             text_body,
+             unsubscribe_url,
+             list_unsubscribe_url
+           ) do
       message_id = Map.get(result, :id)
 
       Newsletters.update_delivery_status(delivery, "sent", %{
@@ -140,8 +150,8 @@ defmodule PhoenixKit.Newsletters.Workers.DeliveryWorker do
 
   defp get_recipient(%Delivery{}), do: {:error, :no_recipient}
 
-  defp render_email(broadcast, recipient) do
-    variables = build_variables(broadcast, recipient)
+  defp render_email(broadcast, recipient, unsubscribe_url) do
+    variables = build_variables(recipient, unsubscribe_url)
     html = substitute_variables(broadcast.html_body || "", variables)
     text = substitute_variables(broadcast.text_body || "", variables)
 
@@ -150,29 +160,59 @@ defmodule PhoenixKit.Newsletters.Workers.DeliveryWorker do
     {:ok, html, text}
   end
 
-  defp build_variables(broadcast, recipient) do
+  defp build_variables(recipient, unsubscribe_url) do
     %{
       "name" => recipient.username || recipient.email,
       "email" => recipient.email,
-      "unsubscribe_url" => build_unsubscribe_url(recipient, broadcast)
+      "unsubscribe_url" => unsubscribe_url
     }
   end
 
-  # nil uuid means a CRM-sourced recipient — no core User / newsletters
-  # ListMember exists to key a personalized unsubscribe token off.
-  # TODO: product decision pending on how CRM-sourced broadcasts handle
-  # unsubscribe (no link vs. a CRM-flavored token+landing page vs. a plain
-  # List-Unsubscribe header) — this is the simplest placeholder (no link)
-  # until that's decided.
-  defp build_unsubscribe_url(%{uuid: nil}, _broadcast), do: ""
-
-  defp build_unsubscribe_url(recipient, broadcast) do
-    token_data = %{user_uuid: recipient.uuid, list_uuid: broadcast.list_uuid}
-    endpoint = PhoenixKit.Config.get(:endpoint, PhoenixKitWeb.Endpoint)
-    unsubscribe_token = Phoenix.Token.sign(endpoint, "unsubscribe", token_data)
-
-    Routes.url("/newsletters/unsubscribe?token=#{unsubscribe_token}")
+  # newsletters-list recipient: the original user_uuid/list_uuid token,
+  # unchanged — verified by the existing flavor in UnsubscribeController.
+  # No List-Unsubscribe headers on this path (maybe_put_list_unsubscribe_headers/3
+  # only fires for crm_list broadcasts), so the second element is unused.
+  defp build_unsubscribe_url(%{uuid: uuid} = recipient, broadcast) when is_binary(uuid) do
+    token = sign_unsubscribe_token(%{user_uuid: recipient.uuid, list_uuid: broadcast.list_uuid})
+    {unsubscribe_page_url(token), nil}
   end
+
+  # crm_list recipient: no core User exists, so the token carries
+  # contact_uuid/crm_list_uuid instead — resolved by looking the
+  # delivery's snapshotted email back up in the CRM list (the same
+  # lookup Broadcaster's resolver already relies on being unique per
+  # list). No match (contact/list gone since send time) means no
+  # personalized link rather than a broken one. Two URLs share the same
+  # signed token: the interactive landing page (email body link, behind
+  # the host's normal CSRF-protected :browser pipeline) and the
+  # dedicated one-click endpoint (List-Unsubscribe headers, CSRF-exempt
+  # by design — see Web.Routes) — they must differ because a mail
+  # client's cold POST can never carry a CSRF token.
+  defp build_unsubscribe_url(%{uuid: nil, email: email}, %{crm_list_uuid: crm_list_uuid})
+       when is_binary(crm_list_uuid) do
+    case CRMSource.get_member_by_email(crm_list_uuid, email) do
+      %{contact_uuid: contact_uuid} ->
+        token =
+          sign_unsubscribe_token(%{contact_uuid: contact_uuid, crm_list_uuid: crm_list_uuid})
+
+        {unsubscribe_page_url(token), one_click_unsubscribe_url(token)}
+
+      nil ->
+        {"", nil}
+    end
+  end
+
+  defp build_unsubscribe_url(_recipient, _broadcast), do: {"", nil}
+
+  defp sign_unsubscribe_token(token_data) do
+    endpoint = PhoenixKit.Config.get(:endpoint, PhoenixKitWeb.Endpoint)
+    Phoenix.Token.sign(endpoint, "unsubscribe", token_data)
+  end
+
+  defp unsubscribe_page_url(token), do: Routes.url("/newsletters/unsubscribe?token=#{token}")
+
+  defp one_click_unsubscribe_url(token),
+    do: Routes.url("/newsletters/unsubscribe/one-click?token=#{token}")
 
   defp substitute_variables(content, variables) do
     Enum.reduce(variables, content, fn {key, value}, acc ->
@@ -202,10 +242,35 @@ defmodule PhoenixKit.Newsletters.Workers.DeliveryWorker do
     end
   end
 
-  defp send_email(broadcast, recipient, html_body, text_body) do
+  defp send_email(
+         broadcast,
+         recipient,
+         html_body,
+         text_body,
+         unsubscribe_url,
+         list_unsubscribe_url
+       ) do
     case resolve_send_profile(broadcast) do
-      nil -> send_email_legacy(broadcast, recipient, html_body, text_body)
-      profile -> deliver_profile_email(profile, broadcast, recipient, html_body, text_body)
+      nil ->
+        send_email_legacy(
+          broadcast,
+          recipient,
+          html_body,
+          text_body,
+          unsubscribe_url,
+          list_unsubscribe_url
+        )
+
+      profile ->
+        deliver_profile_email(
+          profile,
+          broadcast,
+          recipient,
+          html_body,
+          text_body,
+          unsubscribe_url,
+          list_unsubscribe_url
+        )
     end
   end
 
@@ -237,7 +302,14 @@ defmodule PhoenixKit.Newsletters.Workers.DeliveryWorker do
 
   # No profile resolved — unchanged from the original single-Mailer
   # behavior, so existing user-list broadcasts keep sending identically.
-  defp send_email_legacy(broadcast, recipient, html_body, text_body) do
+  defp send_email_legacy(
+         broadcast,
+         recipient,
+         html_body,
+         text_body,
+         _unsubscribe_url,
+         list_unsubscribe_url
+       ) do
     from_email = PhoenixKit.Settings.get_setting("from_email", "noreply@example.com")
     from_name = PhoenixKit.Settings.get_setting("from_name", "Newsletter")
 
@@ -247,14 +319,43 @@ defmodule PhoenixKit.Newsletters.Workers.DeliveryWorker do
     |> Swoosh.Email.subject(broadcast.subject)
     |> Swoosh.Email.html_body(html_body)
     |> Swoosh.Email.text_body(text_body)
+    |> maybe_put_list_unsubscribe_headers(broadcast, list_unsubscribe_url)
     |> PhoenixKit.Mailer.deliver_email()
   end
 
-  defp deliver_profile_email(profile, broadcast, recipient, html_body, text_body) do
+  defp deliver_profile_email(
+         profile,
+         broadcast,
+         recipient,
+         html_body,
+         text_body,
+         _unsubscribe_url,
+         list_unsubscribe_url
+       ) do
     profile
     |> build_profile_email(broadcast, recipient, html_body, text_body)
+    |> maybe_put_list_unsubscribe_headers(broadcast, list_unsubscribe_url)
     |> PhoenixKit.Mailer.deliver_via_integration(profile.integration_uuid)
   end
+
+  @doc false
+  # RFC 8058 — only for crm_list-sourced broadcasts (newsletters_list
+  # broadcasts keep their prior behavior exactly, no new headers) and
+  # only when a personalized link actually resolved. `url` is the
+  # dedicated one-click endpoint (Web.Routes' CSRF-exempt pipeline), NOT
+  # the interactive landing-page URL used in the email body — a mail
+  # client's cold POST can never carry a CSRF token, so it must target a
+  # different route. Not `defp` so it can be unit-tested directly
+  # without needing a real CRM-resolved url — same rationale as
+  # `resolve_send_profile/1`/`build_profile_email/5` above.
+  def maybe_put_list_unsubscribe_headers(email, %Broadcast{source_type: "crm_list"}, url)
+      when is_binary(url) and url != "" do
+    email
+    |> Swoosh.Email.header("List-Unsubscribe", "<#{url}>")
+    |> Swoosh.Email.header("List-Unsubscribe-Post", "List-Unsubscribe=One-Click")
+  end
+
+  def maybe_put_list_unsubscribe_headers(email, _broadcast, _url), do: email
 
   @doc false
   # Builds the Swoosh.Email for a profile-routed send: identity
