@@ -9,6 +9,7 @@ defmodule PhoenixKit.Newsletters.Web.ListEditor do
   import PhoenixKitWeb.Components.Core.Checkbox
   import PhoenixKitWeb.Components.Core.Icon
   import PhoenixKitWeb.Components.Core.Input
+  import PhoenixKitWeb.Components.Core.PkLink
 
   alias PhoenixKit.Newsletters
   alias PhoenixKit.Newsletters.List

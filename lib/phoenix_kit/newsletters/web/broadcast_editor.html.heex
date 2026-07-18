@@ -80,6 +80,9 @@
 
         <%!-- Actions --%>
         <div class="flex flex-col sm:flex-row gap-3 pt-2">
+          <.pk_link navigate="/admin/newsletters/broadcasts" class="btn btn-ghost btn-sm">
+            {gettext("Cancel")}
+          </.pk_link>
           <button type="submit" class="btn btn-outline btn-sm" disabled={@saving}>
             <%= if @saving do %>
               <span class="loading loading-spinner loading-xs"></span>

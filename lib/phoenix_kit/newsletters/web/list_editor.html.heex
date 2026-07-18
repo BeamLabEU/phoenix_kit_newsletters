@@ -75,6 +75,9 @@
           </div>
 
           <div class="flex justify-end gap-2 mt-6">
+            <.pk_link navigate="/admin/newsletters/lists" class="btn btn-ghost">
+              {gettext("Cancel")}
+            </.pk_link>
             <button type="submit" class="btn btn-primary">
               <.icon name="hero-check" class="w-4 h-4 mr-1" />
               {if @list, do: gettext("Update list"), else: gettext("Create list")}
