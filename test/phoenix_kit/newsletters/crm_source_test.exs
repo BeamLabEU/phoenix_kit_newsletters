@@ -77,14 +77,15 @@ defmodule PhoenixKit.Newsletters.CRMSourceTest do
     assert CRMSource.sendable_recipients(list.uuid) == []
   end
 
-  # sendable_recipients/1 defensively dedups by downcased email
-  # (Enum.uniq_by), but that path is actually unreachable given the
-  # schema: idx_crm_list_members_list_email is a UNIQUE index on
+  # sendable_recipients/1 dedups by downcased email (Enum.uniq_by), but
+  # that path can't trigger from a single list today — confirmed here
+  # directly: idx_crm_list_members_list_email is a UNIQUE index on
   # (list_uuid, email) over a CITEXT column, so Postgres itself refuses a
   # second member on the same list holding a case-insensitively-equal
-  # email — confirmed here directly, which is what the dedup logic
-  # guards against ever mattering.
-  test "a list cannot hold two members with the same email (case-insensitively) — the invariant sendable_recipients/1's dedup defends",
+  # email. The dedup (and sendable_query/1's deterministic order_by) stay
+  # in place for when a caller merges recipients across multiple lists,
+  # where this constraint no longer protects against duplicates.
+  test "a list cannot hold two members with the same email (case-insensitively)",
        %{list: list} do
     shared_email = "dup-#{System.unique_integer([:positive])}@example.com"
     contact_a = add_contact(%{email: shared_email})

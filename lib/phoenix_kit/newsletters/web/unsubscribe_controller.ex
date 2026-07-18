@@ -14,12 +14,15 @@ defmodule PhoenixKit.Newsletters.Web.UnsubscribeController do
   # The token carries one of two claim shapes, set at send time by
   # DeliveryWorker.build_unsubscribe_url/2:
   #   - %{user_uuid:, list_uuid:} — newsletters-list broadcast (original
-  #     flavor). Shows the list/all choice page — unchanged.
-  #   - %{contact_uuid:, crm_list_uuid:} — crm_list broadcast. No
-  #     newsletters ListMember/User exists for the contact, so this
-  #     flavor unsubscribes from the specific list immediately on GET
-  #     (see handle_crm_unsubscribe/4) and offers "unsubscribe from all"
-  #     as a secondary action on the confirmation page.
+  #     flavor). Shows the list/all choice page — never mutates on GET.
+  #   - %{contact_uuid:, crm_list_uuid:} — crm_list broadcast. Renders a
+  #     confirm page (see render_crm_confirm/4) — also never mutates on
+  #     GET, matching flavor-A: corporate link-scanners/antivirus tools
+  #     routinely GET every link found in an email body, and a GET that
+  #     silently unsubscribed people would be exactly that footgun. The
+  #     actual removal only happens on POST (process_unsubscribe/2 below).
+  #     RFC 8058's one-click automation is unaffected — it lives entirely
+  #     at the separate /newsletters/unsubscribe/one-click endpoint.
   def unsubscribe(conn, %{"token" => token}) do
     case verify_token(token) do
       {:ok, %{user_uuid: user_uuid, list_uuid: list_uuid}} ->
@@ -34,7 +37,7 @@ defmodule PhoenixKit.Newsletters.Web.UnsubscribeController do
         |> render(:unsubscribe)
 
       {:ok, %{contact_uuid: contact_uuid, crm_list_uuid: crm_list_uuid}} ->
-        handle_crm_unsubscribe(conn, token, contact_uuid, crm_list_uuid)
+        render_crm_confirm(conn, token, contact_uuid, crm_list_uuid)
 
       {:error, _reason} ->
         conn
@@ -49,9 +52,10 @@ defmodule PhoenixKit.Newsletters.Web.UnsubscribeController do
     |> redirect(to: Routes.path("/"))
   end
 
-  # POST /newsletters/unsubscribe — process the choice (flavor-A "list" is
-  # only ever reached from that flavor's own page; a crm_list token never
-  # renders the button that would submit this).
+  # POST /newsletters/unsubscribe — process the choice. Flavor-A redirects
+  # home with a flash (its own existing UX); the crm_list flavor re-renders
+  # the same confirm page in its "unsubscribed" state, since it already
+  # carries the list's name for the message.
   def process_unsubscribe(conn, %{"token" => token, "scope" => "list"}) do
     case verify_token(token) do
       {:ok, %{user_uuid: user_uuid, list_uuid: list_uuid}} ->
@@ -60,6 +64,9 @@ defmodule PhoenixKit.Newsletters.Web.UnsubscribeController do
         conn
         |> put_flash(:info, "You have been unsubscribed from this list.")
         |> redirect(to: Routes.path("/"))
+
+      {:ok, %{contact_uuid: contact_uuid, crm_list_uuid: crm_list_uuid}} ->
+        handle_crm_list_unsubscribe(conn, token, contact_uuid, crm_list_uuid)
 
       _ ->
         conn
@@ -154,34 +161,56 @@ defmodule PhoenixKit.Newsletters.Web.UnsubscribeController do
     )
   end
 
-  # Removes the contact from the one list immediately (no confirmation
-  # step — clicking the emailed link IS the action, matching standard
-  # one-click-unsubscribe UX), then renders a confirmation with a
-  # secondary "unsubscribe from all" action. Idempotent either way:
-  # Lists.remove_from_list/3 is a no-op {:ok, member} on an already-removed
-  # membership, and {:error, :not_member} (a stale/crafted token — the
-  # contact was never on this list at all) renders the invalid-link state
-  # instead of crashing.
-  defp handle_crm_unsubscribe(conn, token, contact_uuid, crm_list_uuid) do
+  # GET — read-only. Resolves the list/contact and whether the contact is
+  # already removed from this list (purely for the message shown; never
+  # mutates), then renders one of three states via @crm_state:
+  #   :confirm             — not yet unsubscribed, offers the POST button
+  #   :already_unsubscribed — already removed, no action needed
+  #   :invalid              — list/contact/token doesn't resolve
+  defp render_crm_confirm(conn, token, contact_uuid, crm_list_uuid) do
+    with %{} = list <- CRMSource.get_list(crm_list_uuid),
+         %{} = contact <- CRMSource.get_contact(contact_uuid) do
+      state =
+        if already_unsubscribed?(crm_list_uuid, contact.email),
+          do: :already_unsubscribed,
+          else: :confirm
+
+      conn
+      |> assign(:token, token)
+      |> assign(:crm_list, list)
+      |> assign(:crm_state, state)
+      |> render(:crm_unsubscribe)
+    else
+      _ -> render_crm_invalid(conn, token)
+    end
+  end
+
+  # POST — the actual mutation. Idempotent: CRMSource.remove_from_list/2 is
+  # a no-op {:ok, member} on an already-removed membership (a repeat POST,
+  # e.g. a double-click, re-renders the same :unsubscribed state rather
+  # than crashing or double-decrementing); {:error, :not_member} (a stale/
+  # crafted token — the contact was never on this list at all) renders the
+  # invalid-link state instead.
+  defp handle_crm_list_unsubscribe(conn, token, contact_uuid, crm_list_uuid) do
     with %{} = list <- CRMSource.get_list(crm_list_uuid),
          %{} = contact <- CRMSource.get_contact(contact_uuid),
-         already? = already_unsubscribed?(crm_list_uuid, contact.email),
          {:ok, _member} <- CRMSource.remove_from_list(contact, list) do
       conn
       |> assign(:token, token)
       |> assign(:crm_list, list)
-      |> assign(:crm_invalid, false)
-      |> assign(:crm_already_unsubscribed?, already?)
+      |> assign(:crm_state, :unsubscribed)
       |> render(:crm_unsubscribe)
     else
-      _ ->
-        conn
-        |> assign(:token, token)
-        |> assign(:crm_list, nil)
-        |> assign(:crm_invalid, true)
-        |> assign(:crm_already_unsubscribed?, false)
-        |> render(:crm_unsubscribe)
+      _ -> render_crm_invalid(conn, token)
     end
+  end
+
+  defp render_crm_invalid(conn, token) do
+    conn
+    |> assign(:token, token)
+    |> assign(:crm_list, nil)
+    |> assign(:crm_state, :invalid)
+    |> render(:crm_unsubscribe)
   end
 
   # Best-effort "was this already removed" check, purely for the landing

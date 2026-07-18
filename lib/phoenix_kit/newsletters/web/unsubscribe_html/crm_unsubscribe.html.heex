@@ -3,18 +3,32 @@
     <div class="card-body">
       <h2 class="card-title text-lg">Manage Email Subscriptions</h2>
 
-      <%= if @crm_invalid do %>
+      <%= if @crm_state == :invalid do %>
         <div class="alert alert-warning text-sm">
           <span>This unsubscribe link is no longer valid.</span>
         </div>
       <% else %>
         <p class="text-sm text-base-content/70">
-          <%= if @crm_already_unsubscribed? do %>
-            You were already unsubscribed from <span class="font-semibold">{@crm_list.name}</span>.
-          <% else %>
-            You've been unsubscribed from <span class="font-semibold">{@crm_list.name}</span>.
+          <%= case @crm_state do %>
+            <% :confirm -> %>
+              Unsubscribe from <span class="font-semibold">{@crm_list.name}</span>?
+            <% :already_unsubscribed -> %>
+              You were already unsubscribed from <span class="font-semibold">{@crm_list.name}</span>.
+            <% :unsubscribed -> %>
+              You've been unsubscribed from <span class="font-semibold">{@crm_list.name}</span>.
           <% end %>
         </p>
+
+        <%= if @crm_state == :confirm do %>
+          <form method="post" action={PhoenixKit.Utils.Routes.path("/newsletters/unsubscribe")}>
+            <input type="hidden" name="_csrf_token" value={Plug.CSRFProtection.get_csrf_token()} />
+            <input type="hidden" name="token" value={@token} />
+            <input type="hidden" name="scope" value="list" />
+            <button type="submit" class="btn btn-warning btn-outline btn-block">
+              Unsubscribe from this list
+            </button>
+          </form>
+        <% end %>
 
         <div class="divider text-xs text-base-content/50">OR</div>
 

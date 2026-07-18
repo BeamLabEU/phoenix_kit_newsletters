@@ -63,11 +63,15 @@ defmodule PhoenixKit.Newsletters.CRMSource do
   end
 
   @doc """
-  Sendable recipients of a CRM list — deduplicated by (downcased) email,
-  since two memberships could in principle share a mailbox. The list's own
-  per-list email uniqueness index makes an in-list duplicate rare, but the
-  dedup stays as a defensive guarantee against ever double-sending to one
-  address. Empty for an archived list — see `sendable_query/1`.
+  Sendable recipients of a CRM list — deduplicated by (downcased) email.
+  Within a single list this can't currently happen at all
+  (`idx_crm_list_members_list_email` is a per-list CITEXT-unique index —
+  confirmed directly in `CRMSourceTest`), but this resolver is written to
+  take one `crm_list_uuid`, and a future caller merging recipients across
+  *several* lists (a broadcast targeting more than one list, say) would
+  hit real duplicates the moment that lands — the dedup, and
+  `sendable_query/1`'s `order_by`, are already in place for that. Empty
+  for an archived list — see `sendable_query/1`.
 
   Returns `[%{contact_uuid: uuid, email: string}]`.
   """

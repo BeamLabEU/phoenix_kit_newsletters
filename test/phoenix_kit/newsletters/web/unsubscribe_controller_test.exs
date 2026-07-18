@@ -67,8 +67,16 @@ defmodule PhoenixKit.Newsletters.Web.UnsubscribeControllerTest do
   # one_click_unsubscribe/2 require a running PhoenixKitWeb.Endpoint (for
   # Phoenix.Token.verify) and, for one_click_unsubscribe/2, the dedicated
   # CSRF-exempt route wired in Web.Routes — these were verified live
-  # against a running host app rather than here. That includes confirming
-  # the one-click POST is actually reachable without a session/CSRF token
-  # (unlike the shared /newsletters/unsubscribe POST, which stays behind
-  # the host's normal :browser pipeline).
+  # against a running host app rather than here. That includes confirming:
+  #   - the one-click POST is reachable without a session/CSRF token
+  #     (unlike the shared /newsletters/unsubscribe POST, which stays
+  #     behind the host's normal :browser pipeline);
+  #   - a crm_list token's GET never mutates (a corporate link-scanner
+  #     GETting the emailed link must not silently unsubscribe someone) —
+  #     confirmed the membership status is unchanged after a GET, and only
+  #     flips on the follow-up POST scope=list;
+  #   - idempotency end-to-end: a second GET after the POST shows "already
+  #     unsubscribed" instead of the confirm prompt, and a second POST
+  #     re-renders "unsubscribed" without crashing or re-decrementing the
+  #     list's subscriber_count cache.
 end
