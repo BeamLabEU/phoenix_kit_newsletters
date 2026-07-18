@@ -3,6 +3,8 @@
   phoenix_kit_current_scope={assigns[:phoenix_kit_current_scope]}
   page_title={@page_title}
   page_subtitle={@page_subtitle}
+  page_section={@page_section}
+  page_section_path={@page_section_path}
   current_path={@url_path}
   project_title={@project_title}
 >
@@ -73,9 +75,6 @@
           </div>
 
           <div class="flex justify-end gap-2 mt-6">
-            <.pk_link navigate="/admin/newsletters/lists" class="btn btn-ghost">
-              {gettext("Cancel")}
-            </.pk_link>
             <button type="submit" class="btn btn-primary">
               <.icon name="hero-check" class="w-4 h-4 mr-1" />
               {if @list, do: gettext("Update list"), else: gettext("Create list")}

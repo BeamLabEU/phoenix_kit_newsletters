@@ -22,21 +22,16 @@
   <% end %>
 
   <%= if @lists == [] do %>
-    <div class="flex justify-end mb-6">
-      <.pk_link navigate="/admin/newsletters/lists/new" class="btn btn-sm btn-primary">
-        <.icon name="hero-plus" class="w-4 h-4 mr-1" /> {gettext("New list")}
+    <.empty_state
+      variant="featured"
+      icon="hero-list-bullet"
+      title={gettext("No newsletter lists yet")}
+      description={gettext("Create your first list to start managing subscribers.")}
+    >
+      <.pk_link navigate="/admin/newsletters/lists/new" class="btn btn-primary btn-lg">
+        <.icon name="hero-plus" class="w-5 h-5 mr-2" /> {gettext("Create first list")}
       </.pk_link>
-    </div>
-    <div class="text-center py-12">
-      <.icon name="hero-list-bullet" class="w-16 h-16 mx-auto mb-4 opacity-30" />
-      <h3 class="text-lg font-medium text-base-content mb-2">{gettext("No newsletter lists yet")}</h3>
-      <p class="text-base-content/70 mb-4">
-        {gettext("Create your first list to start managing subscribers.")}
-      </p>
-      <.pk_link navigate="/admin/newsletters/lists/new" class="btn btn-primary btn-sm">
-        <.icon name="hero-plus" class="w-4 h-4 mr-1" /> {gettext("Create first list")}
-      </.pk_link>
-    </div>
+    </.empty_state>
   <% else %>
     <.table_default
       id="newsletter-lists-table"

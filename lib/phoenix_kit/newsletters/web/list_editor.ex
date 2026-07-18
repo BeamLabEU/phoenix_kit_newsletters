@@ -9,7 +9,6 @@ defmodule PhoenixKit.Newsletters.Web.ListEditor do
   import PhoenixKitWeb.Components.Core.Checkbox
   import PhoenixKitWeb.Components.Core.Icon
   import PhoenixKitWeb.Components.Core.Input
-  import PhoenixKitWeb.Components.Core.PkLink
 
   alias PhoenixKit.Newsletters
   alias PhoenixKit.Newsletters.List
@@ -22,6 +21,8 @@ defmodule PhoenixKit.Newsletters.Web.ListEditor do
       socket =
         socket
         |> assign(:list, nil)
+        |> assign(:page_section, gettext("Lists"))
+        |> assign(:page_section_path, Routes.path("/admin/newsletters/lists"))
         |> assign(:project_title, Settings.get_project_title())
 
       {:ok, socket}
