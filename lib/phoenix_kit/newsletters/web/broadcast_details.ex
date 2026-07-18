@@ -12,6 +12,7 @@ defmodule PhoenixKit.Newsletters.Web.BroadcastDetails do
   import PhoenixKitWeb.Components.Core.TableDefault
 
   alias PhoenixKit.Newsletters
+  alias PhoenixKit.Newsletters.CRMSource
   alias PhoenixKit.Settings
   alias PhoenixKit.Utils.Routes
 
@@ -35,6 +36,8 @@ defmodule PhoenixKit.Newsletters.Web.BroadcastDetails do
         |> assign(:broadcast, nil)
         |> assign(:deliveries, [])
         |> assign(:delivery_stats, %{})
+        |> assign(:crm_list, nil)
+        |> assign(:crm_preflight, nil)
         |> assign(:loading, true)
         |> assign(:show_confirm_modal, false)
         |> assign(:confirm_action, nil)
@@ -125,6 +128,8 @@ defmodule PhoenixKit.Newsletters.Web.BroadcastDetails do
       |> assign(:broadcast, broadcast)
       |> assign(:deliveries, deliveries)
       |> assign(:delivery_stats, stats)
+      |> assign(:crm_list, CRMSource.get_list(broadcast.crm_list_uuid))
+      |> assign(:crm_preflight, crm_preflight(broadcast))
       |> assign(:loading, false)
       |> assign(:page_title, broadcast.subject)
     rescue
@@ -135,6 +140,13 @@ defmodule PhoenixKit.Newsletters.Web.BroadcastDetails do
         |> push_navigate(to: Routes.path("/admin/newsletters/broadcasts"))
     end
   end
+
+  defp crm_preflight(%{source_type: "crm_list", crm_list_uuid: crm_list_uuid})
+       when is_binary(crm_list_uuid) do
+    CRMSource.preflight(crm_list_uuid)
+  end
+
+  defp crm_preflight(_broadcast), do: nil
 
   def status_label(status), do: gettext_status(status)
 
@@ -177,6 +189,13 @@ defmodule PhoenixKit.Newsletters.Web.BroadcastDetails do
       _ -> "badge-ghost"
     end
   end
+
+  # A delivery is addressable by a core User (newsletters-list broadcast)
+  # or a snapshotted recipient_email (CRM-list broadcast) — see
+  # Delivery's moduledoc.
+  def recipient_display(%{user: %{email: email}}), do: email
+  def recipient_display(%{recipient_email: email}) when is_binary(email), do: email
+  def recipient_display(%{user_uuid: user_uuid}), do: user_uuid
 
   defp format_datetime(nil), do: "-"
 

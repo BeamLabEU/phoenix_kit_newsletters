@@ -43,9 +43,9 @@ defmodule PhoenixKit.Newsletters.Workers.DeliveryWorker do
       }) do
     with {:ok, delivery} <- get_delivery(delivery_uuid),
          {:ok, broadcast} <- get_broadcast(broadcast_uuid),
-         {:ok, user} <- get_user(delivery.user_uuid),
-         {:ok, html_body, text_body} <- render_email(broadcast, user),
-         {:ok, result} <- send_email(broadcast, user, html_body, text_body) do
+         {:ok, recipient} <- get_recipient(delivery),
+         {:ok, html_body, text_body} <- render_email(broadcast, recipient),
+         {:ok, result} <- send_email(broadcast, recipient, html_body, text_body) do
       message_id = Map.get(result, :id)
 
       Newsletters.update_delivery_status(delivery, "sent", %{
@@ -124,8 +124,24 @@ defmodule PhoenixKit.Newsletters.Workers.DeliveryWorker do
     end
   end
 
-  defp render_email(broadcast, user) do
-    variables = build_variables(broadcast, user)
+  # The recipient is either a core User (newsletters-list broadcast — the
+  # original path, unchanged) or a plain map standing in for one (crm_list
+  # broadcast — no core User exists for most CRM contacts). Both shapes
+  # answer `.email`/`.username`/`.uuid`, so render_email/2 and send_email/4
+  # below don't need to know which kind they got.
+  defp get_recipient(%Delivery{user_uuid: user_uuid})
+       when is_binary(user_uuid) and user_uuid != "" do
+    get_user(user_uuid)
+  end
+
+  defp get_recipient(%Delivery{recipient_email: email}) when is_binary(email) and email != "" do
+    {:ok, %{uuid: nil, username: nil, email: email}}
+  end
+
+  defp get_recipient(%Delivery{}), do: {:error, :no_recipient}
+
+  defp render_email(broadcast, recipient) do
+    variables = build_variables(broadcast, recipient)
     html = substitute_variables(broadcast.html_body || "", variables)
     text = substitute_variables(broadcast.text_body || "", variables)
 
@@ -134,22 +150,28 @@ defmodule PhoenixKit.Newsletters.Workers.DeliveryWorker do
     {:ok, html, text}
   end
 
-  defp build_variables(broadcast, user) do
-    token_data = %{user_uuid: user.uuid, list_uuid: broadcast.list_uuid}
-
-    endpoint = PhoenixKit.Config.get(:endpoint, PhoenixKitWeb.Endpoint)
-
-    unsubscribe_token =
-      Phoenix.Token.sign(endpoint, "unsubscribe", token_data)
-
-    unsubscribe_url =
-      Routes.url("/newsletters/unsubscribe?token=#{unsubscribe_token}")
-
+  defp build_variables(broadcast, recipient) do
     %{
-      "name" => user.username || user.email,
-      "email" => user.email,
-      "unsubscribe_url" => unsubscribe_url
+      "name" => recipient.username || recipient.email,
+      "email" => recipient.email,
+      "unsubscribe_url" => build_unsubscribe_url(recipient, broadcast)
     }
+  end
+
+  # nil uuid means a CRM-sourced recipient — no core User / newsletters
+  # ListMember exists to key a personalized unsubscribe token off.
+  # TODO: product decision pending on how CRM-sourced broadcasts handle
+  # unsubscribe (no link vs. a CRM-flavored token+landing page vs. a plain
+  # List-Unsubscribe header) — this is the simplest placeholder (no link)
+  # until that's decided.
+  defp build_unsubscribe_url(%{uuid: nil}, _broadcast), do: ""
+
+  defp build_unsubscribe_url(recipient, broadcast) do
+    token_data = %{user_uuid: recipient.uuid, list_uuid: broadcast.list_uuid}
+    endpoint = PhoenixKit.Config.get(:endpoint, PhoenixKitWeb.Endpoint)
+    unsubscribe_token = Phoenix.Token.sign(endpoint, "unsubscribe", token_data)
+
+    Routes.url("/newsletters/unsubscribe?token=#{unsubscribe_token}")
   end
 
   defp substitute_variables(content, variables) do
@@ -180,10 +202,10 @@ defmodule PhoenixKit.Newsletters.Workers.DeliveryWorker do
     end
   end
 
-  defp send_email(broadcast, user, html_body, text_body) do
+  defp send_email(broadcast, recipient, html_body, text_body) do
     case resolve_send_profile(broadcast) do
-      nil -> send_email_legacy(broadcast, user, html_body, text_body)
-      profile -> deliver_profile_email(profile, broadcast, user, html_body, text_body)
+      nil -> send_email_legacy(broadcast, recipient, html_body, text_body)
+      profile -> deliver_profile_email(profile, broadcast, recipient, html_body, text_body)
     end
   end
 
@@ -215,12 +237,12 @@ defmodule PhoenixKit.Newsletters.Workers.DeliveryWorker do
 
   # No profile resolved — unchanged from the original single-Mailer
   # behavior, so existing user-list broadcasts keep sending identically.
-  defp send_email_legacy(broadcast, user, html_body, text_body) do
+  defp send_email_legacy(broadcast, recipient, html_body, text_body) do
     from_email = PhoenixKit.Settings.get_setting("from_email", "noreply@example.com")
     from_name = PhoenixKit.Settings.get_setting("from_name", "Newsletter")
 
     Swoosh.Email.new()
-    |> Swoosh.Email.to(user.email)
+    |> Swoosh.Email.to(recipient.email)
     |> Swoosh.Email.from({from_name, from_email})
     |> Swoosh.Email.subject(broadcast.subject)
     |> Swoosh.Email.html_body(html_body)
@@ -228,9 +250,9 @@ defmodule PhoenixKit.Newsletters.Workers.DeliveryWorker do
     |> PhoenixKit.Mailer.deliver_email()
   end
 
-  defp deliver_profile_email(profile, broadcast, user, html_body, text_body) do
+  defp deliver_profile_email(profile, broadcast, recipient, html_body, text_body) do
     profile
-    |> build_profile_email(broadcast, user, html_body, text_body)
+    |> build_profile_email(broadcast, recipient, html_body, text_body)
     |> PhoenixKit.Mailer.deliver_via_integration(profile.integration_uuid)
   end
 
@@ -244,14 +266,14 @@ defmodule PhoenixKit.Newsletters.Workers.DeliveryWorker do
   # D5 against real credentials: `deliver_via_integration/3` resolves a
   # real Swoosh adapter from the integration's stored provider, so
   # there's no Swoosh.Adapters.Test seam for that leg.
-  def build_profile_email(profile, broadcast, user, html_body, text_body) do
+  def build_profile_email(profile, broadcast, recipient, html_body, text_body) do
     from_name = profile.from_name || PhoenixKit.Settings.get_setting("from_name", "Newsletter")
 
     from_email =
       profile.from_email || PhoenixKit.Settings.get_setting("from_email", "noreply@example.com")
 
     Swoosh.Email.new()
-    |> Swoosh.Email.to(user.email)
+    |> Swoosh.Email.to(recipient.email)
     |> Swoosh.Email.from({from_name, from_email})
     |> Swoosh.Email.subject(broadcast.subject)
     |> Swoosh.Email.html_body(append_signature(html_body, profile.signature_html))

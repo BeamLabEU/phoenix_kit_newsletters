@@ -23,7 +23,7 @@ defmodule PhoenixKit.Newsletters.Broadcaster do
 
   alias PhoenixKit.Email.SendProfile
   alias PhoenixKit.Newsletters
-  alias PhoenixKit.Newsletters.{Broadcast, Content, Delivery, ListMember}
+  alias PhoenixKit.Newsletters.{Broadcast, Content, CRMSource, Delivery, ListMember}
   alias PhoenixKit.Newsletters.Workers.DeliveryWorker
   alias PhoenixKit.Utils.Date, as: UtilsDate
 
@@ -63,8 +63,10 @@ defmodule PhoenixKit.Newsletters.Broadcaster do
         sent_at: UtilsDate.utc_now()
       })
 
-    # Count total active members
-    total = Newsletters.count_active_members(broadcast.list_uuid)
+    # Count total recipients — a CRM-sourced broadcast counts its resolved
+    # sendable CRM members; a newsletters-list broadcast counts active
+    # ListMembers, same as before.
+    total = count_recipients(broadcast)
     {:ok, broadcast} = Newsletters.update_broadcast(broadcast, %{total_recipients: total})
 
     # Resolve the very profile the worker will send with, so the throttle we
@@ -75,7 +77,7 @@ defmodule PhoenixKit.Newsletters.Broadcaster do
       |> send_interval_seconds()
 
     # Process in batches using transaction-wrapped stream
-    case repo.transaction(fn -> enqueue_all_members(broadcast, repo, interval) end) do
+    case repo.transaction(fn -> enqueue_all_recipients(broadcast, repo, interval) end) do
       {:ok, _} ->
         Logger.info(
           "Broadcaster: Enqueued #{total} deliveries for broadcast #{broadcast.uuid}" <>
@@ -123,13 +125,41 @@ defmodule PhoenixKit.Newsletters.Broadcaster do
     " (throttled to 1 per #{interval}s — the last one goes out in ~#{span} min)"
   end
 
-  defp enqueue_all_members(broadcast, repo, interval) do
+  defp count_recipients(%Broadcast{source_type: "crm_list", crm_list_uuid: crm_list_uuid}) do
+    crm_list_uuid
+    |> CRMSource.sendable_recipients()
+    |> length()
+  end
+
+  defp count_recipients(%Broadcast{list_uuid: list_uuid}) do
+    Newsletters.count_active_members(list_uuid)
+  end
+
+  # A crm_list broadcast resolves its recipients from CRMSource (already a
+  # fully-materialized, deduplicated list — CRM lists run in the low
+  # thousands, not worth streaming), each carrying an email but no
+  # user_uuid. A newsletters_list broadcast keeps the original streamed
+  # user_uuid path. Both funnel into the same process_batch/5, which only
+  # cares that each recipient map has a user_uuid and/or recipient_email.
+  defp enqueue_all_recipients(%Broadcast{source_type: "crm_list"} = broadcast, repo, interval) do
+    broadcast.crm_list_uuid
+    |> CRMSource.sendable_recipients()
+    |> Enum.map(fn %{email: email} -> %{user_uuid: nil, recipient_email: email} end)
+    |> Enum.chunk_every(@batch_size)
+    |> Enum.reduce(0, fn recipients, offset ->
+      process_batch(broadcast, recipients, repo, interval, offset)
+      offset + length(recipients)
+    end)
+  end
+
+  defp enqueue_all_recipients(broadcast, repo, interval) do
     broadcast.list_uuid
     |> stream_active_members()
+    |> Stream.map(fn user_uuid -> %{user_uuid: user_uuid, recipient_email: nil} end)
     |> Stream.chunk_every(@batch_size)
-    |> Enum.reduce(0, fn user_uuids, offset ->
-      process_batch(broadcast, user_uuids, repo, interval, offset)
-      offset + length(user_uuids)
+    |> Enum.reduce(0, fn recipients, offset ->
+      process_batch(broadcast, recipients, repo, interval, offset)
+      offset + length(recipients)
     end)
   end
 
@@ -140,19 +170,18 @@ defmodule PhoenixKit.Newsletters.Broadcaster do
     |> repo().stream()
   end
 
-  defp process_batch(broadcast, user_uuids, repo, interval, offset) do
+  defp process_batch(broadcast, recipients, repo, interval, offset) do
     now = UtilsDate.utc_now()
 
     deliveries =
-      Enum.map(user_uuids, fn user_uuid ->
-        %{
+      Enum.map(recipients, fn recipient ->
+        Map.merge(recipient, %{
           uuid: UUIDv7.generate(),
           broadcast_uuid: broadcast.uuid,
-          user_uuid: user_uuid,
           status: "pending",
           inserted_at: now,
           updated_at: now
-        }
+        })
       end)
 
     {_count, inserted} = repo.insert_all(Delivery, deliveries, returning: [:uuid])

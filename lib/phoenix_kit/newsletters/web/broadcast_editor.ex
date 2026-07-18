@@ -15,7 +15,7 @@ defmodule PhoenixKit.Newsletters.Web.BroadcastEditor do
   @email_template_mod PhoenixKit.Modules.Emails.Template
 
   alias PhoenixKit.Newsletters
-  alias PhoenixKit.Newsletters.{Broadcaster, Content}
+  alias PhoenixKit.Newsletters.{Broadcaster, Content, CRMSource}
   alias PhoenixKit.Settings
   alias PhoenixKit.Utils.Routes
 
@@ -36,7 +36,12 @@ defmodule PhoenixKit.Newsletters.Web.BroadcastEditor do
         |> assign(:templates, [])
         |> assign(:broadcast, nil)
         |> assign(:subject, "")
+        |> assign(:source_type, "newsletters_list")
         |> assign(:list_uuid, "")
+        |> assign(:crm_available, CRMSource.available?())
+        |> assign(:crm_lists, [])
+        |> assign(:crm_list_uuid, "")
+        |> assign(:preflight, nil)
         |> assign(:template_uuid, "")
         |> assign(:markdown_content, "")
         |> assign(:preview_html, "")
@@ -55,23 +60,28 @@ defmodule PhoenixKit.Newsletters.Web.BroadcastEditor do
   @impl true
   def handle_params(%{"id" => id}, _url, %{assigns: %{live_action: :edit}} = socket) do
     lists = Newsletters.list_lists(%{status: "active"})
+    crm_lists = CRMSource.list_lists()
     templates = load_templates()
     broadcast = Newsletters.get_broadcast!(id)
 
     {:noreply,
      socket
      |> assign(:lists, lists)
+     |> assign(:crm_lists, crm_lists)
      |> assign(:templates, templates)
      |> assign(:page_title, gettext("Edit broadcast"))
      |> assign(:broadcast, broadcast)
      |> assign(:subject, broadcast.subject || "")
+     |> assign(:source_type, broadcast.source_type)
      |> assign(:list_uuid, broadcast.list_uuid || "")
+     |> assign(:crm_list_uuid, broadcast.crm_list_uuid || "")
      |> assign(:template_uuid, broadcast.template_uuid || "")
      |> assign(:markdown_content, broadcast.markdown_body || "")
      |> assign(
        :preview_html,
        render_preview(broadcast.markdown_body, broadcast.template_uuid, templates)
-     )}
+     )
+     |> assign_preflight()}
   rescue
     Ecto.NoResultsError ->
       {:noreply,
@@ -82,12 +92,14 @@ defmodule PhoenixKit.Newsletters.Web.BroadcastEditor do
 
   def handle_params(_params, _url, socket) do
     lists = Newsletters.list_lists(%{status: "active"})
+    crm_lists = CRMSource.list_lists()
     templates = load_templates()
     default_template_uuid = default_template_uuid()
 
     {:noreply,
      socket
      |> assign(:lists, lists)
+     |> assign(:crm_lists, crm_lists)
      |> assign(:templates, templates)
      |> assign(:template_uuid, default_template_uuid || "")}
   end
@@ -95,7 +107,9 @@ defmodule PhoenixKit.Newsletters.Web.BroadcastEditor do
   @impl true
   def handle_event("validate", params, socket) do
     subject = params["subject"] || socket.assigns.subject
+    source_type = params["source_type"] || socket.assigns.source_type
     list_uuid = params["list_uuid"] || socket.assigns.list_uuid
+    crm_list_uuid = params["crm_list_uuid"] || socket.assigns.crm_list_uuid
     template_uuid = params["template_uuid"] || socket.assigns.template_uuid
     scheduled_at = params["scheduled_at"] || socket.assigns.scheduled_at
 
@@ -105,10 +119,13 @@ defmodule PhoenixKit.Newsletters.Web.BroadcastEditor do
     {:noreply,
      socket
      |> assign(:subject, subject)
+     |> assign(:source_type, source_type)
      |> assign(:list_uuid, list_uuid)
+     |> assign(:crm_list_uuid, crm_list_uuid)
      |> assign(:template_uuid, template_uuid)
      |> assign(:scheduled_at, scheduled_at)
-     |> assign(:preview_html, preview_html)}
+     |> assign(:preview_html, preview_html)
+     |> assign_preflight()}
   end
 
   @impl true
@@ -193,10 +210,24 @@ defmodule PhoenixKit.Newsletters.Web.BroadcastEditor do
   defp update_assigns_from_params(socket, params) do
     socket
     |> assign(:subject, params["subject"] || socket.assigns.subject)
+    |> assign(:source_type, params["source_type"] || socket.assigns.source_type)
     |> assign(:list_uuid, params["list_uuid"] || socket.assigns.list_uuid)
+    |> assign(:crm_list_uuid, params["crm_list_uuid"] || socket.assigns.crm_list_uuid)
     |> assign(:template_uuid, params["template_uuid"] || socket.assigns.template_uuid)
     |> assign(:scheduled_at, params["scheduled_at"] || socket.assigns.scheduled_at)
   end
+
+  # Recomputes the CRM preflight breakdown whenever the crm_list selection
+  # changes; nil (hides the preflight panel) for anything else — a
+  # newsletters_list source, or crm_list with nothing picked yet.
+  defp assign_preflight(
+         %{assigns: %{source_type: "crm_list", crm_list_uuid: crm_list_uuid}} = socket
+       )
+       when is_binary(crm_list_uuid) and crm_list_uuid != "" do
+    assign(socket, :preflight, CRMSource.preflight(crm_list_uuid))
+  end
+
+  defp assign_preflight(socket), do: assign(socket, :preflight, nil)
 
   defp save_broadcast(socket, status, extra_attrs \\ %{}) do
     socket = assign(socket, :saving, true)
@@ -205,7 +236,9 @@ defmodule PhoenixKit.Newsletters.Web.BroadcastEditor do
       Map.merge(
         %{
           subject: socket.assigns.subject,
+          source_type: socket.assigns.source_type,
           list_uuid: socket.assigns.list_uuid,
+          crm_list_uuid: socket.assigns.crm_list_uuid,
           template_uuid:
             if(socket.assigns.template_uuid == "", do: nil, else: socket.assigns.template_uuid),
           markdown_body: socket.assigns.markdown_content,
@@ -252,10 +285,22 @@ defmodule PhoenixKit.Newsletters.Web.BroadcastEditor do
   defp status_label("cancelled"), do: gettext("Cancelled")
   defp status_label(other), do: other
 
+  # Gates Send now/Schedule — whichever source is selected must have a
+  # target picked (a newsletters list, or a CRM list).
+  defp recipient_source_missing?(%{source_type: "crm_list", crm_list_uuid: crm_list_uuid}) do
+    crm_list_uuid in [nil, ""]
+  end
+
+  defp recipient_source_missing?(%{list_uuid: list_uuid}) do
+    list_uuid in [nil, ""]
+  end
+
   defp save_broadcast_and_return(socket) do
     attrs = %{
       subject: socket.assigns.subject,
+      source_type: socket.assigns.source_type,
       list_uuid: socket.assigns.list_uuid,
+      crm_list_uuid: socket.assigns.crm_list_uuid,
       template_uuid:
         if(socket.assigns.template_uuid == "", do: nil, else: socket.assigns.template_uuid),
       markdown_body: socket.assigns.markdown_content,

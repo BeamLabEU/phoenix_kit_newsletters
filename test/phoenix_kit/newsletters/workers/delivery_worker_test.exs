@@ -198,6 +198,46 @@ defmodule PhoenixKit.Newsletters.Workers.DeliveryWorkerTest do
     end
   end
 
+  describe "perform/1 — recipient_email path (Stage 4, CRM-sourced delivery)" do
+    setup :set_swoosh_global
+
+    test "sends using recipient_email when the delivery has no user_uuid at all" do
+      PhoenixKit.Settings.update_setting("from_name", "My Newsletter")
+      PhoenixKit.Settings.update_setting("from_email", "news@example.com")
+
+      broadcast =
+        create_broadcast(%{subject: "CRM send", html_body: "<p>Hi</p>", text_body: "Hi"})
+
+      {:ok, delivery} =
+        %Delivery{}
+        |> Delivery.changeset(%{
+          broadcast_uuid: broadcast.uuid,
+          recipient_email: "crm-recipient@example.com"
+        })
+        |> Repo.insert()
+
+      assert delivery.user_uuid == nil
+
+      job = %Oban.Job{
+        args: %{"delivery_uuid" => delivery.uuid, "broadcast_uuid" => broadcast.uuid}
+      }
+
+      assert :ok = DeliveryWorker.perform(job)
+
+      updated_delivery = Repo.get(Delivery, delivery.uuid)
+      assert updated_delivery.status == "sent"
+
+      updated_broadcast = Repo.get(Broadcast, broadcast.uuid)
+      assert updated_broadcast.sent_count == 1
+
+      assert_email_sent(
+        from: {"My Newsletter", "news@example.com"},
+        to: "crm-recipient@example.com",
+        subject: "CRM send"
+      )
+    end
+  end
+
   describe "permanent_failure?/1 — blocked/unusable sends must not retry nor count as bounces" do
     test "blocklisted recipients and unusable integrations are permanent" do
       assert DeliveryWorker.permanent_failure?({:blocked, :blocklist})

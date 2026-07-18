@@ -70,7 +70,14 @@
             <div>
               <p class="text-base-content/60 text-xs font-medium uppercase mb-1">{gettext("List")}</p>
               <p class="font-medium">
-                {if @broadcast.list, do: @broadcast.list.name, else: "-"}
+                <%= cond do %>
+                  <% @broadcast.list -> %>
+                    {@broadcast.list.name}
+                  <% @crm_list -> %>
+                    {@crm_list.name} <span class="badge badge-ghost badge-xs">{gettext("CRM")}</span>
+                  <% true -> %>
+                    -
+                <% end %>
               </p>
             </div>
             <div>
@@ -88,6 +95,17 @@
           </div>
         </div>
       </div>
+
+      <%!-- CRM list preflight --%>
+      <p :if={@crm_preflight} class="text-sm text-base-content/70 mb-6">
+        {gettext(
+          "%{total} members: %{sendable} sendable, %{no_email} no email, %{unsendable} unsubscribed/opted-out",
+          total: @crm_preflight.total,
+          sendable: @crm_preflight.sendable,
+          no_email: @crm_preflight.no_email,
+          unsendable: @crm_preflight.unsendable
+        )}
+      </p>
 
       <%!-- Delivery Stats --%>
       <div class="stats stats-horizontal shadow w-full mb-6 overflow-x-auto">
@@ -146,7 +164,7 @@
             <.table_default_body>
               <.table_default_row :for={delivery <- @deliveries}>
                 <.table_default_cell class="font-mono text-sm">
-                  {if delivery.user, do: delivery.user.email, else: delivery.user_uuid}
+                  {recipient_display(delivery)}
                 </.table_default_cell>
                 <.table_default_cell>
                   <span class={"badge badge-sm #{delivery_badge_class(delivery.status)}"}>
@@ -179,7 +197,7 @@
                   <%!-- Header: email + status --%>
                   <div class="flex items-start justify-between gap-2">
                     <span class="font-mono text-sm truncate">
-                      {if delivery.user, do: delivery.user.email, else: delivery.user_uuid}
+                      {recipient_display(delivery)}
                     </span>
                     <span class={"badge badge-sm #{delivery_badge_class(delivery.status)}"}>
                       {delivery_label(delivery.status)}
