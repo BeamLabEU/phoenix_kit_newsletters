@@ -7,7 +7,6 @@ defmodule PhoenixKit.Newsletters.Web.ListMembers do
   use Gettext, backend: PhoenixKit.Newsletters.Gettext
 
   import PhoenixKitWeb.Components.Core.Icon
-  import PhoenixKitWeb.Components.Core.PkLink
   import PhoenixKitWeb.Components.Core.TableDefault
 
   alias PhoenixKit.Newsletters
@@ -22,6 +21,8 @@ defmodule PhoenixKit.Newsletters.Web.ListMembers do
         socket
         |> assign(:page_title, gettext("Members"))
         |> assign(:page_subtitle, nil)
+        |> assign(:page_section, gettext("Lists"))
+        |> assign(:page_section_path, Routes.path("/admin/newsletters/lists"))
         |> assign(:project_title, Settings.get_project_title())
         |> assign(:list, nil)
         |> assign(:members, [])

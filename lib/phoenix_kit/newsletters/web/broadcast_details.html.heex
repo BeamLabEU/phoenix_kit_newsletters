@@ -3,6 +3,8 @@
   phoenix_kit_current_scope={assigns[:phoenix_kit_current_scope]}
   page_title={@page_title}
   page_subtitle={@page_subtitle}
+  page_section={@page_section}
+  page_section_path={@page_section_path}
   current_path={@url_path}
   project_title={@project_title}
 >
@@ -30,10 +32,6 @@
     <%= if @broadcast do %>
       <%!-- Header actions --%>
       <div class="flex flex-wrap gap-2 mb-6">
-        <.pk_link navigate="/admin/newsletters/broadcasts" class="btn btn-ghost btn-sm">
-          <.icon name="hero-arrow-left" class="w-4 h-4" /> {gettext("Broadcasts")}
-        </.pk_link>
-
         <%= if @broadcast.status == "draft" do %>
           <.pk_link
             navigate={"/admin/newsletters/broadcasts/#{@broadcast.uuid}/edit"}

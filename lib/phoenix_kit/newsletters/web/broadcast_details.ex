@@ -28,6 +28,8 @@ defmodule PhoenixKit.Newsletters.Web.BroadcastDetails do
         # in-content <h1> fallback that was removed with the page header.
         |> assign(:page_title, gettext("Broadcast details"))
         |> assign(:page_subtitle, nil)
+        |> assign(:page_section, gettext("Broadcasts"))
+        |> assign(:page_section_path, Routes.path("/admin/newsletters/broadcasts"))
         |> assign(:project_title, Settings.get_project_title())
         |> assign(:broadcast, nil)
         |> assign(:deliveries, [])
