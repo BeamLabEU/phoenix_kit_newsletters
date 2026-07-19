@@ -400,19 +400,38 @@ defmodule PhoenixKit.Newsletters do
     count =
       Enum.reduce(broadcasts, 0, fn broadcast, acc ->
         case Broadcaster.send(broadcast) do
-          {:ok, _} ->
-            acc + 1
-
-          {:error, reason} ->
-            Logger.warning(
-              "Failed to send scheduled broadcast #{broadcast.uuid}: #{inspect(reason)}"
-            )
-
-            acc
+          {:ok, _} -> acc + 1
+          {:error, reason} -> handle_scheduled_send_failure(broadcast, reason, acc)
         end
       end)
 
     {:ok, count}
+  end
+
+  # Non-retryable: the CRM list won't become active again on its own, so
+  # leaving status "scheduled" here would make every future tick re-fetch
+  # this broadcast and log the same failure forever. Terminal "failed"
+  # removes it from process_scheduled_broadcasts/0's `status == "scheduled"`
+  # query. The list's own current status (already surfaced on
+  # broadcast_details whenever it isn't "active") is the visible reason —
+  # no separate reason field needed.
+  defp handle_scheduled_send_failure(broadcast, {:crm_list_not_active, _status} = reason, acc) do
+    Logger.error("Scheduled broadcast #{broadcast.uuid} failed permanently: #{inspect(reason)}")
+
+    case update_broadcast(broadcast, %{status: "failed"}) do
+      {:ok, _} ->
+        :ok
+
+      {:error, changeset} ->
+        Logger.error("Failed to mark broadcast as failed: #{inspect(changeset.errors)}")
+    end
+
+    acc
+  end
+
+  defp handle_scheduled_send_failure(broadcast, reason, acc) do
+    Logger.warning("Failed to send scheduled broadcast #{broadcast.uuid}: #{inspect(reason)}")
+    acc
   end
 
   # ============================================================================

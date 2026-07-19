@@ -145,6 +145,9 @@ defmodule PhoenixKit.Newsletters.Web.UnsubscribeController do
           CRMSource.remove_from_list(contact, list)
         end
 
+      {:ok, %{user_uuid: user_uuid, list_uuid: list_uuid}} ->
+        Newsletters.unsubscribe_user(list_uuid, user_uuid)
+
       {:error, reason} ->
         Logger.warning(
           "UnsubscribeController: one-click POST with an unverifiable token: #{inspect(reason)}"

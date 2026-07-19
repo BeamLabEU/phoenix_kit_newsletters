@@ -62,7 +62,7 @@ defmodule PhoenixKit.Newsletters.Delivery do
     |> validate_required([:broadcast_uuid])
     |> validate_recipient()
     |> validate_inclusion(:status, @valid_statuses)
-    |> unique_constraint(:message_id)
+    |> unique_constraint(:message_id, name: :idx_newsletters_deliveries_message_id)
   end
 
   # A delivery must be addressable by exactly one of the two recipient

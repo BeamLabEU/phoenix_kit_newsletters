@@ -9,7 +9,7 @@ defmodule PhoenixKit.Newsletters.Broadcast do
 
   @primary_key {:uuid, UUIDv7, autogenerate: true}
 
-  @valid_statuses ["draft", "scheduled", "sending", "sent", "cancelled"]
+  @valid_statuses ["draft", "scheduled", "sending", "sent", "cancelled", "failed"]
   @valid_source_types ["newsletters_list", "crm_list"]
 
   schema "phoenix_kit_newsletters_broadcasts" do

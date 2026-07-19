@@ -155,6 +155,7 @@ defmodule PhoenixKit.Newsletters.Web.BroadcastDetails do
   defp gettext_status("sending"), do: gettext("Sending")
   defp gettext_status("sent"), do: gettext("Sent")
   defp gettext_status("cancelled"), do: gettext("Cancelled")
+  defp gettext_status("failed"), do: gettext("Failed")
   defp gettext_status(other), do: other
 
   def delivery_label(status), do: gettext_delivery(status)
@@ -175,6 +176,7 @@ defmodule PhoenixKit.Newsletters.Web.BroadcastDetails do
       "sending" -> "badge-warning"
       "sent" -> "badge-success"
       "cancelled" -> "badge-error"
+      "failed" -> "badge-error"
       _ -> "badge-ghost"
     end
   end
