@@ -419,13 +419,14 @@ defmodule PhoenixKit.Newsletters do
 
   @doc false
   # Repair sweep for broadcasts stuck in "sending": DeliveryWorker's
-  # per-delivery counter increment (update_delivery_result/5) normally
-  # flips a broadcast to "sent" itself the moment sent_count +
-  # bounced_count reaches total_recipients, but any broadcast that
-  # finished its deliveries *before* that atomic transition existed (or
-  # whose final worker crashed after the counter write but before the
-  # status flip — the two are two statements, not one) is stuck forever:
-  # nothing else ever re-checks it. Called from
+  # per-delivery status transition (update_delivery_result/5) normally
+  # flips a broadcast to "sent" itself the moment every one of its
+  # deliveries has left Delivery's only non-terminal status (see
+  # Delivery.non_terminal_broadcast_uuids_query/0), but any broadcast that
+  # finished its deliveries *before* that finalize check existed (or whose
+  # final worker crashed after the delivery-status write but before the
+  # broadcast flip — the two are two statements, not one) is stuck
+  # forever: nothing else ever re-checks it. Called from
   # process_scheduled_broadcasts/0 so it rides the same periodic tick.
   #
   # A single batch UPDATE, not a per-row loop — the WHERE clause matches
@@ -437,7 +438,7 @@ defmodule PhoenixKit.Newsletters do
     {count, _} =
       Broadcast
       |> where([b], b.status == "sending")
-      |> where([b], fragment("? + ? >= ?", b.sent_count, b.bounced_count, b.total_recipients))
+      |> where([b], b.uuid not in subquery(Delivery.non_terminal_broadcast_uuids_query()))
       |> repo().update_all(set: [status: "sent"])
 
     if count > 0 do

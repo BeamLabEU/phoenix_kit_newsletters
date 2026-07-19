@@ -98,7 +98,7 @@ defmodule PhoenixKit.Newsletters.Workers.DeliveryWorker do
             "DeliveryWorker: permanent failure for #{delivery_uuid}: #{inspect(reason)}"
           )
 
-          record_permanent_failure(delivery_uuid, reason)
+          record_permanent_failure(delivery_uuid, broadcast_uuid, reason)
           {:cancel, inspect(reason)}
         else
           Logger.error("DeliveryWorker: Failed delivery #{delivery_uuid}: #{inspect(reason)}")
@@ -124,13 +124,18 @@ defmodule PhoenixKit.Newsletters.Workers.DeliveryWorker do
   def permanent_failure?({:invalid_smtp_port, _}), do: true
   def permanent_failure?(_), do: false
 
-  defp record_permanent_failure(delivery_uuid, reason) do
+  defp record_permanent_failure(delivery_uuid, broadcast_uuid, reason) do
     status = if match?({:blocked, _}, reason), do: "blocked", else: "failed"
 
     case get_delivery(delivery_uuid) do
       {:ok, delivery} ->
-        # Deliberately does NOT touch :bounced_count.
-        Newsletters.update_delivery_status(delivery, status, %{error: inspect(reason)})
+        # Deliberately passes no counter_field — neither :sent_count nor
+        # :bounced_count is touched, so a blocklisted/misconfigured
+        # recipient never re-inflates the bounce-rate metric. It still
+        # goes through update_delivery_result/5 (not a bare status write)
+        # so the broadcast-finalize check runs: a broadcast whose very
+        # last delivery lands here must still be able to flip to "sent".
+        update_delivery_result(delivery, status, %{error: inspect(reason)}, broadcast_uuid, nil)
 
       _ ->
         :ok
@@ -456,67 +461,66 @@ defmodule PhoenixKit.Newsletters.Workers.DeliveryWorker do
   end
 
   @doc false
-  # Commits a delivery-status transition together with its paired
-  # broadcast-counter increment in a single DB transaction. Previously
-  # these were two independent repo calls: a crash between them (e.g. the
-  # BEAM going down right after the status write lands but before the
-  # counter write) permanently undercounts, since a retry's
-  # guard_unsent/1 sees the delivery already in its target status and
-  # skips re-counting. `counter_field` may be `nil` to skip the counter
-  # write (e.g. a non-terminal failure). Exposed (non-`defp`) for direct
-  # testing — same rationale as resolve_send_profile/1 et al above.
+  # Commits a delivery-status transition, its paired broadcast-counter
+  # increment, and the broadcast-finalize check in a single DB
+  # transaction. Previously the status write and counter increment were
+  # two independent repo calls: a crash between them (e.g. the BEAM going
+  # down right after the status write lands but before the counter write)
+  # permanently undercounts, since a retry's guard_unsent/1 sees the
+  # delivery already in its target status and skips re-counting.
+  # `counter_field` may be `nil` to skip the counter write (e.g. a
+  # non-terminal failure, or a permanent failure that must not touch
+  # :bounced_count — see record_permanent_failure/3) — the finalize check
+  # always runs regardless, since a blocked/permanently-failed delivery is
+  # still one fewer delivery standing between the broadcast and "sent".
+  # Exposed (non-`defp`) for direct testing — same rationale as
+  # resolve_send_profile/1 et al above.
   def update_delivery_result(delivery, status, attrs, broadcast_uuid, counter_field) do
     repo().transaction(fn ->
       case Newsletters.update_delivery_status(delivery, status, attrs) do
-        {:ok, updated} -> maybe_bump_counter(updated, broadcast_uuid, counter_field)
-        {:error, changeset} -> repo().rollback(changeset)
+        {:ok, updated} ->
+          maybe_bump_counter(broadcast_uuid, counter_field)
+          maybe_finalize_broadcast(broadcast_uuid)
+          updated
+
+        {:error, changeset} ->
+          repo().rollback(changeset)
       end
     end)
   end
 
-  defp maybe_bump_counter(delivery, _broadcast_uuid, nil), do: delivery
+  defp maybe_bump_counter(_broadcast_uuid, nil), do: :ok
 
-  defp maybe_bump_counter(delivery, broadcast_uuid, counter_field) do
-    update_broadcast_counter(broadcast_uuid, counter_field)
-    delivery
-  end
-
-  defp update_broadcast_counter(broadcast_uuid, field) do
-    # `select` so the finalization check below reads the post-increment
-    # counts from this same statement — no separate round trip that
-    # could race a concurrent increment. 0 rows is a real case (a
-    # broadcast_uuid that no longer resolves to a row, e.g. deleted
-    # concurrently) — the counter write already silently no-op'd here
-    # before this change, so preserve that instead of crashing.
-    case Broadcast
-         |> where([b], b.uuid == ^broadcast_uuid)
-         |> select([b], b)
-         |> repo().update_all(inc: [{field, 1}]) do
-      {1, [broadcast]} -> maybe_finalize_broadcast(broadcast)
-      {0, _} -> :ok
-    end
-  end
-
-  # Every recipient accounted for (delivered/bounced/failed — whichever
-  # terminal counter last incremented) while still "sending": flip to
-  # "sent". The `status == "sending"` guard makes this race-safe when two
-  # workers finish within the same window — both may see the total
-  # satisfied after their own increment, but only the one whose UPDATE
-  # commits first actually matches the WHERE clause; the other's matches
-  # zero rows (status is already "sent") and silently no-ops. Also backs
-  # `Newsletters.repair_stuck_sending_broadcasts/0`'s sweep for
-  # broadcasts that got stuck before this existed.
-  defp maybe_finalize_broadcast(%{status: "sending"} = broadcast) do
-    if broadcast.sent_count + broadcast.bounced_count >= broadcast.total_recipients do
-      Broadcast
-      |> where([b], b.uuid == ^broadcast.uuid and b.status == "sending")
-      |> repo().update_all(set: [status: "sent"])
-    end
+  defp maybe_bump_counter(broadcast_uuid, counter_field) do
+    # 0 rows is a real case (a broadcast_uuid that no longer resolves to a
+    # row, e.g. deleted concurrently) — silently no-op rather than crash,
+    # matching this write's behavior before finalize was split out of it.
+    Broadcast
+    |> where([b], b.uuid == ^broadcast_uuid)
+    |> repo().update_all(inc: [{counter_field, 1}])
 
     :ok
   end
 
-  defp maybe_finalize_broadcast(_broadcast), do: :ok
+  # Every delivery has left Delivery's only non-terminal status (see
+  # Delivery.non_terminal_broadcast_uuids_query/0) while the broadcast is
+  # still "sending": flip to "sent" in one statement — no separate
+  # exists?/count round trip to race against a concurrent transition. The
+  # `status == "sending"` guard makes this race-safe when two workers
+  # finish within the same window — both may see coverage satisfied after
+  # their own transition, but only the one whose UPDATE commits first
+  # actually matches the WHERE clause; the other's matches zero rows
+  # (status is already "sent") and silently no-ops. Also backs
+  # `Newsletters.repair_stuck_sending_broadcasts/0`'s sweep for
+  # broadcasts that got stuck before this existed.
+  defp maybe_finalize_broadcast(broadcast_uuid) do
+    Broadcast
+    |> where([b], b.uuid == ^broadcast_uuid and b.status == "sending")
+    |> where([b], b.uuid not in subquery(Delivery.non_terminal_broadcast_uuids_query()))
+    |> repo().update_all(set: [status: "sent"])
+
+    :ok
+  end
 
   defp repo, do: PhoenixKit.RepoHelper.repo()
 
