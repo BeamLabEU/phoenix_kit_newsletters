@@ -72,6 +72,7 @@ defmodule PhoenixKit.Newsletters.Web.Broadcasts do
       "sending" -> "badge-warning"
       "sent" -> "badge-success"
       "cancelled" -> "badge-error"
+      "failed" -> "badge-error"
       _ -> "badge-ghost"
     end
   end
@@ -83,6 +84,7 @@ defmodule PhoenixKit.Newsletters.Web.Broadcasts do
   defp gettext_status("sending"), do: gettext("Sending")
   defp gettext_status("sent"), do: gettext("Sent")
   defp gettext_status("cancelled"), do: gettext("Cancelled")
+  defp gettext_status("failed"), do: gettext("Failed")
   defp gettext_status(other), do: other
 
   defp format_datetime(nil), do: "-"

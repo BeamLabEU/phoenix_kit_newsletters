@@ -266,7 +266,7 @@ defmodule PhoenixKit.Newsletters.Workers.DeliveryWorkerTest do
       refute Map.has_key?(result.headers, "List-Unsubscribe-Post")
     end
 
-    test "adds nothing for a newsletters_list broadcast, even with a resolved url" do
+    test "adds List-Unsubscribe + List-Unsubscribe-Post for a newsletters_list broadcast with a resolved url too" do
       broadcast = %Broadcast{source_type: "newsletters_list"}
       email = Swoosh.Email.new()
 
@@ -276,6 +276,18 @@ defmodule PhoenixKit.Newsletters.Workers.DeliveryWorkerTest do
           broadcast,
           "https://example.com/newsletters/unsubscribe/one-click?token=abc"
         )
+
+      assert result.headers["List-Unsubscribe"] ==
+               "<https://example.com/newsletters/unsubscribe/one-click?token=abc>"
+
+      assert result.headers["List-Unsubscribe-Post"] == "List-Unsubscribe=One-Click"
+    end
+
+    test "adds nothing for a newsletters_list broadcast when the url didn't resolve (empty string)" do
+      broadcast = %Broadcast{source_type: "newsletters_list"}
+      email = Swoosh.Email.new()
+
+      result = DeliveryWorker.maybe_put_list_unsubscribe_headers(email, broadcast, "")
 
       refute Map.has_key?(result.headers, "List-Unsubscribe")
       refute Map.has_key?(result.headers, "List-Unsubscribe-Post")
@@ -326,8 +338,9 @@ defmodule PhoenixKit.Newsletters.Workers.DeliveryWorkerTest do
         assert Map.has_key?(email.headers, "List-Unsubscribe") == false
       end)
 
-      # newsletters_list broadcast — the original path, must show no new
-      # headers at all (byte-for-byte prior behavior).
+      # newsletters_list broadcast — a core User recipient always resolves
+      # a personalized link, so this now gets the same headers as the
+      # crm_list flavor.
       user = create_user()
       list_broadcast = create_broadcast(%{subject: "List send", html_body: "<p>Hi</p>"})
       list_delivery = create_delivery(list_broadcast, user)
@@ -342,8 +355,8 @@ defmodule PhoenixKit.Newsletters.Workers.DeliveryWorkerTest do
 
       assert_email_sent(fn email ->
         assert email.to == [{"", user.email}]
-        assert Map.has_key?(email.headers, "List-Unsubscribe") == false
-        assert Map.has_key?(email.headers, "List-Unsubscribe-Post") == false
+        assert email.headers["List-Unsubscribe"] =~ "/newsletters/unsubscribe/one-click?token="
+        assert email.headers["List-Unsubscribe-Post"] == "List-Unsubscribe=One-Click"
       end)
     end
   end
@@ -536,24 +549,22 @@ defmodule PhoenixKit.Newsletters.Workers.DeliveryWorkerTest do
       user = create_user()
       delivery = create_delivery(broadcast, user)
 
-      # Delivery.changeset/2's unique_constraint(:message_id) names the
-      # constraint after Ecto's default convention
-      # ("phoenix_kit_newsletters_deliveries_message_id_index"), but the
-      # real DB index from core migration V79 is named
-      # "idx_newsletters_deliveries_message_id" — a pre-existing mismatch
-      # unrelated to this fix, so the violation surfaces as a raised
-      # Ecto.ConstraintError rather than a graceful {:error, changeset}.
-      # The transaction still rolls back either way — that's what this
-      # test verifies.
-      assert_raise Ecto.ConstraintError, fn ->
-        DeliveryWorker.update_delivery_result(
-          delivery,
-          "sent",
-          %{sent_at: DateTime.utc_now(), message_id: "dup-message-id"},
-          broadcast.uuid,
-          :sent_count
-        )
-      end
+      # Delivery.changeset/2's unique_constraint(:message_id) now names the
+      # constraint after the real DB index from core migration V79
+      # ("idx_newsletters_deliveries_message_id"), so the violation is
+      # caught and surfaces as a graceful {:error, changeset} instead of a
+      # raised Ecto.ConstraintError. The transaction still rolls back —
+      # that's what this test verifies.
+      assert {:error, changeset} =
+               DeliveryWorker.update_delivery_result(
+                 delivery,
+                 "sent",
+                 %{sent_at: DateTime.utc_now(), message_id: "dup-message-id"},
+                 broadcast.uuid,
+                 :sent_count
+               )
+
+      assert %{message_id: ["has already been taken"]} = errors_on(changeset)
 
       updated_delivery = Repo.get(Delivery, delivery.uuid)
       updated_broadcast = Repo.get(Broadcast, broadcast.uuid)
