@@ -389,6 +389,8 @@ defmodule PhoenixKit.Newsletters do
   # ============================================================================
 
   def process_scheduled_broadcasts do
+    repair_stuck_sending_broadcasts()
+
     now = PhoenixKit.Utils.Date.utc_now()
 
     broadcasts =
@@ -413,6 +415,36 @@ defmodule PhoenixKit.Newsletters do
       end)
 
     {:ok, count}
+  end
+
+  @doc false
+  # Repair sweep for broadcasts stuck in "sending": DeliveryWorker's
+  # per-delivery counter increment (update_delivery_result/5) normally
+  # flips a broadcast to "sent" itself the moment sent_count +
+  # bounced_count reaches total_recipients, but any broadcast that
+  # finished its deliveries *before* that atomic transition existed (or
+  # whose final worker crashed after the counter write but before the
+  # status flip — the two are two statements, not one) is stuck forever:
+  # nothing else ever re-checks it. Called from
+  # process_scheduled_broadcasts/0 so it rides the same periodic tick.
+  #
+  # A single batch UPDATE, not a per-row loop — the WHERE clause matches
+  # against each row's status at statement execution time, so it can
+  # never double-transition a broadcast a concurrent DeliveryWorker
+  # commit has already flipped (that row simply won't match "sending"
+  # anymore) and never needs its own transaction.
+  def repair_stuck_sending_broadcasts do
+    {count, _} =
+      Broadcast
+      |> where([b], b.status == "sending")
+      |> where([b], fragment("? + ? >= ?", b.sent_count, b.bounced_count, b.total_recipients))
+      |> repo().update_all(set: [status: "sent"])
+
+    if count > 0 do
+      Logger.info("Newsletters: repaired #{count} broadcast(s) stuck in \"sending\"")
+    end
+
+    count
   end
 
   # ============================================================================

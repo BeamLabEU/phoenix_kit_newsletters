@@ -25,6 +25,8 @@ defmodule PhoenixKit.Newsletters.Workers.DeliveryWorker do
 
   require Logger
 
+  import Ecto.Query
+
   # Optional soft dependency — use module atom to avoid compile-time warnings
   @email_template_mod PhoenixKit.Modules.Emails.Template
 
@@ -480,12 +482,41 @@ defmodule PhoenixKit.Newsletters.Workers.DeliveryWorker do
   end
 
   defp update_broadcast_counter(broadcast_uuid, field) do
-    import Ecto.Query
-
-    PhoenixKit.Newsletters.Broadcast
-    |> where([b], b.uuid == ^broadcast_uuid)
-    |> repo().update_all(inc: [{field, 1}])
+    # `select` so the finalization check below reads the post-increment
+    # counts from this same statement — no separate round trip that
+    # could race a concurrent increment. 0 rows is a real case (a
+    # broadcast_uuid that no longer resolves to a row, e.g. deleted
+    # concurrently) — the counter write already silently no-op'd here
+    # before this change, so preserve that instead of crashing.
+    case Broadcast
+         |> where([b], b.uuid == ^broadcast_uuid)
+         |> select([b], b)
+         |> repo().update_all(inc: [{field, 1}]) do
+      {1, [broadcast]} -> maybe_finalize_broadcast(broadcast)
+      {0, _} -> :ok
+    end
   end
+
+  # Every recipient accounted for (delivered/bounced/failed — whichever
+  # terminal counter last incremented) while still "sending": flip to
+  # "sent". The `status == "sending"` guard makes this race-safe when two
+  # workers finish within the same window — both may see the total
+  # satisfied after their own increment, but only the one whose UPDATE
+  # commits first actually matches the WHERE clause; the other's matches
+  # zero rows (status is already "sent") and silently no-ops. Also backs
+  # `Newsletters.repair_stuck_sending_broadcasts/0`'s sweep for
+  # broadcasts that got stuck before this existed.
+  defp maybe_finalize_broadcast(%{status: "sending"} = broadcast) do
+    if broadcast.sent_count + broadcast.bounced_count >= broadcast.total_recipients do
+      Broadcast
+      |> where([b], b.uuid == ^broadcast.uuid and b.status == "sending")
+      |> repo().update_all(set: [status: "sent"])
+    end
+
+    :ok
+  end
+
+  defp maybe_finalize_broadcast(_broadcast), do: :ok
 
   defp repo, do: PhoenixKit.RepoHelper.repo()
 
