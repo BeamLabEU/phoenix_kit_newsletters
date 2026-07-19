@@ -198,11 +198,12 @@ defmodule PhoenixKit.Newsletters.Workers.DeliveryWorker do
 
   # newsletters-list recipient: the original user_uuid/list_uuid token,
   # unchanged — verified by the existing flavor in UnsubscribeController.
-  # No List-Unsubscribe headers on this path (maybe_put_list_unsubscribe_headers/3
-  # only fires for crm_list broadcasts), so the second element is unused.
+  # Same token backs both URLs, same reasoning as the crm_list clause
+  # below: the interactive landing page for the email body link, and the
+  # dedicated one-click endpoint for the List-Unsubscribe(-Post) headers.
   defp build_unsubscribe_url(%{uuid: uuid} = recipient, broadcast) when is_binary(uuid) do
     token = sign_unsubscribe_token(%{user_uuid: recipient.uuid, list_uuid: broadcast.list_uuid})
-    {unsubscribe_page_url(token), nil}
+    {unsubscribe_page_url(token), one_click_unsubscribe_url(token)}
   end
 
   # crm_list recipient: no core User exists, so the token carries
@@ -367,16 +368,15 @@ defmodule PhoenixKit.Newsletters.Workers.DeliveryWorker do
   end
 
   @doc false
-  # RFC 8058 — only for crm_list-sourced broadcasts (newsletters_list
-  # broadcasts keep their prior behavior exactly, no new headers) and
-  # only when a personalized link actually resolved. `url` is the
-  # dedicated one-click endpoint (Web.Routes' CSRF-exempt pipeline), NOT
-  # the interactive landing-page URL used in the email body — a mail
-  # client's cold POST can never carry a CSRF token, so it must target a
-  # different route. Not `defp` so it can be unit-tested directly
-  # without needing a real CRM-resolved url — same rationale as
+  # RFC 8058 — for both broadcast flavors, whenever a personalized
+  # one-click link actually resolved. `url` is the dedicated one-click
+  # endpoint (Web.Routes' CSRF-exempt pipeline), NOT the interactive
+  # landing-page URL used in the email body — a mail client's cold POST
+  # can never carry a CSRF token, so it must target a different route.
+  # Not `defp` so it can be unit-tested directly without needing a real
+  # CRM-resolved url — same rationale as
   # `resolve_send_profile/1`/`build_profile_email/5` above.
-  def maybe_put_list_unsubscribe_headers(email, %Broadcast{source_type: "crm_list"}, url)
+  def maybe_put_list_unsubscribe_headers(email, %Broadcast{}, url)
       when is_binary(url) and url != "" do
     email
     |> Swoosh.Email.header("List-Unsubscribe", "<#{url}>")

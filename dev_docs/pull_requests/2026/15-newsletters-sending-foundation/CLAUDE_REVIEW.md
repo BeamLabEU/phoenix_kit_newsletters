@@ -95,3 +95,126 @@ delivery worker had no way to be tested before this PR.
 The bounce-count and retry behaviour is pinned by `delivery_worker_test.exs`; the
 resolution, kill-switch and failure-classification behaviour above was re-checked
 live. Real sends go out through both a Brevo SMTP integration and SES.
+
+---
+
+## Round 2 — full-PR review at merge (2026-07-19)
+
+**Scope:** the whole of PR #15 as merged (`6649893`), covering the parts round 1
+didn't touch — CRM-list broadcasts, the safe-unsubscribe flow (internal-list +
+CRM-contact + RFC 8058 one-click), and the admin LiveViews — plus the three
+post-round-1 follow-up commits (`dc4402a`, `2d125e6`). By this point the branch
+had already been through several dedicated GLM batch reviews (see the other
+`docs/superpowers/specs/reviews/2026-07-1[5-8]-*.md` files archived alongside this
+PR), so this pass focused on what those rounds could plausibly have missed rather
+than re-litigating settled design choices. Four parallel agents each read a
+functional slice in full (CRM source + broadcaster; unsubscribe controller +
+routes; broadcast editor/details LiveViews; lists/members/broadcasts LiveViews),
+findings were independently verified by reading the actual code before acting on
+them.
+
+### BUG - HIGH (found and fixed): `scope=list` unsubscribe showed "success" even when nothing was unsubscribed
+
+**File:** `lib/phoenix_kit/newsletters/web/unsubscribe_controller.ex`, `process_unsubscribe/2`
+
+This is the exact bug pattern `dc4402a` already found and fixed once in this same
+function — for the `scope=all` CRM branch — just present on the sibling
+`scope=list` (original, non-CRM) branch too, which nothing in that fix touched:
+
+```elixir
+{:ok, %{user_uuid: user_uuid, list_uuid: list_uuid}} ->
+  Newsletters.unsubscribe_user(list_uuid, user_uuid)   # result discarded
+  conn |> put_flash(:info, "You have been unsubscribed from this list.") |> redirect(...)
+```
+
+`Newsletters.unsubscribe_user/2` returns `{:error, :not_found}` whenever no
+`ListMember` row matches `(list_uuid, user_uuid)` — a stale token (list deleted,
+membership already removed by an admin, email sat in an inbox past that point) —
+and the controller showed the success flash regardless, leaving the user
+subscribed with no error surfaced anywhere. There was no test at all for this
+branch (only the missing-token branch was covered), so nothing would have caught
+a regression here either.
+
+Fixed to match the `scope=all`/CRM branch's shape: branch on the result, show the
+existing success flash on `{:ok, _}`, a "please try again" error flash on
+`{:error, _}`. Added `process_unsubscribe_scope_list_test.exs` (mirroring the
+existing `process_unsubscribe_scope_all_test.exs`) covering both the real-success
+and the stale-token cases — **not run in this sandbox** (no Postgres/Docker
+available here to back `PhoenixKitNewsletters.DataCase`); needs a real `mix test`
+pass before merge.
+
+### IMPROVEMENT - MEDIUM (found and fixed): the `"blocked"` delivery status was invisible in the admin UI
+
+**Files:** `lib/phoenix_kit/newsletters/web/broadcast_details.ex`,
+`broadcast_details.html.heex`
+
+Round 1's fix added `"blocked"` to `Delivery.@valid_statuses` specifically so
+blocklisted recipients wouldn't inflate `bounced_count`/`failed` metrics. But
+`broadcast_details.ex`'s `gettext_delivery/1` and `delivery_badge_class/1` had no
+clause for it (fell through to the raw untranslated string, styled like
+`"pending"`), and the Delivery Stats summary card had no tile for it at all — so
+the exact metric round 1 protected from pollution was simply absent from the one
+screen an operator would look at to understand a low send count. Added a
+`"blocked"` clause to both label/badge functions and a "Blocked" stat tile
+(`get_delivery_stats/1` already group-by-counts on `status` dynamically, so no
+context change was needed — it was purely a UI gap).
+
+### Checked and confirmed correct (no action needed)
+
+- **CRM/internal-list consistency** — batching (`insert_all` in chunks of 500 for
+  both recipient sources), email case-insensitivity (CITEXT columns), idempotent
+  opt-out/remove-from-list, single-transaction enqueue, and the blocklist check
+  (`check_blocklist/1`) all apply identically to both recipient sources. No drift
+  found between the two code paths.
+- **One-click unsubscribe (RFC 8058)** — every branch (valid token, unverifiable
+  token, unresolvable contact/list, repeat POST) falls through to the
+  unconditional `send_resp(conn, 200, "")`; the CSRF-exempt pipeline in
+  `routes.ex` scopes to exactly the two one-click routes, nothing broader.
+  Cross-token-shape confusion (an internal-list token handed to the CRM one-click
+  endpoint) can't crash or mutate the wrong scope — it falls through to a
+  harmless no-op.
+- **`broadcast_editor.ex`/`broadcast_details.ex`** — `mount/3` does no querying
+  (all in `handle_params/3`); switching `source_type` correctly clears the
+  now-irrelevant `list_uuid`/`crm_list_uuid`; no raw `<input type="checkbox">`
+  recurrence of the SendProfile `enabled`-toggle bug; a forged `crm_list_uuid` is
+  safe (cast-guarded lookup, re-validated server-side by `Broadcaster.send/1`).
+- **Lists/Members/Broadcasts LiveViews** — no `mount/3` queries, no N+1s, empty
+  states use `<.empty_state>`, `broadcasts.ex`'s filter correctly round-trips
+  through the URL via `handle_params/3`.
+
+### Noted, not fixed (pre-existing or deliberately out of scope)
+
+- **Per-broadcast Send Profile has no admin UI.** `Broadcast.send_profile_uuid`
+  and `DeliveryWorker.resolve_send_profile/1` both exist and work, but neither
+  `broadcast_editor.ex` nor its template render a picker for it — every broadcast
+  created through the admin UI gets `send_profile_uuid: nil` and falls back to
+  the default profile. This matches the phase-1 plan's own scoping (Task D4 only
+  wires the schema/worker resolution order; D5's live test attached a profile to
+  a broadcast outside the admin UI). Flagging since it means the PR's flagship
+  "two profiles on one integration" scenario has no way to be chosen per-broadcast
+  from the panel yet — worth a follow-up ticket, not a fix folded into this pass.
+- **CRM preflight re-queries on every `validate` event**, including plain
+  keystrokes in the Subject field, when `source_type == "crm_list"` — no gate
+  comparing incoming vs. current `crm_list_uuid`/`source_type`, no
+  `phx-debounce`. Performance-only (cost scales with CRM list size), not a
+  correctness bug — left as a follow-up.
+- **Stale `subscriber_count` after `list_members.ex`'s "Remove" action**,
+  **silent 50-row pagination cap with no pagination UI**, **"Add all users"
+  capping at 1000 users silently**, and **`list_members.ex`'s status filter not
+  round-tripping through the URL** (unlike the sibling fix in `broadcasts.ex` in
+  this same PR) — all confirmed by diffing against pre-PR `newsletters.ex` /
+  `list_members.ex`: none of this code was touched by PR #15 (the "ui-canon"
+  pagination round explicitly scoped itself to the OOM bug class and empty
+  states, not to whether pagination is reachable at all). Real gaps, but
+  pre-existing and out of this PR's blast radius — logged here for the record,
+  not fixed in this pass.
+
+### Gate (round 2)
+
+`mix compile --warnings-as-errors`, `mix format --check-formatted`, and
+`mix credo --strict` all clean. `mix dialyzer` run separately (slow gate, see
+commit). **`mix test` could not be run in this sandbox** — no Postgres/Docker
+available to back the DataCase-backed suite (`test/support/data_case.ex`
+requires a live `PhoenixKitNewsletters.Test.Repo` connection). All DataCase tests
+including the new `process_unsubscribe_scope_list_test.exs` need a real run
+before merge/release.

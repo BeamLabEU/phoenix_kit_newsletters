@@ -145,6 +145,12 @@
             {stat_value(@delivery_stats, "failed")}
           </div>
         </div>
+        <div class="stat">
+          <div class="stat-title">{gettext("Blocked")}</div>
+          <div class="stat-value text-2xl">
+            {stat_value(@delivery_stats, "blocked")}
+          </div>
+        </div>
       </div>
 
       <%!-- Deliveries Table (desktop) --%>

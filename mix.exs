@@ -1,7 +1,7 @@
 defmodule PhoenixKitNewsletters.MixProject do
   use Mix.Project
 
-  @version "0.1.5"
+  @version "0.1.6"
   @source_url "https://github.com/BeamLabEU/phoenix_kit_newsletters"
 
   def project do
@@ -85,11 +85,8 @@ defmodule PhoenixKitNewsletters.MixProject do
       # tables (V138+); this just makes the Elixir modules loadable so the
       # test suite can build real fixtures instead of only covering the
       # "CRM not installed" degrade path. The contact-lists feature
-      # (Lists/ContactList/ListMember) isn't upstream yet — BeamLabEU/main
-      # has no lists.ex at all — so this points at the dev fork/branch that
-      # has it, same convention as our other phoenix_kit_* forks.
-      {:phoenix_kit_crm,
-       github: "timujinne/phoenix_kit_crm", branch: "feature/crm-contact-lists", only: :test}
+      # (Lists/ContactList/ListMember) shipped upstream in 0.3.0.
+      {:phoenix_kit_crm, "~> 0.3", only: :test}
     ]
   end
 
