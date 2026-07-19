@@ -6,7 +6,7 @@ defmodule PhoenixKit.Newsletters.Web.Lists do
   use Phoenix.LiveView
   use Gettext, backend: PhoenixKit.Newsletters.Gettext
 
-  import PhoenixKitWeb.Components.Core.AdminPageHeader
+  import PhoenixKitWeb.Components.Core.EmptyState
   import PhoenixKitWeb.Components.Core.Icon
   import PhoenixKitWeb.Components.Core.PkLink
   import PhoenixKitWeb.Components.Core.TableDefault
@@ -21,6 +21,7 @@ defmodule PhoenixKit.Newsletters.Web.Lists do
       socket =
         socket
         |> assign(:page_title, gettext("Newsletter lists"))
+        |> assign(:page_subtitle, gettext("Manage your email subscriber lists"))
         |> assign(:project_title, Settings.get_project_title())
         |> assign(:lists, [])
         |> assign(:show_confirm_modal, false)

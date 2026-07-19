@@ -48,7 +48,7 @@ Migrations are managed by PhoenixKit core and applied automatically via `mix pho
 | PhoenixKit | `>= 1.7.73` |
 | Phoenix LiveView | `~> 1.1` |
 | Oban | `~> 2.20` |
-| Earmark | `~> 1.4` |
+| MDEx | `~> 0.13` |
 
 ## Architecture
 
@@ -69,7 +69,7 @@ All schemas use UUIDv7 primary keys.
 
 `Broadcaster` orchestrates sending:
 
-1. Renders Markdown to HTML via Earmark
+1. Renders Markdown to HTML via MDEx
 2. Streams list members in batches of 500
 3. Creates `Delivery` records via `insert_all`
 4. Enqueues `DeliveryWorker` Oban jobs per recipient

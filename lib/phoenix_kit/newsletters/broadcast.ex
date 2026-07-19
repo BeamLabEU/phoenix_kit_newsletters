@@ -10,6 +10,7 @@ defmodule PhoenixKit.Newsletters.Broadcast do
   @primary_key {:uuid, UUIDv7, autogenerate: true}
 
   @valid_statuses ["draft", "scheduled", "sending", "sent", "cancelled"]
+  @valid_source_types ["newsletters_list", "crm_list"]
 
   schema "phoenix_kit_newsletters_broadcasts" do
     field(:subject, :string)
@@ -27,6 +28,13 @@ defmodule PhoenixKit.Newsletters.Broadcast do
     field(:template_uuid, UUIDv7)
     field(:list_uuid, UUIDv7)
     field(:created_by_user_uuid, UUIDv7)
+    field(:send_profile_uuid, UUIDv7)
+    # "newsletters_list" (default) sends to this broadcast's own `list_uuid`;
+    # "crm_list" sends to `crm_list_uuid` instead — a bare UUID, deliberately
+    # with no belongs_to/FK, same soft-reference pattern as send_profile_uuid:
+    # newsletters must not hard-depend on the CRM module being installed.
+    field(:source_type, :string, default: "newsletters_list")
+    field(:crm_list_uuid, UUIDv7)
 
     belongs_to(:list, PhoenixKit.Newsletters.List,
       foreign_key: :list_uuid,
@@ -41,6 +49,13 @@ defmodule PhoenixKit.Newsletters.Broadcast do
 
     belongs_to(:created_by, PhoenixKit.Users.Auth.User,
       foreign_key: :created_by_user_uuid,
+      references: :uuid,
+      define_field: false,
+      type: UUIDv7
+    )
+
+    belongs_to(:send_profile, PhoenixKit.Email.SendProfile,
+      foreign_key: :send_profile_uuid,
       references: :uuid,
       define_field: false,
       type: UUIDv7
@@ -71,12 +86,28 @@ defmodule PhoenixKit.Newsletters.Broadcast do
       :bounced_count,
       :template_uuid,
       :list_uuid,
-      :created_by_user_uuid
+      :created_by_user_uuid,
+      :send_profile_uuid,
+      :source_type,
+      :crm_list_uuid
     ])
-    |> validate_required([:subject, :list_uuid])
+    |> validate_required([:subject])
     |> validate_length(:subject, min: 1, max: 998)
     |> validate_inclusion(:status, @valid_statuses)
+    |> validate_inclusion(:source_type, @valid_source_types)
+    |> validate_source_reference()
+  end
+
+  # The source-specific reference (list_uuid / crm_list_uuid) is required
+  # only for the matching source_type — a crm_list broadcast has no
+  # newsletters list, and vice versa.
+  defp validate_source_reference(changeset) do
+    case get_field(changeset, :source_type) do
+      "crm_list" -> validate_required(changeset, [:crm_list_uuid])
+      _ -> validate_required(changeset, [:list_uuid])
+    end
   end
 
   def valid_statuses, do: @valid_statuses
+  def valid_source_types, do: @valid_source_types
 end

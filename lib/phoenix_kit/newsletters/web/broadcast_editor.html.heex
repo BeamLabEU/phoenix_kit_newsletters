@@ -2,16 +2,13 @@
   flash={@flash}
   phoenix_kit_current_scope={assigns[:phoenix_kit_current_scope]}
   page_title={@page_title}
+  page_subtitle={@page_subtitle}
+  page_section={@page_section}
+  page_section_path={@page_section_path}
   current_path={@url_path}
   project_title={@project_title}
 >
 <div class="container flex-col mx-auto px-4 py-6">
-  <.admin_page_header
-    back={Routes.path("/admin/newsletters/broadcasts")}
-    title={@page_title}
-    subtitle={gettext("Compose and send a broadcast email to your newsletter list")}
-  />
-
   <form id="broadcast-form" phx-change="validate" phx-submit="save_draft">
     <div class="grid grid-cols-1 xl:grid-cols-2 gap-6">
       <%!-- Left: Editor --%>
@@ -28,24 +25,111 @@
           />
         </fieldset>
 
-        <%!-- List selector --%>
-        <fieldset class="fieldset">
-          <label class="label">{gettext("Newsletter list")}</label>
-          <label class="select w-full">
-            <select name="list_uuid">
-              <option value="">{gettext("Select a list...")}</option>
-              <option :for={list <- @lists} value={list.uuid} selected={@list_uuid == list.uuid}>
-                {ngettext(
-                  "%{name} (%{count} subscriber)",
-                  "%{name} (%{count} subscribers)",
-                  list.subscriber_count,
-                  name: list.name,
-                  count: list.subscriber_count
-                )}
-              </option>
-            </select>
-          </label>
-        </fieldset>
+        <%!-- Recipient source — the CRM option only appears when the CRM
+             module is installed; otherwise this is just the newsletters
+             list dropdown, unchanged. --%>
+        <%= if @crm_available do %>
+          <fieldset class="fieldset">
+            <label class="label">{gettext("Send to")}</label>
+            <div class="join">
+              <label class={["btn btn-sm join-item", @source_type == "newsletters_list" && "btn-active"]}>
+                <input
+                  type="radio"
+                  name="source_type"
+                  value="newsletters_list"
+                  checked={@source_type == "newsletters_list"}
+                  class="hidden"
+                />
+                {gettext("Newsletter list")}
+              </label>
+              <label class={["btn btn-sm join-item", @source_type == "crm_list" && "btn-active"]}>
+                <input
+                  type="radio"
+                  name="source_type"
+                  value="crm_list"
+                  checked={@source_type == "crm_list"}
+                  class="hidden"
+                />
+                {gettext("CRM list")}
+              </label>
+            </div>
+          </fieldset>
+
+          <fieldset :if={@source_type == "crm_list"} class="fieldset">
+            <label class="label">{gettext("CRM list")}</label>
+            <label class="select w-full">
+              <select name="crm_list_uuid">
+                <option value="">{gettext("Select a list...")}</option>
+                <option
+                  :for={list <- @crm_lists}
+                  value={list.uuid}
+                  selected={@crm_list_uuid == list.uuid}
+                >
+                  {ngettext(
+                    "%{name} (%{count} member)",
+                    "%{name} (%{count} members)",
+                    list.subscriber_count,
+                    name: list.name,
+                    count: list.subscriber_count
+                  )}
+                </option>
+              </select>
+            </label>
+            <p :if={@crm_list_archived?} class="text-xs text-warning mt-1">
+              <.icon name="hero-exclamation-triangle" class="w-3 h-3 inline" />
+              {gettext("This list is archived and cannot be sent to.")}
+            </p>
+            <p :if={@preflight} class="text-xs text-base-content/60 mt-1">
+              {gettext(
+                "%{total} members: %{sendable} sendable, %{no_email} no email, %{unsendable} unsubscribed/opted-out",
+                total: @preflight.total,
+                sendable: @preflight.sendable,
+                no_email: @preflight.no_email,
+                unsendable: @preflight.unsendable
+              )}
+            </p>
+          </fieldset>
+
+          <fieldset :if={@source_type != "crm_list"} class="fieldset">
+            <label class="label">{gettext("Newsletter list")}</label>
+            <label class="select w-full">
+              <select name="list_uuid">
+                <option value="">{gettext("Select a list...")}</option>
+                <option
+                  :for={list <- @lists}
+                  value={list.uuid}
+                  selected={@list_uuid == list.uuid}
+                >
+                  {ngettext(
+                    "%{name} (%{count} subscriber)",
+                    "%{name} (%{count} subscribers)",
+                    list.subscriber_count,
+                    name: list.name,
+                    count: list.subscriber_count
+                  )}
+                </option>
+              </select>
+            </label>
+          </fieldset>
+        <% else %>
+          <fieldset class="fieldset">
+            <label class="label">{gettext("Newsletter list")}</label>
+            <label class="select w-full">
+              <select name="list_uuid">
+                <option value="">{gettext("Select a list...")}</option>
+                <option :for={list <- @lists} value={list.uuid} selected={@list_uuid == list.uuid}>
+                  {ngettext(
+                    "%{name} (%{count} subscriber)",
+                    "%{name} (%{count} subscribers)",
+                    list.subscriber_count,
+                    name: list.name,
+                    count: list.subscriber_count
+                  )}
+                </option>
+              </select>
+            </label>
+          </fieldset>
+        <% end %>
 
         <%!-- Template selector (only shown when Emails module available) --%>
         <%= if @templates != [] do %>
@@ -83,6 +167,9 @@
 
         <%!-- Actions --%>
         <div class="flex flex-col sm:flex-row gap-3 pt-2">
+          <.pk_link navigate="/admin/newsletters/broadcasts" class="btn btn-ghost btn-sm">
+            {gettext("Cancel")}
+          </.pk_link>
           <button type="submit" class="btn btn-outline btn-sm" disabled={@saving}>
             <%= if @saving do %>
               <span class="loading loading-spinner loading-xs"></span>
@@ -94,7 +181,7 @@
             type="button"
             phx-click="send_now"
             class="btn btn-primary btn-sm"
-            disabled={@saving or @subject == "" or @list_uuid == ""}
+            disabled={@saving or @subject == "" or recipient_source_missing?(assigns)}
           >
             <.icon name="hero-paper-airplane" class="w-4 h-4" /> {gettext("Send now")}
           </button>
@@ -110,7 +197,10 @@
               type="button"
               phx-click="schedule"
               class="btn btn-secondary btn-sm"
-              disabled={@saving or @scheduled_at == "" or @subject == "" or @list_uuid == ""}
+              disabled={
+                @saving or @scheduled_at == "" or @subject == "" or
+                  recipient_source_missing?(assigns)
+              }
             >
               <.icon name="hero-clock" class="w-4 h-4" /> {gettext("Schedule")}
             </button>

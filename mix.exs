@@ -54,7 +54,14 @@ defmodule PhoenixKitNewsletters.MixProject do
   defp deps do
     [
       # Core
-      {:phoenix_kit, "~> 1.7 and >= 1.7.189"},
+      # SendProfile/ProviderOptions and the send-profile context moved to
+      # `PhoenixKit.Email` in core migration V151 (unreleased as of
+      # 2026-07-15) — this package now calls those core modules directly
+      # instead of owning its own copies. Bump the floor below to the exact
+      # hex version once core cuts a release containing V151; until then,
+      # a core built from `feature/email-send-profiles-core` (or later) is
+      # required, wired in via a path/git dependency during this rollout.
+      {:phoenix_kit, "~> 1.7 and >= 1.7.190"},
       {:phoenix_live_view, "~> 1.1"},
       {:gettext, "~> 1.0"},
       {:oban, "~> 2.20"},
@@ -69,7 +76,20 @@ defmodule PhoenixKitNewsletters.MixProject do
       # Dev/test
       {:ex_doc, "~> 0.39", only: :dev, runtime: false},
       {:credo, "~> 1.7", only: [:dev, :test], runtime: false},
-      {:dialyxir, "~> 1.4", only: [:dev, :test], runtime: false}
+      {:dialyxir, "~> 1.4", only: [:dev, :test], runtime: false},
+
+      # Test-only — CRMSource resolves PhoenixKitCRM.Lists/Contacts at
+      # runtime via Code.ensure_loaded?/1 (soft dependency, not required in
+      # a host app), but its correctness is only exercisable against the
+      # real CRM schema+context. Core's own migrations create the CRM
+      # tables (V138+); this just makes the Elixir modules loadable so the
+      # test suite can build real fixtures instead of only covering the
+      # "CRM not installed" degrade path. The contact-lists feature
+      # (Lists/ContactList/ListMember) isn't upstream yet — BeamLabEU/main
+      # has no lists.ex at all — so this points at the dev fork/branch that
+      # has it, same convention as our other phoenix_kit_* forks.
+      {:phoenix_kit_crm,
+       github: "timujinne/phoenix_kit_crm", branch: "feature/crm-contact-lists", only: :test}
     ]
   end
 

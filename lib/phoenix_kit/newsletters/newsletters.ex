@@ -184,7 +184,14 @@ defmodule PhoenixKit.Newsletters do
   # Lists
   # ============================================================================
 
-  alias PhoenixKit.Newsletters.{Broadcast, Broadcaster, Content, Delivery, List, ListMember}
+  alias PhoenixKit.Newsletters.{
+    Broadcast,
+    Broadcaster,
+    Content,
+    Delivery,
+    List,
+    ListMember
+  }
 
   import Ecto.Query
 

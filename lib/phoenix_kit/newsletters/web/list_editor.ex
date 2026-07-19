@@ -6,7 +6,6 @@ defmodule PhoenixKit.Newsletters.Web.ListEditor do
   use Phoenix.LiveView
   use Gettext, backend: PhoenixKit.Newsletters.Gettext
 
-  import PhoenixKitWeb.Components.Core.AdminPageHeader
   import PhoenixKitWeb.Components.Core.Checkbox
   import PhoenixKitWeb.Components.Core.Icon
   import PhoenixKitWeb.Components.Core.Input
@@ -23,6 +22,8 @@ defmodule PhoenixKit.Newsletters.Web.ListEditor do
       socket =
         socket
         |> assign(:list, nil)
+        |> assign(:page_section, gettext("Lists"))
+        |> assign(:page_section_path, Routes.path("/admin/newsletters/lists"))
         |> assign(:project_title, Settings.get_project_title())
 
       {:ok, socket}
@@ -41,6 +42,7 @@ defmodule PhoenixKit.Newsletters.Web.ListEditor do
     {:noreply,
      socket
      |> assign(:page_title, gettext("Edit list: %{name}", name: list.name))
+     |> assign(:page_subtitle, gettext("Edit newsletter list settings"))
      |> assign(:list, list)
      |> assign(:form, to_form(List.changeset(list, %{})))}
   rescue
@@ -55,6 +57,7 @@ defmodule PhoenixKit.Newsletters.Web.ListEditor do
     {:noreply,
      socket
      |> assign(:page_title, gettext("New list"))
+     |> assign(:page_subtitle, gettext("Create a new newsletter list"))
      |> assign(:list, nil)
      |> assign(:form, to_form(List.changeset(%List{}, %{})))}
   end

@@ -2,149 +2,140 @@
   flash={@flash}
   phoenix_kit_current_scope={assigns[:phoenix_kit_current_scope]}
   page_title={@page_title}
+  page_subtitle={@page_subtitle}
   current_path={@url_path}
   project_title={@project_title}
 >
 <div class="container flex-col mx-auto px-4 py-6">
-  <.admin_page_header
-    back={Routes.path("/admin")}
-    title={gettext("Broadcasts")}
-    subtitle={gettext("Create and manage email broadcasts")}
-  />
-
-  <%!-- Actions Bar --%>
-  <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-6">
-    <div>
-      <label class="select select-sm">
-        <select
-          name="status"
-          phx-change="filter_status"
-        >
-          <option value="" selected={@status_filter == ""}>{gettext("All statuses")}</option>
-          <option value="draft" selected={@status_filter == "draft"}>{gettext("Draft")}</option>
-          <option value="scheduled" selected={@status_filter == "scheduled"}>{gettext("Scheduled")}</option>
-          <option value="sending" selected={@status_filter == "sending"}>{gettext("Sending")}</option>
-          <option value="sent" selected={@status_filter == "sent"}>{gettext("Sent")}</option>
-          <option value="cancelled" selected={@status_filter == "cancelled"}>{gettext("Cancelled")}</option>
-        </select>
-      </label>
-    </div>
-
-    <.pk_link navigate="/admin/newsletters/broadcasts/new" class="btn btn-primary btn-sm">
-      <.icon name="hero-plus" class="w-4 h-4" /> {gettext("New broadcast")}
-    </.pk_link>
-  </div>
-
-  <%!-- Broadcasts Table (desktop) --%>
   <%= if @broadcasts == [] do %>
-    <div class="text-center py-12 text-base-content/60">
-      <.icon name="hero-megaphone" class="w-12 h-12 mx-auto mb-4 opacity-40" />
-      <p class="text-lg font-medium">{gettext("No broadcasts found")}</p>
-      <p class="text-sm mt-1">{gettext("Create your first broadcast to get started.")}</p>
-    </div>
+    <.empty_state
+      variant="featured"
+      icon="hero-megaphone"
+      title={gettext("No broadcasts found")}
+      description={gettext("Create your first broadcast to get started.")}
+    >
+      <.pk_link navigate="/admin/newsletters/broadcasts/new" class="btn btn-primary btn-lg">
+        <.icon name="hero-plus" class="w-5 h-5 mr-2" /> {gettext("Create first broadcast")}
+      </.pk_link>
+    </.empty_state>
   <% else %>
-    <div class="hidden md:block">
-      <.table_default variant="zebra" size="sm" class="w-full">
-        <.table_default_header>
-          <.table_default_row>
-            <.table_default_header_cell>{gettext("Subject")}</.table_default_header_cell>
-            <.table_default_header_cell>{gettext("List")}</.table_default_header_cell>
-            <.table_default_header_cell>{gettext("Status")}</.table_default_header_cell>
-            <.table_default_header_cell class="text-right">{gettext("Sent")}</.table_default_header_cell>
-            <.table_default_header_cell class="text-right">
-              {gettext("Delivered")}
-            </.table_default_header_cell>
-            <.table_default_header_cell class="text-right">{gettext("Opened")}</.table_default_header_cell>
-            <.table_default_header_cell class="text-right">{gettext("Bounced")}</.table_default_header_cell>
-            <.table_default_header_cell>{gettext("Sent at")}</.table_default_header_cell>
-          </.table_default_row>
-        </.table_default_header>
+    <.table_default
+      id="broadcasts-table"
+      variant="zebra"
+      size="sm"
+      class="w-full"
+      toggleable
+      items={@broadcasts}
+      card_fields={
+        fn broadcast ->
+          [
+            %{
+              label: gettext("List"),
+              value: if(broadcast.list, do: broadcast.list.name, else: "-")
+            },
+            %{label: gettext("Sent"), value: broadcast.sent_count},
+            %{label: gettext("Delivered"), value: broadcast.delivered_count},
+            %{label: gettext("Opened"), value: broadcast.opened_count},
+            %{label: gettext("Bounced"), value: broadcast.bounced_count},
+            %{label: gettext("Sent at"), value: format_datetime(broadcast.sent_at)}
+          ]
+        end
+      }
+    >
+      <:toolbar_title>
+        <label class="select select-sm">
+          <select name="status" phx-change="filter_status">
+            <option value="" selected={@status_filter == ""}>{gettext("All statuses")}</option>
+            <option value="draft" selected={@status_filter == "draft"}>{gettext("Draft")}</option>
+            <option value="scheduled" selected={@status_filter == "scheduled"}>
+              {gettext("Scheduled")}
+            </option>
+            <option value="sending" selected={@status_filter == "sending"}>
+              {gettext("Sending")}
+            </option>
+            <option value="sent" selected={@status_filter == "sent"}>{gettext("Sent")}</option>
+            <option value="cancelled" selected={@status_filter == "cancelled"}>
+              {gettext("Cancelled")}
+            </option>
+          </select>
+        </label>
+      </:toolbar_title>
+      <:toolbar_actions>
+        <.pk_link navigate="/admin/newsletters/broadcasts/new" class="btn btn-primary btn-sm">
+          <.icon name="hero-plus" class="w-4 h-4" /> {gettext("New broadcast")}
+        </.pk_link>
+      </:toolbar_actions>
 
-        <.table_default_body>
-          <.table_default_row
-            :for={broadcast <- @broadcasts}
-            class="hover cursor-pointer"
-            phx-click="view_broadcast"
-            phx-value-uuid={broadcast.uuid}
-          >
-            <.table_default_cell class="font-medium max-w-xs truncate">
-              {broadcast.subject}
-            </.table_default_cell>
-            <.table_default_cell>
-              <%= if broadcast.list do %>
-                {broadcast.list.name}
-              <% else %>
-                <span class="text-base-content/40">-</span>
-              <% end %>
-            </.table_default_cell>
-            <.table_default_cell>
-              <span class={"badge badge-sm #{status_badge_class(broadcast.status)}"}>
-                {status_label(broadcast.status)}
-              </span>
-            </.table_default_cell>
-            <.table_default_cell class="text-right">{broadcast.sent_count}</.table_default_cell>
-            <.table_default_cell class="text-right">
-              {broadcast.delivered_count}
-            </.table_default_cell>
-            <.table_default_cell class="text-right">
-              {broadcast.opened_count}
-            </.table_default_cell>
-            <.table_default_cell class="text-right">
-              {broadcast.bounced_count}
-            </.table_default_cell>
-            <.table_default_cell class="text-sm text-base-content/70">
-              {format_datetime(broadcast.sent_at)}
-            </.table_default_cell>
-          </.table_default_row>
-        </.table_default_body>
-      </.table_default>
-    </div>
+      <:card_header :let={broadcast}>
+        <div class="flex items-start justify-between gap-2">
+          <span class="font-medium text-sm truncate">{broadcast.subject}</span>
+          <span class={"badge badge-sm #{status_badge_class(broadcast.status)}"}>
+            {status_label(broadcast.status)}
+          </span>
+        </div>
+      </:card_header>
+      <:card_actions :let={broadcast}>
+        <.pk_link
+          navigate={"/admin/newsletters/broadcasts/#{broadcast.uuid}"}
+          class="btn btn-xs btn-outline"
+        >
+          {gettext("View")}
+        </.pk_link>
+      </:card_actions>
 
-    <%!-- Broadcasts Cards (mobile) --%>
-    <div class="md:hidden mb-6">
-      <div class="space-y-3">
-        <%= for broadcast <- @broadcasts do %>
-          <div
-            class="card card-border card-sm bg-base-100 cursor-pointer hover:bg-base-200/50"
-            phx-click="view_broadcast"
-            phx-value-uuid={broadcast.uuid}
-          >
-            <div class="card-body gap-3">
-              <%!-- Header: subject + status --%>
-              <div class="flex items-start justify-between gap-2">
-                <span class="font-medium text-sm truncate">{broadcast.subject}</span>
-                <span class={"badge badge-sm #{status_badge_class(broadcast.status)}"}>
-                  {status_label(broadcast.status)}
-                </span>
-              </div>
+      <.table_default_header>
+        <.table_default_row>
+          <.table_default_header_cell>{gettext("Subject")}</.table_default_header_cell>
+          <.table_default_header_cell>{gettext("List")}</.table_default_header_cell>
+          <.table_default_header_cell>{gettext("Status")}</.table_default_header_cell>
+          <.table_default_header_cell class="text-right">{gettext("Sent")}</.table_default_header_cell>
+          <.table_default_header_cell class="text-right">
+            {gettext("Delivered")}
+          </.table_default_header_cell>
+          <.table_default_header_cell class="text-right">{gettext("Opened")}</.table_default_header_cell>
+          <.table_default_header_cell class="text-right">{gettext("Bounced")}</.table_default_header_cell>
+          <.table_default_header_cell>{gettext("Sent at")}</.table_default_header_cell>
+        </.table_default_row>
+      </.table_default_header>
 
-              <%!-- Body: key/value grid --%>
-              <div class="grid grid-cols-2 gap-x-4 gap-y-2 text-sm">
-                <div class="text-base-content/60">{gettext("List")}</div>
-                <div>
-                  {if broadcast.list, do: broadcast.list.name, else: "-"}
-                </div>
-
-                <div class="text-base-content/60">{gettext("Sent")}</div>
-                <div>{broadcast.sent_count}</div>
-
-                <div class="text-base-content/60">{gettext("Delivered")}</div>
-                <div>{broadcast.delivered_count}</div>
-
-                <div class="text-base-content/60">{gettext("Opened")}</div>
-                <div>{broadcast.opened_count}</div>
-
-                <div class="text-base-content/60">{gettext("Bounced")}</div>
-                <div>{broadcast.bounced_count}</div>
-
-                <div class="text-base-content/60">{gettext("Sent at")}</div>
-                <div class="text-base-content/70">{format_datetime(broadcast.sent_at)}</div>
-              </div>
-            </div>
-          </div>
-        <% end %>
-      </div>
-    </div>
+      <.table_default_body>
+        <.table_default_row
+          :for={broadcast <- @broadcasts}
+          class="hover cursor-pointer"
+          phx-click="view_broadcast"
+          phx-value-uuid={broadcast.uuid}
+        >
+          <.table_default_cell class="font-medium max-w-xs truncate">
+            {broadcast.subject}
+          </.table_default_cell>
+          <.table_default_cell>
+            <%= if broadcast.list do %>
+              {broadcast.list.name}
+            <% else %>
+              <span class="text-base-content/40">-</span>
+            <% end %>
+          </.table_default_cell>
+          <.table_default_cell>
+            <span class={"badge badge-sm #{status_badge_class(broadcast.status)}"}>
+              {status_label(broadcast.status)}
+            </span>
+          </.table_default_cell>
+          <.table_default_cell class="text-right">{broadcast.sent_count}</.table_default_cell>
+          <.table_default_cell class="text-right">
+            {broadcast.delivered_count}
+          </.table_default_cell>
+          <.table_default_cell class="text-right">
+            {broadcast.opened_count}
+          </.table_default_cell>
+          <.table_default_cell class="text-right">
+            {broadcast.bounced_count}
+          </.table_default_cell>
+          <.table_default_cell class="text-sm text-base-content/70">
+            {format_datetime(broadcast.sent_at)}
+          </.table_default_cell>
+        </.table_default_row>
+      </.table_default_body>
+    </.table_default>
   <% end %>
 </div>
 </PhoenixKitWeb.Components.LayoutWrapper.app_layout>
