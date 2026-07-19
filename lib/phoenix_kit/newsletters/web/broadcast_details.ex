@@ -165,6 +165,7 @@ defmodule PhoenixKit.Newsletters.Web.BroadcastDetails do
   defp gettext_delivery("opened"), do: gettext("Opened")
   defp gettext_delivery("bounced"), do: gettext("Bounced")
   defp gettext_delivery("failed"), do: gettext("Failed")
+  defp gettext_delivery("blocked"), do: gettext("Blocked")
   defp gettext_delivery(other), do: other
 
   defp status_badge_class(status) do
@@ -186,6 +187,7 @@ defmodule PhoenixKit.Newsletters.Web.BroadcastDetails do
       "opened" -> "badge-primary"
       "bounced" -> "badge-warning"
       "failed" -> "badge-error"
+      "blocked" -> "badge-neutral"
       _ -> "badge-ghost"
     end
   end

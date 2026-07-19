@@ -61,11 +61,17 @@ defmodule PhoenixKit.Newsletters.Web.UnsubscribeController do
   def process_unsubscribe(conn, %{"token" => token, "scope" => "list"}) do
     case verify_token(token) do
       {:ok, %{user_uuid: user_uuid, list_uuid: list_uuid}} ->
-        Newsletters.unsubscribe_user(list_uuid, user_uuid)
+        case Newsletters.unsubscribe_user(list_uuid, user_uuid) do
+          {:ok, _member} ->
+            conn
+            |> put_flash(:info, "You have been unsubscribed from this list.")
+            |> redirect(to: Routes.path("/"))
 
-        conn
-        |> put_flash(:info, "You have been unsubscribed from this list.")
-        |> redirect(to: Routes.path("/"))
+          {:error, _reason} ->
+            conn
+            |> put_flash(:error, "We could not unsubscribe you right now. Please try again.")
+            |> redirect(to: Routes.path("/"))
+        end
 
       {:ok, %{contact_uuid: contact_uuid, crm_list_uuid: crm_list_uuid}} ->
         handle_crm_list_unsubscribe(conn, token, contact_uuid, crm_list_uuid)
