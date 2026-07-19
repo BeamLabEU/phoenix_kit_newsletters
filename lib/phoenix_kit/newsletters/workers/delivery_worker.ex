@@ -466,14 +466,17 @@ defmodule PhoenixKit.Newsletters.Workers.DeliveryWorker do
   def update_delivery_result(delivery, status, attrs, broadcast_uuid, counter_field) do
     repo().transaction(fn ->
       case Newsletters.update_delivery_status(delivery, status, attrs) do
-        {:ok, updated} ->
-          if counter_field, do: update_broadcast_counter(broadcast_uuid, counter_field)
-          updated
-
-        {:error, changeset} ->
-          repo().rollback(changeset)
+        {:ok, updated} -> maybe_bump_counter(updated, broadcast_uuid, counter_field)
+        {:error, changeset} -> repo().rollback(changeset)
       end
     end)
+  end
+
+  defp maybe_bump_counter(delivery, _broadcast_uuid, nil), do: delivery
+
+  defp maybe_bump_counter(delivery, broadcast_uuid, counter_field) do
+    update_broadcast_counter(broadcast_uuid, counter_field)
+    delivery
   end
 
   defp update_broadcast_counter(broadcast_uuid, field) do
