@@ -187,6 +187,24 @@ defmodule PhoenixKit.Newsletters.BroadcastFinalizationTest do
       assert reloaded.status == "sending"
       assert reloaded.sent_count == 1
     end
+
+    test "a still-retryable transient failure on the last delivery does not finalize" do
+      broadcast = create_broadcast(%{total_recipients: 2, sent_count: 1})
+      create_delivery(broadcast, create_user(), "sent")
+      delivery = create_delivery(broadcast, create_user())
+
+      # Mirrors what DeliveryWorker.handle_failure/4 does on a non-terminal
+      # attempt (attempt < max_attempts): Oban will still retry this job,
+      # so the broadcast must not be reported "sent" — and, concretely,
+      # must not lose its "Cancel broadcast" button (gated on status ==
+      # "sending" in broadcast_details.html.heex) — while a send is still
+      # queued to run.
+      DeliveryWorker.handle_failure(delivery.uuid, broadcast.uuid, "timeout", false)
+
+      reloaded = Repo.get!(Broadcast, broadcast.uuid)
+      assert reloaded.status == "sending"
+      assert reloaded.bounced_count == 0
+    end
   end
 
   describe "repair_stuck_sending_broadcasts/0" do
