@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.1.6 - 2026-07-19
+
+### Fixed
+- `process_scheduled_broadcasts/0` no longer retries a scheduled broadcast against an archived CRM list forever — `Broadcaster.send/1`'s `{:crm_list_not_active, _}` error now transitions the broadcast to a new terminal `"failed"` status instead of leaving it `"scheduled"` for every future scheduler tick to re-fetch and re-fail.
+- `Delivery.changeset/2`'s `unique_constraint(:message_id)` now names the constraint after the real DB index (`idx_newsletters_deliveries_message_id`, from core migration V79) instead of Ecto's default naming convention, so a genuine unique violation returns `{:error, changeset}` instead of raising `Ecto.ConstraintError`.
+- List-Unsubscribe / List-Unsubscribe-Post headers (RFC 8058) are now added for `newsletters_list` (user) broadcasts too, not just `crm_list` broadcasts — the one-click POST endpoint's controller clause was also extended to handle the `user_uuid`/`list_uuid` token shape, which previously fell through to a silent no-op.
+- Added the missing `"failed"` option to the broadcasts admin page's status filter dropdown, so broadcasts that hit the new terminal failed state can be filtered to in the UI.
+
 ## 0.1.5 - 2026-07-13
 
 ### Security

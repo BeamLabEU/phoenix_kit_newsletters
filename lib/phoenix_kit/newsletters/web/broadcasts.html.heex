@@ -57,6 +57,9 @@
             <option value="cancelled" selected={@status_filter == "cancelled"}>
               {gettext("Cancelled")}
             </option>
+            <option value="failed" selected={@status_filter == "failed"}>
+              {gettext("Failed")}
+            </option>
           </select>
         </label>
       </:toolbar_title>
