@@ -61,12 +61,13 @@ defmodule PhoenixKit.Newsletters.Workers.DeliveryWorker do
            ) do
       message_id = Map.get(result, :id)
 
-      Newsletters.update_delivery_status(delivery, "sent", %{
-        sent_at: UtilsDate.utc_now(),
-        message_id: message_id
-      })
-
-      update_broadcast_counter(broadcast_uuid, :sent_count)
+      update_delivery_result(
+        delivery,
+        "sent",
+        %{sent_at: UtilsDate.utc_now(), message_id: message_id},
+        broadcast_uuid,
+        :sent_count
+      )
 
       :ok
     else
@@ -439,15 +440,40 @@ defmodule PhoenixKit.Newsletters.Workers.DeliveryWorker do
   def handle_failure(delivery_uuid, broadcast_uuid, reason, terminal?) do
     case get_delivery(delivery_uuid) do
       {:ok, delivery} ->
-        Newsletters.update_delivery_status(delivery, "failed", %{
-          error: inspect(reason)
-        })
-
-        if terminal?, do: update_broadcast_counter(broadcast_uuid, :bounced_count)
+        update_delivery_result(
+          delivery,
+          "failed",
+          %{error: inspect(reason)},
+          broadcast_uuid,
+          if(terminal?, do: :bounced_count)
+        )
 
       _ ->
         :ok
     end
+  end
+
+  @doc false
+  # Commits a delivery-status transition together with its paired
+  # broadcast-counter increment in a single DB transaction. Previously
+  # these were two independent repo calls: a crash between them (e.g. the
+  # BEAM going down right after the status write lands but before the
+  # counter write) permanently undercounts, since a retry's
+  # guard_unsent/1 sees the delivery already in its target status and
+  # skips re-counting. `counter_field` may be `nil` to skip the counter
+  # write (e.g. a non-terminal failure). Exposed (non-`defp`) for direct
+  # testing — same rationale as resolve_send_profile/1 et al above.
+  def update_delivery_result(delivery, status, attrs, broadcast_uuid, counter_field) do
+    repo().transaction(fn ->
+      case Newsletters.update_delivery_status(delivery, status, attrs) do
+        {:ok, updated} ->
+          if counter_field, do: update_broadcast_counter(broadcast_uuid, counter_field)
+          updated
+
+        {:error, changeset} ->
+          repo().rollback(changeset)
+      end
+    end)
   end
 
   defp update_broadcast_counter(broadcast_uuid, field) do

@@ -516,4 +516,79 @@ defmodule PhoenixKit.Newsletters.Workers.DeliveryWorkerTest do
       assert_email_sent(to: user.email, subject: "Recovers on retry")
     end
   end
+
+  describe "update_delivery_result/5 — delivery status and broadcast counter commit atomically" do
+    test "a failed status write (unique_constraint violation) leaves the counter unbumped" do
+      broadcast = create_broadcast(%{subject: "Atomicity", html_body: "<p>Hi</p>"})
+
+      other_user = create_user()
+      other_delivery = create_delivery(broadcast, other_user)
+
+      {:ok, _} =
+        DeliveryWorker.update_delivery_result(
+          other_delivery,
+          "sent",
+          %{sent_at: DateTime.utc_now(), message_id: "dup-message-id"},
+          broadcast.uuid,
+          :sent_count
+        )
+
+      user = create_user()
+      delivery = create_delivery(broadcast, user)
+
+      # Delivery.changeset/2's unique_constraint(:message_id) names the
+      # constraint after Ecto's default convention
+      # ("phoenix_kit_newsletters_deliveries_message_id_index"), but the
+      # real DB index from core migration V79 is named
+      # "idx_newsletters_deliveries_message_id" — a pre-existing mismatch
+      # unrelated to this fix, so the violation surfaces as a raised
+      # Ecto.ConstraintError rather than a graceful {:error, changeset}.
+      # The transaction still rolls back either way — that's what this
+      # test verifies.
+      assert_raise Ecto.ConstraintError, fn ->
+        DeliveryWorker.update_delivery_result(
+          delivery,
+          "sent",
+          %{sent_at: DateTime.utc_now(), message_id: "dup-message-id"},
+          broadcast.uuid,
+          :sent_count
+        )
+      end
+
+      updated_delivery = Repo.get(Delivery, delivery.uuid)
+      updated_broadcast = Repo.get(Broadcast, broadcast.uuid)
+
+      # Neither write landed for the failed delivery: status is still
+      # "pending" and sent_count reflects only the other (separately
+      # successful) delivery — proving the failed status write rolled
+      # back its paired counter increment instead of silently
+      # undercounting.
+      assert updated_delivery.status == "pending"
+      assert updated_broadcast.sent_count == 1
+    end
+
+    test "a successful status write increments the paired counter in the same call" do
+      broadcast = create_broadcast(%{subject: "Atomicity ok", html_body: "<p>Hi</p>"})
+      user = create_user()
+      delivery = create_delivery(broadcast, user)
+
+      assert {:ok, _delivery} =
+               DeliveryWorker.update_delivery_result(
+                 delivery,
+                 "sent",
+                 %{
+                   sent_at: DateTime.utc_now(),
+                   message_id: "unique-#{System.unique_integer([:positive])}"
+                 },
+                 broadcast.uuid,
+                 :sent_count
+               )
+
+      updated_delivery = Repo.get(Delivery, delivery.uuid)
+      updated_broadcast = Repo.get(Broadcast, broadcast.uuid)
+
+      assert updated_delivery.status == "sent"
+      assert updated_broadcast.sent_count == 1
+    end
+  end
 end

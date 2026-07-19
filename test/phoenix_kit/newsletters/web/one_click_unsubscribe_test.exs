@@ -18,6 +18,8 @@ defmodule PhoenixKit.Newsletters.Web.OneClickUnsubscribeTest do
 
   use PhoenixKitNewsletters.DataCase, async: false
 
+  import ExUnit.CaptureLog
+
   alias PhoenixKit.Newsletters.Web.UnsubscribeController
   alias PhoenixKitCRM.Contacts
   alias PhoenixKitCRM.Lists
@@ -120,6 +122,20 @@ defmodule PhoenixKit.Newsletters.Web.OneClickUnsubscribeTest do
 
       reloaded = Repo.get_by(member.__struct__, uuid: member.uuid)
       assert reloaded.status == "subscribed"
+    end
+
+    test "a garbage token logs a warning but the response contract (always 200) is unchanged" do
+      log =
+        capture_log(fn ->
+          conn =
+            build_conn(:post)
+            |> UnsubscribeController.one_click_unsubscribe(%{"token" => "not-a-real-token"})
+
+          assert conn.status == 200
+          assert conn.resp_body == ""
+        end)
+
+      assert log =~ "unverifiable token"
     end
 
     test "no token param at all still returns 200 without crashing" do

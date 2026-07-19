@@ -3,6 +3,8 @@ defmodule PhoenixKit.Newsletters.Web.UnsubscribeController do
 
   use PhoenixKitWeb, :controller
 
+  require Logger
+
   alias PhoenixKit.Newsletters
   alias PhoenixKit.Newsletters.CRMSource
   alias PhoenixKit.Utils.Routes
@@ -82,17 +84,20 @@ defmodule PhoenixKit.Newsletters.Web.UnsubscribeController do
   def process_unsubscribe(conn, %{"token" => token, "scope" => "all"}) do
     case verify_token(token) do
       {:ok, %{contact_uuid: contact_uuid}} ->
-        case CRMSource.get_contact(contact_uuid) do
-          %{} = contact ->
-            CRMSource.opt_out(contact)
-
-            conn
-            |> put_flash(:info, "You have been unsubscribed from all newsletters.")
-            |> redirect(to: Routes.path("/"))
-
+        with %{} = contact <- CRMSource.get_contact(contact_uuid),
+             {:ok, _contact} <- CRMSource.opt_out(contact) do
+          conn
+          |> put_flash(:info, "You have been unsubscribed from all newsletters.")
+          |> redirect(to: Routes.path("/"))
+        else
           nil ->
             conn
             |> put_flash(:error, "Invalid link.")
+            |> redirect(to: Routes.path("/"))
+
+          {:error, _reason} ->
+            conn
+            |> put_flash(:error, "We could not unsubscribe you right now. Please try again.")
             |> redirect(to: Routes.path("/"))
         end
 
@@ -133,6 +138,11 @@ defmodule PhoenixKit.Newsletters.Web.UnsubscribeController do
              %{} = contact <- CRMSource.get_contact(contact_uuid) do
           CRMSource.remove_from_list(contact, list)
         end
+
+      {:error, reason} ->
+        Logger.warning(
+          "UnsubscribeController: one-click POST with an unverifiable token: #{inspect(reason)}"
+        )
 
       _ ->
         :ok
