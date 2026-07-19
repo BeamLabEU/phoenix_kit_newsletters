@@ -16,6 +16,7 @@ defmodule PhoenixKit.Newsletters.Web.BroadcastDetails do
   alias PhoenixKit.Modules.Storage
   alias PhoenixKit.Newsletters
   alias PhoenixKit.Newsletters.Broadcast
+  alias PhoenixKit.Newsletters.Broadcaster
   alias PhoenixKit.Newsletters.CRMSource
   alias PhoenixKit.Newsletters.UserGroupSource
   alias PhoenixKit.Newsletters.Web.Timezone
@@ -99,6 +100,19 @@ defmodule PhoenixKit.Newsletters.Web.BroadcastDetails do
   end
 
   @impl true
+  def handle_event("show_confirm", %{"action" => "retry_send"}, socket) do
+    {:noreply,
+     socket
+     |> assign(:show_confirm_modal, true)
+     |> assign(:confirm_action, :retry_send)
+     |> assign(:confirm_title, gettext("Retry send"))
+     |> assign(
+       :confirm_message,
+       gettext("This will retry sending the broadcast from the beginning.")
+     )}
+  end
+
+  @impl true
   def handle_event("hide_confirm", _params, socket) do
     {:noreply,
      socket
@@ -121,6 +135,24 @@ defmodule PhoenixKit.Newsletters.Web.BroadcastDetails do
 
           {:error, _changeset} ->
             {:noreply, put_flash(socket, :error, gettext("Failed to cancel broadcast"))}
+        end
+
+      :retry_send ->
+        case Broadcaster.send(socket.assigns.broadcast) do
+          {:ok, broadcast} ->
+            {:noreply,
+             socket
+             |> assign(:broadcast, broadcast)
+             |> put_flash(:info, gettext("Broadcast is being sent"))
+             |> load_broadcast_data()}
+
+          {:error, reason} ->
+            {:noreply,
+             put_flash(
+               socket,
+               :error,
+               gettext("Failed to send: %{reason}", reason: inspect(reason))
+             )}
         end
 
       _ ->
