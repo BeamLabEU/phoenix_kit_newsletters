@@ -195,10 +195,20 @@ defmodule PhoenixKit.Newsletters.Workers.DeliveryWorker do
     %{
       "name" => recipient.username || recipient.email,
       "email" => recipient.email,
-      "unsubscribe_url" => unsubscribe_url,
-      "preferences_url" => preferences_url
+      "unsubscribe_url" => unsubscribe_url
     }
+    |> maybe_put_preferences_url(preferences_url)
   end
+
+  # An unresolved preferences_url ("" — legacy recipient, or no CRM match
+  # left by send time) must NOT substitute to an empty string: dropped
+  # into `<a href="{{preferences_url}}">`, that silently produces a link
+  # to the site root instead of no link at all. Omitting the key entirely
+  # leaves the literal `{{preferences_url}}` in the rendered email instead
+  # — visibly wrong, which is exactly the point for a template author to
+  # notice and fix, rather than a quietly-broken link nobody catches.
+  defp maybe_put_preferences_url(variables, ""), do: variables
+  defp maybe_put_preferences_url(variables, url), do: Map.put(variables, "preferences_url", url)
 
   # newsletters-list recipient: the original user_uuid/list_uuid token,
   # unchanged — verified by the existing flavor in UnsubscribeController.

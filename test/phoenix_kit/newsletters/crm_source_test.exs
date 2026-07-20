@@ -304,6 +304,52 @@ defmodule PhoenixKit.Newsletters.CRMSourceTest do
       assert length(Contacts.list_by_email(email)) == 1
     end
 
+    test "creates a new contact instead of guessing when the email is ambiguous (N>1 unlinked matches)" do
+      email = "ambiguous-#{System.unique_integer([:positive])}@example.com"
+      first = add_contact(%{email: email})
+      second = add_contact(%{email: email})
+      user_uuid = create_core_user(email).uuid
+
+      assert {:ok, linked} =
+               CRMSource.find_or_link_contact_for_user(%{uuid: user_uuid, email: email})
+
+      # Neither pre-existing contact was touched — both are still
+      # unlinked, and the returned contact is a brand-new third row.
+      assert linked.uuid not in [first.uuid, second.uuid]
+      assert linked.user_uuid == user_uuid
+
+      reloaded_first = CRMSource.get_contact(first.uuid)
+      reloaded_second = CRMSource.get_contact(second.uuid)
+      assert reloaded_first.user_uuid == nil
+      assert reloaded_second.user_uuid == nil
+
+      assert length(Contacts.list_by_email(email)) == 3
+    end
+
+    test "an already-linked contact holding this email doesn't block a fresh link — it's not a candidate" do
+      email = "linked-to-someone-else-#{System.unique_integer([:positive])}@example.com"
+
+      other_user_uuid =
+        create_core_user("other-#{System.unique_integer([:positive])}@example.com").uuid
+
+      already_linked = add_contact(%{email: email})
+
+      {:ok, already_linked} =
+        CRMSource.find_or_link_contact_for_user(%{
+          uuid: other_user_uuid,
+          email: already_linked.email
+        })
+
+      user_uuid = create_core_user(email).uuid
+
+      assert {:ok, linked} =
+               CRMSource.find_or_link_contact_for_user(%{uuid: user_uuid, email: email})
+
+      # Not the contact already claimed by the other user — a fresh one.
+      assert linked.uuid != already_linked.uuid
+      assert linked.user_uuid == user_uuid
+    end
+
     test "never goes through Contacts.connect_user/2 — no placeholder core user is registered" do
       email = "no-placeholder-#{System.unique_integer([:positive])}@example.com"
       user_uuid = create_core_user(email).uuid

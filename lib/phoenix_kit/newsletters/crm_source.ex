@@ -325,12 +325,24 @@ defmodule PhoenixKit.Newsletters.CRMSource do
   that `user_uuid`, never mint anything).
 
   Resolution order: (1) a contact already linked to this `user_uuid` —
-  the common case after the first call; (2) the oldest existing contact
-  holding this email (linked in place, so a person who already has a CRM
-  presence — e.g. as a supplier/client contact — reuses that record
-  rather than accumulating a second one for the exact same
-  already-known identity); (3) neither exists — create a bare contact
-  from the user's email and link it.
+  the common case after the first call; (2) if exactly ONE existing,
+  not-yet-linked contact holds this email, link it in place (reuses a
+  person's existing CRM presence — e.g. as a supplier/client contact —
+  rather than accumulating a second record for the same already-known
+  identity); (3) otherwise (no match, or the email is ambiguous — see
+  below) create a bare contact from the user's email and link it.
+
+  **Ambiguous email is deliberately treated as "no match", not "pick
+  one"** (review finding on the first cut): under the CRM import policy
+  ("every imported row creates a NEW contact" — §4.3 of the restructuring
+  spec), one address can legitimately belong to several distinct contact
+  rows. Auto-linking to an arbitrary one of them (the previous behavior:
+  the oldest) would put only THAT record under this person's control —
+  the others stay subscribed to whatever lists they're on, invisible on
+  this page, so the person "unsubscribes" and mail keeps arriving from a
+  list they never see. Same reasoning excludes already-linked contacts
+  from the candidate count — a contact linked to a DIFFERENT user is not
+  this person's, ambiguous or not.
 
   Takes any map/struct with `:uuid` and `:email` (a `%User{}`, or an
   equivalent plain map) so callers don't need a real `User` struct in
@@ -351,9 +363,13 @@ defmodule PhoenixKit.Newsletters.CRMSource do
   end
 
   defp find_or_create_contact_and_link(user_uuid, email) do
-    case soft_call(@contacts_mod, :list_by_email, [email]) do
-      [existing | _] -> link_contact_to_user(existing, user_uuid)
-      [] -> create_and_link_contact(user_uuid, email)
+    unlinked =
+      soft_call(@contacts_mod, :list_by_email, [email])
+      |> Enum.filter(&(Map.get(&1, :user_uuid) == nil))
+
+    case unlinked do
+      [existing] -> link_contact_to_user(existing, user_uuid)
+      _ -> create_and_link_contact(user_uuid, email)
     end
   end
 
