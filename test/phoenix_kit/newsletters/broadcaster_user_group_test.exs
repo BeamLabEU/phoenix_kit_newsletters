@@ -16,16 +16,17 @@ defmodule PhoenixKit.Newsletters.BroadcasterUserGroupTest do
 
   alias PhoenixKit.Newsletters
   alias PhoenixKit.Newsletters.Broadcaster
+  alias PhoenixKit.Users.Auth
   alias PhoenixKit.Users.Auth.User
   alias PhoenixKit.Users.Roles
   alias PhoenixKitNewsletters.Test.Repo
 
-  defp create_user_group_broadcast(role_names) do
+  defp create_user_group_broadcast(role_uuids) do
     {:ok, broadcast} =
       Newsletters.create_broadcast(%{
         subject: "Role broadcast",
         source_type: "user_group",
-        source_params: %{"role_names" => role_names},
+        source_params: %{"role_uuids" => role_uuids, "role_names_snapshot" => []},
         markdown_body: "Hello",
         html_body: "<p>Hello</p>",
         text_body: "Hello"
@@ -35,7 +36,7 @@ defmodule PhoenixKit.Newsletters.BroadcasterUserGroupTest do
   end
 
   test "runs the full send path without crashing and resolves to zero recipients for an unknown role" do
-    broadcast = create_user_group_broadcast(["NonexistentRole"])
+    broadcast = create_user_group_broadcast([Ecto.UUID.generate()])
 
     assert {:ok, sent} = Broadcaster.send(broadcast)
     assert sent.status == "sending"
@@ -69,14 +70,14 @@ defmodule PhoenixKit.Newsletters.BroadcasterUserGroupTest do
         |> Repo.insert()
 
       {:ok, _assignment} = Roles.assign_role(inactive_user, role.name)
-      {:ok, _} = PhoenixKit.Users.Auth.update_user_status(inactive_user, %{"is_active" => false})
+      {:ok, _} = Auth.update_user_status(inactive_user, %{"is_active" => false})
 
       %{role: role, sendable: sendable}
     end
 
     test "creates Delivery rows with user_uuid + recipient_email: nil for only the sendable members",
          %{role: role, sendable: sendable} do
-      broadcast = create_user_group_broadcast([role.name])
+      broadcast = create_user_group_broadcast([role.uuid])
 
       assert {:ok, sent} = Broadcaster.send(broadcast)
       assert sent.total_recipients == 2

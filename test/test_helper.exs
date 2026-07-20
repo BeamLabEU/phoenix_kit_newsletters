@@ -11,6 +11,12 @@ repo_available =
     {:ok, _} = PhoenixKitNewsletters.Test.Repo.start_link()
     PhoenixKit.Migration.ensure_current(PhoenixKitNewsletters.Test.Repo, log: false)
     Ecto.Adapters.SQL.Sandbox.mode(PhoenixKitNewsletters.Test.Repo, :manual)
+    # PhoenixKit.Users.Roles.create_role/update_role/delete_role broadcast
+    # through this (Admin.Events.broadcast_role_created/2 etc) — needed by
+    # UserGroupSourceTest's role-management fixtures. Mirrors core
+    # phoenix_kit's own test_helper.exs, which starts this for the same
+    # reason.
+    {:ok, _pid} = PhoenixKit.PubSub.Manager.start_link([])
     true
   rescue
     e ->

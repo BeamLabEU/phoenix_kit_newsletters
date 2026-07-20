@@ -165,7 +165,7 @@ defmodule PhoenixKit.Newsletters.Broadcaster do
   end
 
   defp resolve_recipients(%Broadcast{source_type: "user_group"} = broadcast) do
-    broadcast |> Broadcast.role_names() |> UserGroupSource.sendable_recipients()
+    broadcast |> Broadcast.role_uuids() |> UserGroupSource.sendable_recipients()
   end
 
   defp resolve_recipients(%Broadcast{}), do: nil

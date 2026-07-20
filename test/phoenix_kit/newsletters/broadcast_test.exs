@@ -55,51 +55,73 @@ defmodule PhoenixKit.Newsletters.BroadcastTest do
       assert %{source_type: ["is invalid"]} = errors_on(changeset)
     end
 
-    test "user_group source requires at least one role name, not list_uuid/crm_list_uuid" do
+    test "user_group source requires at least one role uuid, not list_uuid/crm_list_uuid" do
       changeset = Broadcast.changeset(%Broadcast{}, %{subject: "Hi", source_type: "user_group"})
 
       refute changeset.valid?
       assert %{source_params: ["select at least one role"]} = errors_on(changeset)
     end
 
-    test "user_group source is invalid with an empty role_names list" do
+    test "user_group source is invalid with an empty role_uuids list" do
       changeset =
         Broadcast.changeset(%Broadcast{}, %{
           subject: "Hi",
           source_type: "user_group",
-          source_params: %{"role_names" => []}
+          source_params: %{"role_uuids" => []}
         })
 
       refute changeset.valid?
       assert %{source_params: ["select at least one role"]} = errors_on(changeset)
     end
 
-    test "user_group source is valid with at least one role name and no list_uuid/crm_list_uuid" do
+    test "user_group source is valid with at least one role uuid and no list_uuid/crm_list_uuid" do
       changeset =
         Broadcast.changeset(%Broadcast{}, %{
           subject: "Hi",
           source_type: "user_group",
-          source_params: %{"role_names" => ["Admin"]}
+          source_params: %{"role_uuids" => [Ecto.UUID.generate()]}
         })
 
       assert changeset.valid?
     end
   end
 
-  describe "role_names/1" do
-    test "reads role_names out of a %Broadcast{}'s source_params" do
-      broadcast = %Broadcast{source_params: %{"role_names" => ["Admin", "SupportAgent"]}}
-      assert Broadcast.role_names(broadcast) == ["Admin", "SupportAgent"]
+  describe "role_uuids/1" do
+    test "reads role_uuids out of a %Broadcast{}'s source_params" do
+      uuid_a = Ecto.UUID.generate()
+      uuid_b = Ecto.UUID.generate()
+      broadcast = %Broadcast{source_params: %{"role_uuids" => [uuid_a, uuid_b]}}
+      assert Broadcast.role_uuids(broadcast) == [uuid_a, uuid_b]
     end
 
-    test "reads role_names out of a plain source_params map" do
-      assert Broadcast.role_names(%{"role_names" => ["User"]}) == ["User"]
+    test "reads role_uuids out of a plain source_params map" do
+      uuid = Ecto.UUID.generate()
+      assert Broadcast.role_uuids(%{"role_uuids" => [uuid]}) == [uuid]
     end
 
     test "is [] for nil, an empty map, or a map without the key" do
-      assert Broadcast.role_names(nil) == []
-      assert Broadcast.role_names(%{}) == []
-      assert Broadcast.role_names(%{"other_key" => "x"}) == []
+      assert Broadcast.role_uuids(nil) == []
+      assert Broadcast.role_uuids(%{}) == []
+      assert Broadcast.role_uuids(%{"other_key" => "x"}) == []
+    end
+  end
+
+  describe "role_names_snapshot/1" do
+    test "reads the snapshot out of a %Broadcast{}'s source_params, independent of role_uuids" do
+      broadcast = %Broadcast{
+        source_params: %{
+          "role_uuids" => [Ecto.UUID.generate()],
+          "role_names_snapshot" => ["Admin", "SupportAgent"]
+        }
+      }
+
+      assert Broadcast.role_names_snapshot(broadcast) == ["Admin", "SupportAgent"]
+    end
+
+    test "is [] for nil, an empty map, or a map without the key" do
+      assert Broadcast.role_names_snapshot(nil) == []
+      assert Broadcast.role_names_snapshot(%{}) == []
+      assert Broadcast.role_names_snapshot(%{"role_uuids" => [Ecto.UUID.generate()]}) == []
     end
   end
 
