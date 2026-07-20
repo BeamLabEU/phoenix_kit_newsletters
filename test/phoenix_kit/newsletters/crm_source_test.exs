@@ -15,6 +15,8 @@ defmodule PhoenixKit.Newsletters.CRMSourceTest do
 
   use PhoenixKitNewsletters.DataCase, async: false
 
+  import Ecto.Query, only: [from: 2]
+
   alias PhoenixKit.Newsletters.CRMSource
   alias PhoenixKit.Users.Auth
   alias PhoenixKitCRM.Contacts
@@ -251,10 +253,22 @@ defmodule PhoenixKit.Newsletters.CRMSourceTest do
     refute CRMSource.subscribed?(contact, list)
   end
 
+  # A real core user row: phoenix_kit_crm_contacts.user_uuid carries an FK
+  # to it, so linking against a freshly generated uuid violates the
+  # constraint. Mirrors the fixture delivery_worker_test.exs uses.
+  defp create_core_user(email) do
+    {:ok, user} =
+      %PhoenixKit.Users.Auth.User{}
+      |> PhoenixKit.Users.Auth.User.guest_user_changeset(%{email: email})
+      |> PhoenixKit.RepoHelper.repo().insert()
+
+    user
+  end
+
   describe "find_or_link_contact_for_user/1" do
     test "creates and links a new contact when none exists for this user or email" do
-      user_uuid = Ecto.UUID.generate()
       email = "new-user-#{System.unique_integer([:positive])}@example.com"
+      user_uuid = create_core_user(email).uuid
 
       assert {:ok, contact} =
                CRMSource.find_or_link_contact_for_user(%{uuid: user_uuid, email: email})
@@ -264,8 +278,8 @@ defmodule PhoenixKit.Newsletters.CRMSourceTest do
     end
 
     test "is called twice for the same user and creates exactly one contact" do
-      user_uuid = Ecto.UUID.generate()
       email = "repeat-user-#{System.unique_integer([:positive])}@example.com"
+      user_uuid = create_core_user(email).uuid
       user = %{uuid: user_uuid, email: email}
 
       assert {:ok, first} = CRMSource.find_or_link_contact_for_user(user)
@@ -278,7 +292,7 @@ defmodule PhoenixKit.Newsletters.CRMSourceTest do
     test "links an existing contact holding this email, instead of creating a duplicate" do
       email = "existing-contact-#{System.unique_integer([:positive])}@example.com"
       existing = add_contact(%{email: email})
-      user_uuid = Ecto.UUID.generate()
+      user_uuid = create_core_user(email).uuid
 
       assert {:ok, linked} =
                CRMSource.find_or_link_contact_for_user(%{uuid: user_uuid, email: email})
@@ -289,16 +303,26 @@ defmodule PhoenixKit.Newsletters.CRMSourceTest do
     end
 
     test "never goes through Contacts.connect_user/2 — no placeholder core user is registered" do
-      user_uuid = Ecto.UUID.generate()
       email = "no-placeholder-#{System.unique_integer([:positive])}@example.com"
+      user_uuid = create_core_user(email).uuid
 
       assert {:ok, _contact} =
                CRMSource.find_or_link_contact_for_user(%{uuid: user_uuid, email: email})
 
-      # connect_user/2's placeholder path tags the created user with
-      # custom_fields["source"] == "crm_contact" — nothing in this flow
-      # should ever create a core user at all, placeholder or otherwise.
-      refute Auth.get_user_by_email(email)
+      # connect_user/2's placeholder path registers a core user tagged
+      # custom_fields["source"] == "crm_contact". This flow must link to
+      # the user that already exists and register nobody: the account
+      # under this address stays the one the fixture created (same uuid,
+      # untouched tag), and no second account appears for it.
+      linked_user = Auth.get_user_by_email(email)
+
+      assert linked_user.uuid == user_uuid
+      refute linked_user.custom_fields["source"] == "crm_contact"
+
+      assert PhoenixKit.RepoHelper.repo().aggregate(
+               from(u in PhoenixKit.Users.Auth.User, where: u.email == ^email),
+               :count
+             ) == 1
     end
   end
 end

@@ -272,9 +272,12 @@ defmodule PhoenixKit.Newsletters.Workers.DeliveryWorkerTest do
 
       assert :ok = DeliveryWorker.perform(job)
 
+      # NOTE: the last expression in this lambda must be an `assert` —
+      # assert_email_sent/1 asserts on the lambda's return value, and a
+      # bare `refute` does not reliably return a truthy value.
       assert_email_sent(fn email ->
-        assert email.html_body =~ "/newsletters/preferences?token="
         refute email.html_body =~ "{{preferences_url}}"
+        assert email.html_body =~ "/newsletters/preferences?token="
       end)
     end
   end
