@@ -182,8 +182,7 @@ defmodule PhoenixKit.Newsletters.Web.BroadcastEditorTest do
       socket =
         %Phoenix.LiveView.Socket{
           assigns: %{
-            tz_offset: "3",
-            tz_label: "UTC+3",
+            phoenix_kit_current_user: %{user_timezone: "3"},
             lists: [],
             crm_lists: [],
             templates: [],
@@ -222,6 +221,30 @@ defmodule PhoenixKit.Newsletters.Web.BroadcastEditorTest do
 
     test "is nil for an unparseable value" do
       assert BroadcastEditor.schedule_preview("not-a-date", "3", "UTC+3") == nil
+    end
+  end
+
+  describe "handle_params(:new) — resolves the viewer's timezone from the current user" do
+    test "tz_offset/tz_label come from phoenix_kit_current_user.user_timezone" do
+      socket =
+        %Phoenix.LiveView.Socket{
+          assigns: %{
+            phoenix_kit_current_user: %{user_timezone: "5"},
+            lists: [],
+            crm_lists: [],
+            templates: [],
+            template_uuid: "",
+            page_title: "",
+            live_action: :new,
+            __changed__: %{}
+          }
+        }
+
+      {:noreply, updated} =
+        BroadcastEditor.handle_params(%{}, "/admin/newsletters/broadcasts/new", socket)
+
+      assert updated.assigns.tz_offset == "5"
+      assert updated.assigns.tz_label =~ "UTC+5"
     end
   end
 end

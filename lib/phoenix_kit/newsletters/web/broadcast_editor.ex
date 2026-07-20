@@ -24,8 +24,6 @@ defmodule PhoenixKit.Newsletters.Web.BroadcastEditor do
   @impl true
   def mount(_params, _session, socket) do
     if Newsletters.enabled?() do
-      tz_offset = Timezone.user_tz_offset(socket)
-
       socket =
         socket
         |> assign(:page_title, gettext("New broadcast"))
@@ -51,8 +49,6 @@ defmodule PhoenixKit.Newsletters.Web.BroadcastEditor do
         |> assign(:markdown_content, "")
         |> assign(:preview_html, "")
         |> assign(:scheduled_at, "")
-        |> assign(:tz_offset, tz_offset)
-        |> assign(:tz_label, Timezone.tz_label(tz_offset))
         |> assign(:saving, false)
 
       {:ok, socket}
@@ -70,6 +66,7 @@ defmodule PhoenixKit.Newsletters.Web.BroadcastEditor do
     crm_lists = CRMSource.list_lists()
     templates = load_templates()
     broadcast = Newsletters.get_broadcast!(id)
+    socket = assign_tz(socket)
 
     {:noreply,
      socket
@@ -109,6 +106,7 @@ defmodule PhoenixKit.Newsletters.Web.BroadcastEditor do
 
     {:noreply,
      socket
+     |> assign_tz()
      |> assign(:lists, lists)
      |> assign(:crm_lists, crm_lists)
      |> assign(:templates, templates)
@@ -403,6 +401,24 @@ defmodule PhoenixKit.Newsletters.Web.BroadcastEditor do
         html_body = soft_call(@email_template_mod, :get_translation, [tmpl.html_body, "en"])
         String.replace(html_body, "{{content}}", html)
     end
+  end
+
+  # Resolves and assigns the viewer's timezone from handle_params (not
+  # mount, which runs twice per connection — once for the disconnected
+  # render, once for the connected one — doubling this DB read). Mirrors
+  # phoenix_kit_crm's contact_show_live.ex, which resolves the same way
+  # from its own handle_params for the same reason.
+  #
+  # Resolution and label formatting live in Web.Timezone, shared with the
+  # broadcasts list, details and list-members views so all four render
+  # times identically; the label lookup there also avoids loading every
+  # role just to name one zone.
+  defp assign_tz(socket) do
+    tz_offset = Timezone.user_tz_offset(socket)
+
+    socket
+    |> assign(:tz_offset, tz_offset)
+    |> assign(:tz_label, Timezone.tz_label(tz_offset))
   end
 
   # Human-readable confirmation of what the typed local time resolves to,
