@@ -23,8 +23,6 @@ defmodule PhoenixKit.Newsletters.Web.BroadcastEditor do
   @impl true
   def mount(_params, _session, socket) do
     if Newsletters.enabled?() do
-      tz_offset = user_tz_offset(socket)
-
       socket =
         socket
         |> assign(:page_title, gettext("New broadcast"))
@@ -50,11 +48,6 @@ defmodule PhoenixKit.Newsletters.Web.BroadcastEditor do
         |> assign(:markdown_content, "")
         |> assign(:preview_html, "")
         |> assign(:scheduled_at, "")
-        |> assign(:tz_offset, tz_offset)
-        |> assign(
-          :tz_label,
-          Settings.get_timezone_label(tz_offset, Settings.get_setting_options())
-        )
         |> assign(:saving, false)
 
       {:ok, socket}
@@ -72,6 +65,7 @@ defmodule PhoenixKit.Newsletters.Web.BroadcastEditor do
     crm_lists = CRMSource.list_lists()
     templates = load_templates()
     broadcast = Newsletters.get_broadcast!(id)
+    socket = assign_tz(socket)
 
     {:noreply,
      socket
@@ -111,6 +105,7 @@ defmodule PhoenixKit.Newsletters.Web.BroadcastEditor do
 
     {:noreply,
      socket
+     |> assign_tz()
      |> assign(:lists, lists)
      |> assign(:crm_lists, crm_lists)
      |> assign(:templates, templates)
@@ -405,6 +400,19 @@ defmodule PhoenixKit.Newsletters.Web.BroadcastEditor do
         html_body = soft_call(@email_template_mod, :get_translation, [tmpl.html_body, "en"])
         String.replace(html_body, "{{content}}", html)
     end
+  end
+
+  # Resolves and assigns the viewer's timezone from handle_params (not
+  # mount, which runs twice per connection — once for the disconnected
+  # render, once for the connected one — doubling this DB read). Mirrors
+  # phoenix_kit_crm's contact_show_live.ex, which resolves the same way
+  # from its own handle_params for the same reason.
+  defp assign_tz(socket) do
+    tz_offset = user_tz_offset(socket)
+
+    socket
+    |> assign(:tz_offset, tz_offset)
+    |> assign(:tz_label, Settings.get_timezone_label(tz_offset, Settings.get_setting_options()))
   end
 
   # The viewer's timezone offset — user profile → system setting → "0" (UTC),

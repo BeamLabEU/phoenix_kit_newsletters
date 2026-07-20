@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.1.7 - 2026-07-20
+
+### Fixed
+- The broadcast composer's schedule field now interprets the typed time in the viewer's own timezone (personal profile setting, falling back to the system `time_zone` setting) instead of always assuming UTC — previously scheduling "21:58" always meant 21:58 UTC, firing hours later than intended for anyone ahead of UTC. A "Sends at HH:MM (tz) · HH:MM UTC" hint next to the field makes the interpretation explicit.
+- The schedule field is now restored to the broadcast's actual scheduled time (in the viewer's timezone) when editing a scheduled broadcast — previously it was always blank, with no way to verify what was scheduled without retyping it.
+- Timezone resolution for the schedule field moved from `mount/3` to `handle_params/3`, avoiding an uncached settings query firing twice per page load (once for the disconnected render, once for the connected one).
+
 ## 0.1.6 - 2026-07-19
 
 ### Fixed
