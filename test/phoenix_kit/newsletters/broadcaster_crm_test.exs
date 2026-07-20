@@ -68,7 +68,7 @@ defmodule PhoenixKit.Newsletters.BroadcasterCRMTest do
       %{list: list, sendable: sendable}
     end
 
-    test "creates Delivery rows with recipient_email + user_uuid: nil for only the sendable members",
+    test "creates Delivery rows with recipient_email + crm_contact_uuid + user_uuid: nil for only the sendable members",
          %{list: list, sendable: sendable} do
       broadcast = create_crm_sourced_broadcast(list.uuid)
 
@@ -80,10 +80,15 @@ defmodule PhoenixKit.Newsletters.BroadcasterCRMTest do
 
       assert Enum.all?(deliveries, &is_nil(&1.user_uuid))
       assert Enum.all?(deliveries, &(&1.status == "pending"))
+      assert Enum.all?(deliveries, &(not is_nil(&1.crm_contact_uuid)))
 
       expected_emails = sendable |> Enum.map(& &1.email) |> MapSet.new()
       actual_emails = deliveries |> Enum.map(& &1.recipient_email) |> MapSet.new()
       assert actual_emails == expected_emails
+
+      expected_contacts = sendable |> Enum.map(& &1.uuid) |> MapSet.new()
+      actual_contacts = deliveries |> Enum.map(& &1.crm_contact_uuid) |> MapSet.new()
+      assert actual_contacts == expected_contacts
     end
 
     test "refuses to send once the list is archived between creation and send, and doesn't corrupt the broadcast's status",

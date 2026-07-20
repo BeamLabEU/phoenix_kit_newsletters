@@ -112,10 +112,23 @@ defmodule PhoenixKit.Newsletters.Broadcaster do
 
     # Process in batches using transaction-wrapped stream
     case repo.transaction(fn -> enqueue_all_recipients(broadcast, recipients, repo, interval) end) do
-      {:ok, _} ->
+      {:ok, %{inserted: inserted, duplicate: duplicate}} ->
+        # total_recipients was set from the pre-send estimate above; a
+        # re-enqueue of a broadcast that already has deliveries (the
+        # V154 unique indexes turning some inserts into no-ops) means the
+        # actual insert count can come in lower than that estimate — the
+        # figure the UI shows should reflect what was actually enqueued,
+        # not the estimate.
+        {:ok, broadcast} =
+          if inserted != total do
+            Newsletters.update_broadcast(broadcast, %{total_recipients: inserted})
+          else
+            {:ok, broadcast}
+          end
+
         Logger.info(
-          "Broadcaster: Enqueued #{total} deliveries for broadcast #{broadcast.uuid}" <>
-            throttle_log(interval, total)
+          "Broadcaster: Enqueued #{inserted} deliveries for broadcast #{broadcast.uuid}" <>
+            duplicate_log(duplicate) <> throttle_log(interval, inserted)
         )
 
         {:ok, broadcast}
@@ -159,6 +172,12 @@ defmodule PhoenixKit.Newsletters.Broadcaster do
     " (throttled to 1 per #{interval}s — the last one goes out in ~#{span} min)"
   end
 
+  defp duplicate_log(0), do: ""
+
+  defp duplicate_log(count) do
+    " (#{count} duplicate recipient(s) skipped — already delivered for this broadcast)"
+  end
+
   defp resolve_recipients(%Broadcast{source_type: "crm_list", crm_list_uuid: crm_list_uuid}) do
     CRMSource.sendable_recipients(crm_list_uuid)
   end
@@ -174,11 +193,11 @@ defmodule PhoenixKit.Newsletters.Broadcaster do
   # A crm_list broadcast's recipients are already resolved (by
   # resolve_recipients/1, called once in do_send/1) — already a
   # fully-materialized, deduplicated list (CRM lists run in the low
-  # thousands, not worth streaming), each carrying an email but no
-  # user_uuid. A newsletters_list broadcast keeps the original streamed
-  # user_uuid path instead. Both funnel into the same process_batch/5,
-  # which only cares that each recipient map has a user_uuid and/or
-  # recipient_email.
+  # thousands, not worth streaming), each carrying an email and a
+  # contact_uuid but no user_uuid. A newsletters_list broadcast keeps the
+  # original streamed user_uuid path instead. Both funnel into the same
+  # process_batch/5, which only cares that each recipient map has a
+  # user_uuid and/or recipient_email.
   defp enqueue_all_recipients(
          %Broadcast{source_type: "crm_list"} = broadcast,
          recipients,
@@ -186,23 +205,41 @@ defmodule PhoenixKit.Newsletters.Broadcaster do
          interval
        ) do
     recipients
-    |> Enum.map(fn %{email: email} -> %{user_uuid: nil, recipient_email: email} end)
-    |> Enum.chunk_every(@batch_size)
-    |> Enum.reduce(0, fn batch, offset ->
-      process_batch(broadcast, batch, repo, interval, offset)
-      offset + length(batch)
+    |> Enum.map(fn %{contact_uuid: contact_uuid, email: email} ->
+      %{user_uuid: nil, crm_contact_uuid: contact_uuid, recipient_email: email}
     end)
+    |> Enum.chunk_every(@batch_size)
+    |> reduce_batches(broadcast, repo, interval)
   end
 
   defp enqueue_all_recipients(broadcast, _recipients, repo, interval) do
     broadcast.list_uuid
     |> stream_active_members()
-    |> Stream.map(fn user_uuid -> %{user_uuid: user_uuid, recipient_email: nil} end)
-    |> Stream.chunk_every(@batch_size)
-    |> Enum.reduce(0, fn recipients, offset ->
-      process_batch(broadcast, recipients, repo, interval, offset)
-      offset + length(recipients)
+    |> Stream.map(fn user_uuid ->
+      %{user_uuid: user_uuid, crm_contact_uuid: nil, recipient_email: nil}
     end)
+    |> Stream.chunk_every(@batch_size)
+    |> reduce_batches(broadcast, repo, interval)
+  end
+
+  # Shared batch-accumulation loop for both recipient sources: `offset`
+  # continues across batches based on how many rows each batch actually
+  # inserted (not how many were requested), so throttle spacing isn't
+  # wasted on duplicates process_batch/5's ON CONFLICT DO NOTHING skips;
+  # `inserted`/`duplicate` accumulate into the totals do_send/1 reports.
+  defp reduce_batches(batches, broadcast, repo, interval) do
+    batches
+    |> Enum.reduce(%{offset: 0, inserted: 0, duplicate: 0}, fn batch, acc ->
+      {inserted_count, duplicate_count} =
+        process_batch(broadcast, batch, repo, interval, acc.offset)
+
+      %{
+        offset: acc.offset + inserted_count,
+        inserted: acc.inserted + inserted_count,
+        duplicate: acc.duplicate + duplicate_count
+      }
+    end)
+    |> Map.take([:inserted, :duplicate])
   end
 
   defp stream_active_members(list_uuid) do
@@ -212,6 +249,16 @@ defmodule PhoenixKit.Newsletters.Broadcaster do
     |> repo().stream()
   end
 
+  # Returns `{inserted_count, duplicate_count}`. `on_conflict: :nothing`
+  # with no `conflict_target` — Postgres's `ON CONFLICT DO NOTHING` with no
+  # arbiter applies to a violation of ANY of the table's unique
+  # constraints, which is what's needed here: a duplicate can trip any one
+  # of the V154 partial unique indexes (per-user, per-contact, or
+  # per-email), depending on which recipient source produced the row.
+  # `RETURNING` on a conflicting row returns nothing for it (Postgres
+  # semantics), so `inserted` already excludes duplicates — the count is
+  # `length(inserted)`, and the gap against the requested batch size is
+  # what got deduplicated.
   defp process_batch(broadcast, recipients, repo, interval, offset) do
     now = UtilsDate.utc_now()
 
@@ -236,7 +283,8 @@ defmodule PhoenixKit.Newsletters.Broadcaster do
       )
     end
 
-    {_count, inserted} = repo.insert_all(Delivery, deliveries, returning: [:uuid])
+    {_count, inserted} =
+      repo.insert_all(Delivery, deliveries, returning: [:uuid], on_conflict: :nothing)
 
     # `offset` continues the recipient count across batches, so the spacing is
     # continuous over the whole broadcast rather than restarting each chunk —
@@ -252,6 +300,8 @@ defmodule PhoenixKit.Newsletters.Broadcaster do
       end)
 
     Oban.insert_all(jobs)
+
+    {length(inserted), length(deliveries) - length(inserted)}
   end
 
   # No rate limit: insert with no scheduling at all, byte-for-byte the old
