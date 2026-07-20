@@ -41,6 +41,13 @@ defmodule PhoenixKit.Newsletters.Delivery do
     # contacts have no core User row at all. Always set for a CRM-sourced
     # delivery; nil for a newsletters-list delivery (user.email covers it).
     field(:recipient_email, :string)
+    # Bare soft reference to a CRM contact (no FK — newsletters must not
+    # hard-depend on the CRM module being installed), set alongside
+    # recipient_email for a CRM-sourced delivery. Mutually exclusive with
+    # user_uuid — see validate_not_both_owners/1 — mirroring the V155 DB
+    # CHECK, which is the actual guarantee (insert_all bypasses this
+    # changeset).
+    field(:crm_contact_uuid, UUIDv7)
 
     belongs_to(:broadcast, PhoenixKit.Newsletters.Broadcast,
       foreign_key: :broadcast_uuid,
@@ -65,6 +72,7 @@ defmodule PhoenixKit.Newsletters.Delivery do
       :broadcast_uuid,
       :user_uuid,
       :recipient_email,
+      :crm_contact_uuid,
       :status,
       :sent_at,
       :delivered_at,
@@ -74,18 +82,32 @@ defmodule PhoenixKit.Newsletters.Delivery do
     ])
     |> validate_required([:broadcast_uuid])
     |> validate_recipient()
+    |> validate_not_both_owners()
     |> validate_inclusion(:status, @valid_statuses)
     |> unique_constraint(:message_id, name: :idx_newsletters_deliveries_message_id)
   end
 
-  # A delivery must be addressable by exactly one of the two recipient
-  # identifiers — a core User (newsletters-list path) or a snapshotted
-  # email (CRM-list path). Neither present means nobody to send to.
+  # A delivery must be addressable by at least one of the two recipient
+  # identifiers that carry an actual address — a core User's email
+  # (newsletters-list path) or a snapshotted email (CRM-list path).
+  # `crm_contact_uuid` alone isn't an address by itself (mirrors the V155
+  # DB CHECK, which deliberately excludes it from this clause too — see
+  # V155's moduledoc). Neither present means nobody to send to.
   defp validate_recipient(changeset) do
     if get_field(changeset, :user_uuid) || get_field(changeset, :recipient_email) do
       changeset
     else
       add_error(changeset, :user_uuid, "either user_uuid or recipient_email is required")
+    end
+  end
+
+  # A delivery is never claimed by both a core User and a CRM contact at
+  # once — mirrors the V155 DB CHECK's mutual-exclusion clause.
+  defp validate_not_both_owners(changeset) do
+    if get_field(changeset, :user_uuid) && get_field(changeset, :crm_contact_uuid) do
+      add_error(changeset, :crm_contact_uuid, "cannot be set together with user_uuid")
+    else
+      changeset
     end
   end
 

@@ -47,6 +47,41 @@ defmodule PhoenixKit.Newsletters.DeliveryTest do
       refute changeset.valid?
       assert %{user_uuid: [_ | _]} = errors_on(changeset)
     end
+
+    test "valid with crm_contact_uuid + recipient_email (CRM-list path, new shape)" do
+      changeset =
+        Delivery.changeset(%Delivery{}, %{
+          broadcast_uuid: Ecto.UUID.generate(),
+          crm_contact_uuid: Ecto.UUID.generate(),
+          recipient_email: "contact@example.com"
+        })
+
+      assert changeset.valid?
+    end
+
+    test "invalid with only crm_contact_uuid — it isn't an address by itself" do
+      changeset =
+        Delivery.changeset(%Delivery{}, %{
+          broadcast_uuid: Ecto.UUID.generate(),
+          crm_contact_uuid: Ecto.UUID.generate()
+        })
+
+      refute changeset.valid?
+      assert %{user_uuid: [_ | _]} = errors_on(changeset)
+    end
+
+    test "invalid with both user_uuid and crm_contact_uuid — mutual exclusion" do
+      changeset =
+        Delivery.changeset(%Delivery{}, %{
+          broadcast_uuid: Ecto.UUID.generate(),
+          user_uuid: Ecto.UUID.generate(),
+          crm_contact_uuid: Ecto.UUID.generate(),
+          recipient_email: "someone@example.com"
+        })
+
+      refute changeset.valid?
+      assert %{crm_contact_uuid: [_ | _]} = errors_on(changeset)
+    end
   end
 
   defp errors_on(changeset) do
