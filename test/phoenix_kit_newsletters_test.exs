@@ -122,6 +122,34 @@ defmodule PhoenixKitNewslettersTest do
     end
   end
 
+  describe "user_dashboard_tabs/0" do
+    test "returns a non-empty list of Tab structs" do
+      assert [_ | _] = Newsletters.user_dashboard_tabs()
+    end
+
+    test "preferences tab has the expected id, absolute path, and group" do
+      [tab] = Newsletters.user_dashboard_tabs()
+      assert tab.id == :dashboard_newsletters_preferences
+      assert tab.path == "/newsletters/preferences"
+      assert tab.group == :account
+    end
+
+    test "preferences tab has no live_view — it's registered by Web.Routes' own live_session" do
+      # Not one of user_dashboard_tabs/0's auto-registered (authenticated)
+      # routes: the preference center must stay reachable by a signed
+      # token with no login at all (spec §7), which the auto-registered
+      # dashboard live_session can't offer.
+      [tab] = Newsletters.user_dashboard_tabs()
+      assert tab.live_view == nil
+    end
+
+    test "preferences tab is visible once CRM is available" do
+      [tab] = Newsletters.user_dashboard_tabs()
+      assert is_function(tab.visible, 1)
+      assert tab.visible.(%{})
+    end
+  end
+
   describe "version/0" do
     test "returns a valid semver string" do
       version = Newsletters.version()
@@ -143,10 +171,6 @@ defmodule PhoenixKitNewslettersTest do
 
     test "settings_tabs/0 returns empty list" do
       assert Newsletters.settings_tabs() == []
-    end
-
-    test "user_dashboard_tabs/0 returns empty list" do
-      assert Newsletters.user_dashboard_tabs() == []
     end
 
     test "children/0 returns empty list" do

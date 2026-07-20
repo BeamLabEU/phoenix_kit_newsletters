@@ -1,0 +1,73 @@
+<PhoenixKitWeb.Components.AuthPageWrapper.auth_page_wrapper
+  flash={@flash}
+  phoenix_kit_current_scope={assigns[:phoenix_kit_current_scope]}
+  page_title={@page_title}
+  current_path={assigns[:url_path] || "/newsletters/preferences"}
+>
+  <h1 class="text-2xl font-bold text-center mb-2">{gettext("Email preferences")}</h1>
+  <p class="text-center text-base-content/60 text-sm mb-6">
+    {gettext("Choose which newsletters you'd like to receive.")}
+  </p>
+
+  <%= case @mode do %>
+    <% :unavailable -> %>
+      <div class="alert alert-warning">
+        <.icon name="hero-exclamation-triangle" class="w-5 h-5" />
+        <span>{gettext("Subscription management isn't available right now. Please try again later.")}</span>
+      </div>
+    <% :invalid_token -> %>
+      <div class="alert alert-error">
+        <.icon name="hero-x-circle" class="w-5 h-5" />
+        <span>
+          {gettext("This link is invalid or has expired.")}
+          {gettext("If you have an account, you can log in to manage your subscriptions instead.")}
+        </span>
+      </div>
+    <% :error -> %>
+      <div class="alert alert-error">
+        <.icon name="hero-x-circle" class="w-5 h-5" />
+        <span>{gettext("Something went wrong loading your subscriptions. Please try again later.")}</span>
+      </div>
+    <% mode when mode in [:token, :account] -> %>
+      <%= if @contact.opted_out_at do %>
+        <div class="alert alert-info mb-4">
+          <.icon name="hero-information-circle" class="w-5 h-5" />
+          <span>{gettext("You're unsubscribed from all newsletters.")}</span>
+        </div>
+        <button type="button" class="btn btn-primary w-full" phx-click="resubscribe">
+          {gettext("Resubscribe")}
+        </button>
+      <% else %>
+        <%= if @lists == [] do %>
+          <p class="text-center text-base-content/60 text-sm py-4">
+            {gettext("No subscribable newsletters are available right now.")}
+          </p>
+        <% else %>
+          <ul class="flex flex-col gap-2 mb-4">
+            <li :for={%{list: list, subscribed?: subscribed?} <- @lists} class="flex items-center justify-between gap-3 py-2 border-b border-base-200 last:border-none">
+              <div class="min-w-0">
+                <p class="font-medium truncate">{list.name}</p>
+                <p :if={list.description} class="text-xs text-base-content/60 truncate">{list.description}</p>
+              </div>
+              <input
+                type="checkbox"
+                class="toggle toggle-primary shrink-0"
+                checked={subscribed?}
+                phx-click="toggle_list"
+                phx-value-list_uuid={list.uuid}
+              />
+            </li>
+          </ul>
+        <% end %>
+
+        <button
+          type="button"
+          class="btn btn-ghost btn-sm w-full"
+          phx-click="unsubscribe_all"
+          data-confirm={gettext("Unsubscribe from every newsletter list? You can resubscribe anytime from this page.")}
+        >
+          {gettext("Unsubscribe from all")}
+        </button>
+      <% end %>
+  <% end %>
+</PhoenixKitWeb.Components.AuthPageWrapper.auth_page_wrapper>

@@ -26,6 +26,8 @@ defmodule PhoenixKit.Newsletters.Workers.DeliveryWorkerTest do
   alias PhoenixKit.Newsletters.Delivery
   alias PhoenixKit.Newsletters.Workers.DeliveryWorker
   alias PhoenixKit.Users.Auth.User
+  alias PhoenixKitCRM.Contacts, as: CRMContacts
+  alias PhoenixKitCRM.Lists, as: CRMLists
   alias PhoenixKitNewsletters.Test.Repo
 
   defp add_integration(provider \\ "smtp", name \\ "test connection") do
@@ -235,6 +237,115 @@ defmodule PhoenixKit.Newsletters.Workers.DeliveryWorkerTest do
         to: "crm-recipient@example.com",
         subject: "CRM send"
       )
+    end
+
+    test "substitutes {{preferences_url}} with a resolved preference-center link for a real CRM member" do
+      PhoenixKit.Settings.update_setting("from_name", "My Newsletter")
+      PhoenixKit.Settings.update_setting("from_email", "news@example.com")
+
+      {:ok, crm_list} =
+        CRMLists.create_list(%{name: "Test CRM list #{System.unique_integer([:positive])}"})
+
+      {:ok, contact} =
+        CRMContacts.create_contact(%{name: "Recipient", email: "crm-prefs@example.com"})
+
+      {:ok, _member} = CRMLists.add_contact_to_list(contact, crm_list, source: "manual")
+
+      broadcast =
+        create_broadcast(%{
+          subject: "CRM send with preferences link",
+          source_type: "crm_list",
+          crm_list_uuid: crm_list.uuid,
+          list_uuid: nil,
+          html_body: "<p>Manage: {{preferences_url}}</p>",
+          text_body: "Manage: {{preferences_url}}"
+        })
+
+      {:ok, delivery} =
+        %Delivery{}
+        |> Delivery.changeset(%{broadcast_uuid: broadcast.uuid, recipient_email: contact.email})
+        |> Repo.insert()
+
+      job = %Oban.Job{
+        args: %{"delivery_uuid" => delivery.uuid, "broadcast_uuid" => broadcast.uuid}
+      }
+
+      assert :ok = DeliveryWorker.perform(job)
+
+      # NOTE: the last expression in this lambda must be an `assert` —
+      # assert_email_sent/1 asserts on the lambda's return value, and a
+      # bare `refute` does not reliably return a truthy value.
+      assert_email_sent(fn email ->
+        refute email.html_body =~ "{{preferences_url}}"
+        assert email.html_body =~ "/newsletters/preferences?token="
+      end)
+    end
+  end
+
+  describe "{{preferences_url}} — unresolved cases leave the placeholder unsubstituted" do
+    setup :set_swoosh_global
+
+    test "no matching CRM member: the literal placeholder survives, not an empty-string link" do
+      PhoenixKit.Settings.update_setting("from_name", "My Newsletter")
+      PhoenixKit.Settings.update_setting("from_email", "news@example.com")
+
+      broadcast =
+        create_broadcast(%{
+          subject: "CRM send, no matching member",
+          source_type: "crm_list",
+          crm_list_uuid: Ecto.UUID.generate(),
+          list_uuid: nil,
+          html_body: ~s(<p>Manage: <a href="{{preferences_url}}">preferences</a></p>),
+          text_body: "Manage: {{preferences_url}}"
+        })
+
+      {:ok, delivery} =
+        %Delivery{}
+        |> Delivery.changeset(%{
+          broadcast_uuid: broadcast.uuid,
+          recipient_email: "no-match@example.com"
+        })
+        |> Repo.insert()
+
+      job = %Oban.Job{
+        args: %{"delivery_uuid" => delivery.uuid, "broadcast_uuid" => broadcast.uuid}
+      }
+
+      assert :ok = DeliveryWorker.perform(job)
+
+      # NOTE: the last expression in this lambda must be an `assert` —
+      # assert_email_sent/1 asserts on the lambda's return value, and a
+      # bare `refute` does not reliably return a truthy value.
+      assert_email_sent(fn email ->
+        refute email.html_body =~ ~s(href="")
+        assert email.html_body =~ "{{preferences_url}}"
+      end)
+    end
+
+    test "legacy newsletters_list recipient: same catch-all, same unsubstituted placeholder" do
+      PhoenixKit.Settings.update_setting("from_name", "My Newsletter")
+      PhoenixKit.Settings.update_setting("from_email", "news@example.com")
+
+      user = create_user()
+
+      broadcast =
+        create_broadcast(%{
+          subject: "Legacy send",
+          html_body: "<p>Manage: {{preferences_url}}</p>",
+          text_body: "Manage: {{preferences_url}}"
+        })
+
+      delivery = create_delivery(broadcast, user)
+
+      job = %Oban.Job{
+        args: %{"delivery_uuid" => delivery.uuid, "broadcast_uuid" => broadcast.uuid}
+      }
+
+      assert :ok = DeliveryWorker.perform(job)
+
+      assert_email_sent(fn email ->
+        assert email.html_body =~ "{{preferences_url}}"
+      end)
     end
   end
 

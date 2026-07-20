@@ -238,14 +238,156 @@ defmodule PhoenixKit.Newsletters.CRMSource do
   @doc """
   Opts a contact out entirely — applies across every CRM list the contact
   belongs to (opt-out lives on the contact, not the membership). Idempotent.
+  `opts` accepts `:source` (default `"unsubscribe_link"`, the original
+  caller) — the preference center passes `source: "preference_center"` so
+  the two entry points stay distinguishable in the contact's consent log.
   """
-  @spec opt_out(struct()) :: {:ok, struct()} | {:error, Ecto.Changeset.t() | :unavailable}
-  def opt_out(contact) do
+  @spec opt_out(struct(), keyword()) ::
+          {:ok, struct()} | {:error, Ecto.Changeset.t() | :unavailable}
+  def opt_out(contact, opts \\ []) do
     if available?() do
-      soft_call(@lists_mod, :opt_out, [contact, [source: "unsubscribe_link"]])
+      soft_call(@lists_mod, :opt_out, [
+        contact,
+        Keyword.put_new(opts, :source, "unsubscribe_link")
+      ])
     else
       {:error, :unavailable}
     end
+  end
+
+  @doc """
+  Opts a contact back in — clears the contact-level opt-out set by
+  `opt_out/2`. Idempotent. This is the re-subscription path the
+  preference center's "resubscribe" action uses (spec §7/§8: allowed,
+  and this view is exactly where the re-consent happens); it does not
+  touch any individual list membership.
+  """
+  @spec opt_in(struct(), keyword()) ::
+          {:ok, struct()} | {:error, Ecto.Changeset.t() | :unavailable}
+  def opt_in(contact, opts \\ []) do
+    if available?() do
+      soft_call(@lists_mod, :opt_in, [
+        contact,
+        Keyword.put_new(opts, :source, "preference_center")
+      ])
+    else
+      {:error, :unavailable}
+    end
+  end
+
+  @doc """
+  Active, subscribable CRM lists — the preference center's toggle list.
+  A list not marked `subscribable` (the CRM list editor's own checkbox,
+  default off) never appears here regardless of status; an archived list
+  never appears here regardless of the flag.
+  """
+  @spec list_subscribable_lists() :: [struct()]
+  def list_subscribable_lists do
+    if available?() do
+      soft_call(@lists_mod, :list_lists, [[status: "active", subscribable: true]])
+    else
+      []
+    end
+  end
+
+  @doc "Whether the contact currently has an active (`subscribed`) membership on the list."
+  @spec subscribed?(struct(), struct()) :: boolean()
+  def subscribed?(contact, list) do
+    if available?() do
+      soft_call(@lists_mod, :subscribed?, [contact, list])
+    else
+      false
+    end
+  end
+
+  @doc """
+  Subscribes a contact to one CRM list — the preference center's toggle-on
+  action. `source: "form"` (self-service, one of
+  `PhoenixKitCRM.Schemas.ListMember.sources/0`) tags the membership as
+  coming from the person themselves, not an admin/import.
+  """
+  @spec subscribe(struct(), struct()) ::
+          {:ok, struct()}
+          | {:error, :already_member | :email_already_in_list | Ecto.Changeset.t() | :unavailable}
+  def subscribe(contact, list) do
+    if available?() do
+      soft_call(@lists_mod, :add_contact_to_list, [contact, list, [source: "form"]])
+    else
+      {:error, :unavailable}
+    end
+  end
+
+  @doc """
+  Finds the CRM contact already linked to this login user, or lazily
+  creates+links one — **never** via `PhoenixKitCRM.Contacts.connect_user/2`
+  (which would placeholder-register a *new* core user if none matched the
+  email; here the user already exists, and the link must point at exactly
+  that `user_uuid`, never mint anything).
+
+  Resolution order: (1) a contact already linked to this `user_uuid` —
+  the common case after the first call; (2) if exactly ONE existing,
+  not-yet-linked contact holds this email, link it in place (reuses a
+  person's existing CRM presence — e.g. as a supplier/client contact —
+  rather than accumulating a second record for the same already-known
+  identity); (3) otherwise (no match, or the email is ambiguous — see
+  below) create a bare contact from the user's email and link it.
+
+  **Ambiguous email is deliberately treated as "no match", not "pick
+  one"** (review finding on the first cut): under the CRM import policy
+  ("every imported row creates a NEW contact" — §4.3 of the restructuring
+  spec), one address can legitimately belong to several distinct contact
+  rows. Auto-linking to an arbitrary one of them (the previous behavior:
+  the oldest) would put only THAT record under this person's control —
+  the others stay subscribed to whatever lists they're on, invisible on
+  this page, so the person "unsubscribes" and mail keeps arriving from a
+  list they never see. Same reasoning excludes already-linked contacts
+  from the candidate count — a contact linked to a DIFFERENT user is not
+  this person's, ambiguous or not.
+
+  Takes any map/struct with `:uuid` and `:email` (a `%User{}`, or an
+  equivalent plain map) so callers don't need a real `User` struct in
+  hand. Returns `{:error, :unavailable}` if CRM isn't installed.
+  """
+  @spec find_or_link_contact_for_user(%{uuid: String.t(), email: String.t()}) ::
+          {:ok, struct()} | {:error, Ecto.Changeset.t() | :unavailable}
+  def find_or_link_contact_for_user(%{uuid: user_uuid, email: email})
+      when is_binary(user_uuid) and is_binary(email) do
+    if available?() do
+      case soft_call(@contacts_mod, :get_by_user_uuid, [user_uuid]) do
+        nil -> find_or_create_contact_and_link(user_uuid, email)
+        contact -> {:ok, contact}
+      end
+    else
+      {:error, :unavailable}
+    end
+  end
+
+  defp find_or_create_contact_and_link(user_uuid, email) do
+    unlinked =
+      soft_call(@contacts_mod, :list_by_email, [email])
+      |> Enum.filter(&(Map.get(&1, :user_uuid) == nil))
+
+    case unlinked do
+      [existing] -> link_contact_to_user(existing, user_uuid)
+      _ -> create_and_link_contact(user_uuid, email)
+    end
+  end
+
+  defp create_and_link_contact(user_uuid, email) do
+    case soft_call(@contacts_mod, :create_contact, [%{"name" => email, "email" => email}]) do
+      {:ok, contact} -> link_contact_to_user(contact, user_uuid)
+      {:error, _} = error -> error
+    end
+  end
+
+  # `Contact.link_user_changeset/2` is a schema-level helper (not a
+  # `Contacts` context function) — resolved via `contact_schema/0`'s
+  # runtime `Module.concat/1`, same soft-dependency reasoning as the
+  # `from`/`join` schema references above, since calling it still requires
+  # naming the module.
+  defp link_contact_to_user(contact, user_uuid) do
+    changeset = contact_schema().link_user_changeset(contact, user_uuid)
+    repo().update(changeset)
   end
 
   defp repo, do: PhoenixKit.RepoHelper.repo()
