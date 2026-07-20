@@ -18,7 +18,9 @@ defmodule PhoenixKit.Newsletters.CRMSourceTest do
   import Ecto.Query, only: [from: 2]
 
   alias PhoenixKit.Newsletters.CRMSource
+  alias PhoenixKit.RepoHelper
   alias PhoenixKit.Users.Auth
+  alias PhoenixKit.Users.Auth.User
   alias PhoenixKitCRM.Contacts
   alias PhoenixKitCRM.Lists
 
@@ -258,9 +260,9 @@ defmodule PhoenixKit.Newsletters.CRMSourceTest do
   # constraint. Mirrors the fixture delivery_worker_test.exs uses.
   defp create_core_user(email) do
     {:ok, user} =
-      %PhoenixKit.Users.Auth.User{}
-      |> PhoenixKit.Users.Auth.User.guest_user_changeset(%{email: email})
-      |> PhoenixKit.RepoHelper.repo().insert()
+      %User{}
+      |> User.guest_user_changeset(%{email: email})
+      |> RepoHelper.repo().insert()
 
     user
   end
@@ -319,8 +321,8 @@ defmodule PhoenixKit.Newsletters.CRMSourceTest do
       assert linked_user.uuid == user_uuid
       refute linked_user.custom_fields["source"] == "crm_contact"
 
-      assert PhoenixKit.RepoHelper.repo().aggregate(
-               from(u in PhoenixKit.Users.Auth.User, where: u.email == ^email),
+      assert RepoHelper.repo().aggregate(
+               from(u in User, where: u.email == ^email),
                :count
              ) == 1
     end
