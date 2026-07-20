@@ -16,6 +16,7 @@ defmodule PhoenixKit.Newsletters.Web.BroadcastEditor do
 
   alias PhoenixKit.Newsletters
   alias PhoenixKit.Newsletters.{Broadcaster, Content, CRMSource}
+  alias PhoenixKit.Newsletters.Web.Timezone
   alias PhoenixKit.Settings
   alias PhoenixKit.Utils.Date, as: DateUtils
   alias PhoenixKit.Utils.Routes
@@ -23,7 +24,7 @@ defmodule PhoenixKit.Newsletters.Web.BroadcastEditor do
   @impl true
   def mount(_params, _session, socket) do
     if Newsletters.enabled?() do
-      tz_offset = user_tz_offset(socket)
+      tz_offset = Timezone.user_tz_offset(socket)
 
       socket =
         socket
@@ -407,26 +408,15 @@ defmodule PhoenixKit.Newsletters.Web.BroadcastEditor do
     end
   end
 
-  # The viewer's timezone offset — user profile → system setting → "0" (UTC),
-  # via core's `PhoenixKit.Utils.Date.get_user_timezone/1`. Drives how the
-  # `scheduled_at` datetime-local input is interpreted/displayed (storage
-  # is always UTC).
-  defp user_tz_offset(socket) do
-    case socket.assigns[:phoenix_kit_current_user] do
-      %{} = user -> DateUtils.get_user_timezone(user)
-      _ -> Settings.get_setting("time_zone", "0")
-    end
-  rescue
-    _ -> "0"
-  end
-
   # Human-readable confirmation of what the typed local time resolves to,
   # shown next to the schedule input so the interpretation is never a guess
   # (e.g. "Sends at 21:58 (UTC+3 (...)) · 18:58 UTC"). `nil` when there's
-  # nothing typed yet or the value can't be parsed.
-  defp schedule_preview("", _tz_offset, _tz_label), do: nil
+  # nothing typed yet or the value can't be parsed. Exported (still
+  # undocumented, same as this module's other small helpers) so tests can
+  # call it directly.
+  def schedule_preview("", _tz_offset, _tz_label), do: nil
 
-  defp schedule_preview(scheduled_at_str, tz_offset, tz_label) do
+  def schedule_preview(scheduled_at_str, tz_offset, tz_label) do
     with [_date, local_time] <- String.split(scheduled_at_str, "T", parts: 2),
          {:ok, utc_dt} <- DateUtils.parse_datetime_local(scheduled_at_str, tz_offset) do
       gettext("Sends at %{local} (%{tz}) · %{utc} UTC",

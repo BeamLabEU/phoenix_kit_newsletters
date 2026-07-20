@@ -39,7 +39,8 @@ defmodule PhoenixKit.Newsletters.Web.BroadcastsTest do
   end
 
   test "mount falls back to UTC when there's no viewer at all" do
-    {:ok, socket} = Broadcasts.mount(%{}, %{}, %Phoenix.LiveView.Socket{assigns: %{__changed__: %{}}})
+    {:ok, socket} =
+      Broadcasts.mount(%{}, %{}, %Phoenix.LiveView.Socket{assigns: %{__changed__: %{}}})
 
     assert socket.assigns.tz_offset == "0"
   end
