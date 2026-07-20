@@ -205,7 +205,7 @@ defmodule PhoenixKit.Newsletters.Web.BroadcastEditorTest do
 
   describe "schedule_preview/3" do
     test "shows the local time typed, its label, and the resolved UTC time" do
-      preview = BroadcastEditor.schedule_preview("2026-07-20T21:58", "+3", "UTC+3")
+      preview = BroadcastEditor.schedule_preview("2026-07-20T21:58", "3", "UTC+3")
 
       assert preview == "Sends at 21:58 (UTC+3) · 18:58 UTC"
     end
@@ -217,11 +217,11 @@ defmodule PhoenixKit.Newsletters.Web.BroadcastEditorTest do
     end
 
     test "is nil for an empty value" do
-      assert BroadcastEditor.schedule_preview("", "+3", "UTC+3") == nil
+      assert BroadcastEditor.schedule_preview("", "3", "UTC+3") == nil
     end
 
     test "is nil for an unparseable value" do
-      assert BroadcastEditor.schedule_preview("not-a-date", "+3", "UTC+3") == nil
+      assert BroadcastEditor.schedule_preview("not-a-date", "3", "UTC+3") == nil
     end
   end
 end

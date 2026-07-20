@@ -31,10 +31,7 @@ defmodule PhoenixKit.Newsletters.Web.Broadcasts do
         |> assign(:broadcasts, [])
         |> assign(:status_filter, "")
         |> assign(:tz_offset, tz_offset)
-        |> assign(
-          :tz_label,
-          Settings.get_timezone_label(tz_offset, Settings.get_setting_options())
-        )
+        |> assign(:tz_label, Timezone.tz_label(tz_offset))
 
       {:ok, socket}
     else

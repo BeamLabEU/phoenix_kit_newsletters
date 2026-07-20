@@ -50,10 +50,7 @@ defmodule PhoenixKit.Newsletters.Web.BroadcastDetails do
         |> assign(:confirm_title, "")
         |> assign(:confirm_message, "")
         |> assign(:tz_offset, tz_offset)
-        |> assign(
-          :tz_label,
-          Settings.get_timezone_label(tz_offset, Settings.get_setting_options())
-        )
+        |> assign(:tz_label, Timezone.tz_label(tz_offset))
 
       {:ok, socket}
     else

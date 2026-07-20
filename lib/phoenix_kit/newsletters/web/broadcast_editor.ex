@@ -52,10 +52,7 @@ defmodule PhoenixKit.Newsletters.Web.BroadcastEditor do
         |> assign(:preview_html, "")
         |> assign(:scheduled_at, "")
         |> assign(:tz_offset, tz_offset)
-        |> assign(
-          :tz_label,
-          Settings.get_timezone_label(tz_offset, Settings.get_setting_options())
-        )
+        |> assign(:tz_label, Timezone.tz_label(tz_offset))
         |> assign(:saving, false)
 
       {:ok, socket}
