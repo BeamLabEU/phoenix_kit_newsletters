@@ -74,24 +74,26 @@ defmodule PhoenixKit.Newsletters.BroadcasterIdempotencyTest do
       assert length(Newsletters.list_deliveries(second.uuid)) == 2
     end
 
-    test "re-sending updates total_recipients to the actual (deduplicated) insert count", %{
+    test "re-sending a fully-duplicate broadcast does not zero out total_recipients", %{
       broadcast: broadcast
     } do
       assert {:ok, first} = Broadcaster.send(broadcast)
       assert first.total_recipients == 2
 
       # Every recipient already has a delivery for this broadcast, so the
-      # resend's insert_all deduplicates all of them — total_recipients
-      # is corrected from the pre-send estimate (still 2 active members)
-      # down to what this round actually inserted (0 new rows).
+      # resend's insert_all deduplicates all of them (0 new rows this
+      # round) — total_recipients must still reflect the broadcast's
+      # actual delivery count (2), not this round's insert delta. Using
+      # the delta here would show "Recipients: 0" on broadcast_details
+      # while sent_count keeps climbing toward 2, and make any sent/total
+      # ratio divide by zero.
       assert {:ok, second} = resend!(first)
-      assert second.total_recipients == 0
+      assert second.total_recipients == 2
+      assert length(Newsletters.list_deliveries(second.uuid)) == 2
     end
 
-    test "one duplicate + one new member: only the new one gets a delivery", %{
-      broadcast: broadcast,
-      users: [existing_user, _]
-    } do
+    test "a mixed resend (one duplicate + one new member) gives the original N plus the new one",
+         %{broadcast: broadcast, users: [existing_user, _]} do
       assert {:ok, first} = Broadcaster.send(broadcast)
       assert length(Newsletters.list_deliveries(first.uuid)) == 2
 
@@ -99,8 +101,9 @@ defmodule PhoenixKit.Newsletters.BroadcasterIdempotencyTest do
       {:ok, _} = Newsletters.subscribe_user(first.list_uuid, new_user.uuid)
 
       assert {:ok, second} = resend!(first)
-      # 3 active members now; 2 are duplicates, 1 is new.
-      assert second.total_recipients == 1
+      # 3 active members now; 2 are duplicates, 1 is new — total_recipients
+      # is the actual row count (3), not just this round's insert (1).
+      assert second.total_recipients == 3
 
       deliveries = Newsletters.list_deliveries(second.uuid)
       assert length(deliveries) == 3
@@ -140,14 +143,16 @@ defmodule PhoenixKit.Newsletters.BroadcasterIdempotencyTest do
       %{broadcast: broadcast, contacts: contacts}
     end
 
-    test "re-sending creates no duplicate delivery rows", %{broadcast: broadcast} do
+    test "re-sending creates no duplicate delivery rows and keeps total_recipients accurate", %{
+      broadcast: broadcast
+    } do
       assert {:ok, first} = Broadcaster.send(broadcast)
       assert first.total_recipients == 2
       assert length(Newsletters.list_deliveries(first.uuid)) == 2
 
       assert {:ok, second} = resend!(first)
       assert length(Newsletters.list_deliveries(second.uuid)) == 2
-      assert second.total_recipients == 0
+      assert second.total_recipients == 2
     end
   end
 end

@@ -115,13 +115,18 @@ defmodule PhoenixKit.Newsletters.Broadcaster do
       {:ok, %{inserted: inserted, duplicate: duplicate}} ->
         # total_recipients was set from the pre-send estimate above; a
         # re-enqueue of a broadcast that already has deliveries (the
-        # V154 unique indexes turning some inserts into no-ops) means the
-        # actual insert count can come in lower than that estimate — the
-        # figure the UI shows should reflect what was actually enqueued,
-        # not the estimate.
+        # V154 unique indexes turning some inserts into no-ops) means
+        # `inserted` here is only THIS round's delta, not the audience
+        # size — using it directly would zero out total_recipients on a
+        # duplicate-only resend even though the broadcast's original N
+        # deliveries still exist and sent_count keeps climbing toward
+        # them. The actual row count for the broadcast is the correct
+        # figure regardless of how many resend rounds contributed to it.
+        actual_total = count_deliveries(repo, broadcast.uuid)
+
         {:ok, broadcast} =
-          if inserted != total do
-            Newsletters.update_broadcast(broadcast, %{total_recipients: inserted})
+          if actual_total != total do
+            Newsletters.update_broadcast(broadcast, %{total_recipients: actual_total})
           else
             {:ok, broadcast}
           end
@@ -136,6 +141,12 @@ defmodule PhoenixKit.Newsletters.Broadcaster do
       {:error, reason} ->
         {:error, reason}
     end
+  end
+
+  defp count_deliveries(repo, broadcast_uuid) do
+    Delivery
+    |> where([d], d.broadcast_uuid == ^broadcast_uuid)
+    |> repo.aggregate(:count)
   end
 
   @doc """
