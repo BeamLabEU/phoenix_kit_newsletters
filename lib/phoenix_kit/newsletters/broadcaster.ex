@@ -24,6 +24,7 @@ defmodule PhoenixKit.Newsletters.Broadcaster do
   alias PhoenixKit.Email.SendProfile
   alias PhoenixKit.Newsletters
   alias PhoenixKit.Newsletters.{Broadcast, Content, CRMSource, Delivery, ListMember}
+  alias PhoenixKit.Newsletters.UserGroupSource
   alias PhoenixKit.Newsletters.Workers.DeliveryWorker
   alias PhoenixKit.Utils.Date, as: UtilsDate
 
@@ -163,22 +164,29 @@ defmodule PhoenixKit.Newsletters.Broadcaster do
     CRMSource.sendable_recipients(crm_list_uuid)
   end
 
+  defp resolve_recipients(%Broadcast{source_type: "user_group"} = broadcast) do
+    broadcast |> Broadcast.role_names() |> UserGroupSource.sendable_recipients()
+  end
+
   defp resolve_recipients(%Broadcast{}), do: nil
 
-  defp count_recipients(%Broadcast{source_type: "crm_list"}, recipients), do: length(recipients)
+  defp count_recipients(%Broadcast{source_type: source_type}, recipients)
+       when source_type in ["crm_list", "user_group"] do
+    length(recipients)
+  end
 
   defp count_recipients(%Broadcast{list_uuid: list_uuid}, _recipients) do
     Newsletters.count_active_members(list_uuid)
   end
 
-  # A crm_list broadcast's recipients are already resolved (by
-  # resolve_recipients/1, called once in do_send/1) — already a
-  # fully-materialized, deduplicated list (CRM lists run in the low
-  # thousands, not worth streaming), each carrying an email but no
-  # user_uuid. A newsletters_list broadcast keeps the original streamed
-  # user_uuid path instead. Both funnel into the same process_batch/5,
-  # which only cares that each recipient map has a user_uuid and/or
-  # recipient_email.
+  # A crm_list or user_group broadcast's recipients are already resolved
+  # (by resolve_recipients/1, called once in do_send/1) — already a
+  # fully-materialized, deduplicated list (both run in the low thousands,
+  # not worth streaming), each carrying an email but no user_uuid (crm_list)
+  # or a user_uuid (user_group). A newsletters_list broadcast keeps the
+  # original streamed user_uuid path instead. All three funnel into the
+  # same process_batch/5, which only cares that each recipient map has a
+  # user_uuid and/or recipient_email.
   defp enqueue_all_recipients(
          %Broadcast{source_type: "crm_list"} = broadcast,
          recipients,
@@ -187,6 +195,21 @@ defmodule PhoenixKit.Newsletters.Broadcaster do
        ) do
     recipients
     |> Enum.map(fn %{email: email} -> %{user_uuid: nil, recipient_email: email} end)
+    |> Enum.chunk_every(@batch_size)
+    |> Enum.reduce(0, fn batch, offset ->
+      process_batch(broadcast, batch, repo, interval, offset)
+      offset + length(batch)
+    end)
+  end
+
+  defp enqueue_all_recipients(
+         %Broadcast{source_type: "user_group"} = broadcast,
+         recipients,
+         repo,
+         interval
+       ) do
+    recipients
+    |> Enum.map(fn %{user_uuid: user_uuid} -> %{user_uuid: user_uuid, recipient_email: nil} end)
     |> Enum.chunk_every(@batch_size)
     |> Enum.reduce(0, fn batch, offset ->
       process_batch(broadcast, batch, repo, interval, offset)

@@ -1,7 +1,8 @@
 defmodule PhoenixKit.Newsletters.BroadcastTest do
   @moduledoc """
-  Changeset tests for the Stage-4 CRM list source (`source_type` /
-  `crm_list_uuid`). Pure changeset validation — no DB needed.
+  Changeset tests for the Stage-4 recipient sources (`source_type` /
+  `crm_list_uuid` / `source_params`). Pure changeset validation — no DB
+  needed.
   """
 
   use ExUnit.Case, async: true
@@ -53,10 +54,57 @@ defmodule PhoenixKit.Newsletters.BroadcastTest do
       refute changeset.valid?
       assert %{source_type: ["is invalid"]} = errors_on(changeset)
     end
+
+    test "user_group source requires at least one role name, not list_uuid/crm_list_uuid" do
+      changeset = Broadcast.changeset(%Broadcast{}, %{subject: "Hi", source_type: "user_group"})
+
+      refute changeset.valid?
+      assert %{source_params: ["select at least one role"]} = errors_on(changeset)
+    end
+
+    test "user_group source is invalid with an empty role_names list" do
+      changeset =
+        Broadcast.changeset(%Broadcast{}, %{
+          subject: "Hi",
+          source_type: "user_group",
+          source_params: %{"role_names" => []}
+        })
+
+      refute changeset.valid?
+      assert %{source_params: ["select at least one role"]} = errors_on(changeset)
+    end
+
+    test "user_group source is valid with at least one role name and no list_uuid/crm_list_uuid" do
+      changeset =
+        Broadcast.changeset(%Broadcast{}, %{
+          subject: "Hi",
+          source_type: "user_group",
+          source_params: %{"role_names" => ["Admin"]}
+        })
+
+      assert changeset.valid?
+    end
   end
 
-  test "valid_source_types/0 lists both sources" do
-    assert Broadcast.valid_source_types() == ["newsletters_list", "crm_list"]
+  describe "role_names/1" do
+    test "reads role_names out of a %Broadcast{}'s source_params" do
+      broadcast = %Broadcast{source_params: %{"role_names" => ["Admin", "SupportAgent"]}}
+      assert Broadcast.role_names(broadcast) == ["Admin", "SupportAgent"]
+    end
+
+    test "reads role_names out of a plain source_params map" do
+      assert Broadcast.role_names(%{"role_names" => ["User"]}) == ["User"]
+    end
+
+    test "is [] for nil, an empty map, or a map without the key" do
+      assert Broadcast.role_names(nil) == []
+      assert Broadcast.role_names(%{}) == []
+      assert Broadcast.role_names(%{"other_key" => "x"}) == []
+    end
+  end
+
+  test "valid_source_types/0 lists all three sources" do
+    assert Broadcast.valid_source_types() == ["newsletters_list", "crm_list", "user_group"]
   end
 
   defp errors_on(changeset) do

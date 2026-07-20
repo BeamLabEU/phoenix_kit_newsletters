@@ -15,7 +15,7 @@ defmodule PhoenixKit.Newsletters.Web.BroadcastEditor do
   @email_template_mod PhoenixKit.Modules.Emails.Template
 
   alias PhoenixKit.Newsletters
-  alias PhoenixKit.Newsletters.{Broadcaster, Content, CRMSource}
+  alias PhoenixKit.Newsletters.{Broadcast, Broadcaster, Content, CRMSource, UserGroupSource}
   alias PhoenixKit.Settings
   alias PhoenixKit.Utils.Routes
 
@@ -41,6 +41,8 @@ defmodule PhoenixKit.Newsletters.Web.BroadcastEditor do
         |> assign(:crm_available, CRMSource.available?())
         |> assign(:crm_lists, [])
         |> assign(:crm_list_uuid, "")
+        |> assign(:available_roles, UserGroupSource.list_role_names())
+        |> assign(:role_names, [])
         |> assign(:preflight, nil)
         |> assign(:crm_list_archived?, false)
         |> assign(:template_uuid, "")
@@ -76,6 +78,7 @@ defmodule PhoenixKit.Newsletters.Web.BroadcastEditor do
      |> assign(:source_type, broadcast.source_type)
      |> assign(:list_uuid, broadcast.list_uuid || "")
      |> assign(:crm_list_uuid, broadcast.crm_list_uuid || "")
+     |> assign(:role_names, Broadcast.role_names(broadcast))
      |> assign(:template_uuid, broadcast.template_uuid || "")
      |> assign(:markdown_content, broadcast.markdown_body || "")
      |> assign(
@@ -110,6 +113,7 @@ defmodule PhoenixKit.Newsletters.Web.BroadcastEditor do
     subject = params["subject"] || socket.assigns.subject
     source_type = params["source_type"] || socket.assigns.source_type
     {list_uuid, crm_list_uuid} = resolve_source_fields(socket.assigns, source_type, params)
+    role_names = resolve_role_names(source_type, params)
     template_uuid = params["template_uuid"] || socket.assigns.template_uuid
     scheduled_at = params["scheduled_at"] || socket.assigns.scheduled_at
 
@@ -122,6 +126,7 @@ defmodule PhoenixKit.Newsletters.Web.BroadcastEditor do
      |> assign(:source_type, source_type)
      |> assign(:list_uuid, list_uuid)
      |> assign(:crm_list_uuid, crm_list_uuid)
+     |> assign(:role_names, role_names)
      |> assign(:template_uuid, template_uuid)
      |> assign(:scheduled_at, scheduled_at)
      |> assign(:preview_html, preview_html)
@@ -210,12 +215,14 @@ defmodule PhoenixKit.Newsletters.Web.BroadcastEditor do
   defp update_assigns_from_params(socket, params) do
     source_type = params["source_type"] || socket.assigns.source_type
     {list_uuid, crm_list_uuid} = resolve_source_fields(socket.assigns, source_type, params)
+    role_names = resolve_role_names(source_type, params)
 
     socket
     |> assign(:subject, params["subject"] || socket.assigns.subject)
     |> assign(:source_type, source_type)
     |> assign(:list_uuid, list_uuid)
     |> assign(:crm_list_uuid, crm_list_uuid)
+    |> assign(:role_names, role_names)
     |> assign(:template_uuid, params["template_uuid"] || socket.assigns.template_uuid)
     |> assign(:scheduled_at, params["scheduled_at"] || socket.assigns.scheduled_at)
   end
@@ -240,10 +247,26 @@ defmodule PhoenixKit.Newsletters.Web.BroadcastEditor do
     end
   end
 
+  # role_names doesn't fit the params[field] || assigns.field fallback the
+  # other source fields use — an unchecked checkbox simply never appears
+  # in `params` at all, so falling back to the old assign on a missing key
+  # would make unchecking a role a no-op. The role checkboxes' `checked`
+  # attribute is bound to `@role_names`, so LiveView's phx-change always
+  # serializes the form's actual current checkbox state; params is
+  # authoritative here, defaulting to [] rather than merging with the old
+  # value. Not the selected source at all (fieldset unrendered) means no
+  # roles, same "drop the stale field" reasoning as list_uuid/crm_list_uuid.
+  defp resolve_role_names("user_group", params) do
+    params |> Map.get("role_names", []) |> List.wrap()
+  end
+
+  defp resolve_role_names(_source_type, _params), do: []
+
   # Recomputes the CRM preflight breakdown (and whether the selected list
-  # is archived) whenever the crm_list selection changes; nil/false for
-  # anything else — a newsletters_list source, or crm_list with nothing
-  # picked yet.
+  # is archived) whenever the crm_list selection changes, or the
+  # user_group preflight whenever the role selection changes; nil/false
+  # for anything else — a newsletters_list source, or either other
+  # source with nothing picked yet.
   defp assign_preflight(
          %{assigns: %{source_type: "crm_list", crm_list_uuid: crm_list_uuid}} = socket
        )
@@ -251,6 +274,13 @@ defmodule PhoenixKit.Newsletters.Web.BroadcastEditor do
     socket
     |> assign(:preflight, CRMSource.preflight(crm_list_uuid))
     |> assign(:crm_list_archived?, crm_list_archived?(crm_list_uuid))
+  end
+
+  defp assign_preflight(%{assigns: %{source_type: "user_group", role_names: role_names}} = socket)
+       when role_names != [] do
+    socket
+    |> assign(:preflight, UserGroupSource.preflight(role_names))
+    |> assign(:crm_list_archived?, false)
   end
 
   defp assign_preflight(socket) do
@@ -276,6 +306,7 @@ defmodule PhoenixKit.Newsletters.Web.BroadcastEditor do
           source_type: socket.assigns.source_type,
           list_uuid: socket.assigns.list_uuid,
           crm_list_uuid: socket.assigns.crm_list_uuid,
+          source_params: %{"role_names" => socket.assigns.role_names},
           template_uuid:
             if(socket.assigns.template_uuid == "", do: nil, else: socket.assigns.template_uuid),
           markdown_body: socket.assigns.markdown_content,
@@ -323,14 +354,18 @@ defmodule PhoenixKit.Newsletters.Web.BroadcastEditor do
   defp status_label(other), do: other
 
   # Gates Send now/Schedule — whichever source is selected must have a
-  # target picked (a newsletters list, or a CRM list), and a picked CRM
-  # list must not be archived (an archived list would refuse in
-  # Broadcaster.send/1 anyway — this just surfaces that up front instead
-  # of letting the click fail after a round trip).
+  # target picked (a newsletters list, a CRM list, or at least one role),
+  # and a picked CRM list must not be archived (an archived list would
+  # refuse in Broadcaster.send/1 anyway — this just surfaces that up
+  # front instead of letting the click fail after a round trip).
   defp recipient_source_missing?(
          %{source_type: "crm_list", crm_list_uuid: crm_list_uuid} = assigns
        ) do
     crm_list_uuid in [nil, ""] or assigns[:crm_list_archived?] == true
+  end
+
+  defp recipient_source_missing?(%{source_type: "user_group", role_names: role_names}) do
+    role_names == []
   end
 
   defp recipient_source_missing?(%{list_uuid: list_uuid}) do
@@ -343,6 +378,7 @@ defmodule PhoenixKit.Newsletters.Web.BroadcastEditor do
       source_type: socket.assigns.source_type,
       list_uuid: socket.assigns.list_uuid,
       crm_list_uuid: socket.assigns.crm_list_uuid,
+      source_params: %{"role_names" => socket.assigns.role_names},
       template_uuid:
         if(socket.assigns.template_uuid == "", do: nil, else: socket.assigns.template_uuid),
       markdown_body: socket.assigns.markdown_content,
