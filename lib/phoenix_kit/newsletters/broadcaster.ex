@@ -26,6 +26,7 @@ defmodule PhoenixKit.Newsletters.Broadcaster do
   alias PhoenixKit.Newsletters.{Broadcast, Content, CRMSource, Delivery, ListMember}
   alias PhoenixKit.Newsletters.UserGroupSource
   alias PhoenixKit.Newsletters.Workers.DeliveryWorker
+  alias PhoenixKit.Users.Auth.User
   alias PhoenixKit.Utils.Date, as: UtilsDate
 
   @batch_size 500
@@ -175,8 +176,22 @@ defmodule PhoenixKit.Newsletters.Broadcaster do
     length(recipients)
   end
 
+  # Deliberately NOT Newsletters.count_active_members/1 — that function
+  # also drives the admin-facing subscriber_count display, which counts
+  # ListMember rows only and must keep doing so regardless of a member's
+  # is_active status (a deactivated account is still a "subscriber" in
+  # that sense). This send-time estimate has to match what
+  # stream_active_members/1 will actually enqueue, so it mirrors that
+  # function's filter instead of reusing the display one.
   defp count_recipients(%Broadcast{list_uuid: list_uuid}, _recipients) do
-    Newsletters.count_active_members(list_uuid)
+    count_sendable_members(list_uuid)
+  end
+
+  defp count_sendable_members(list_uuid) do
+    ListMember
+    |> join(:inner, [m], u in User, on: u.uuid == m.user_uuid)
+    |> where([m, u], m.list_uuid == ^list_uuid and m.status == "active" and u.is_active == true)
+    |> repo().aggregate(:count)
   end
 
   # A crm_list or user_group broadcast's recipients are already resolved
@@ -228,9 +243,19 @@ defmodule PhoenixKit.Newsletters.Broadcaster do
     end)
   end
 
+  # Excludes a deactivated user even when their ListMember row is still
+  # "active" — aligned with UserGroupSource.sendable?/1, which already
+  # excludes deactivated users for the user_group source (external
+  # review flagged the two flavors silently disagreeing on this).
+  # count_sendable_members/1 (count_recipients/2's list-flavor clause)
+  # mirrors this same filter, so the pre-send total_recipients estimate
+  # stays accurate — Newsletters.count_active_members/1 (the admin-facing
+  # subscriber_count) is deliberately left untouched, a different concern
+  # this filter shouldn't affect.
   defp stream_active_members(list_uuid) do
     ListMember
-    |> where([m], m.list_uuid == ^list_uuid and m.status == "active")
+    |> join(:inner, [m], u in User, on: u.uuid == m.user_uuid)
+    |> where([m, u], m.list_uuid == ^list_uuid and m.status == "active" and u.is_active == true)
     |> select([m], m.user_uuid)
     |> repo().stream()
   end
