@@ -91,6 +91,9 @@
       }
     />
   <% else %>
+    <p class="text-xs text-base-content/50 mb-2">
+      {gettext("Times shown in %{tz}", tz: @tz_label)}
+    </p>
     <.table_default
       id="list-members-table"
       variant="zebra"
@@ -108,11 +111,7 @@
           [
             %{
               label: gettext("Subscribed at"),
-              value:
-                if(member.subscribed_at,
-                  do: Calendar.strftime(member.subscribed_at, "%Y-%m-%d %H:%M"),
-                  else: "-"
-                )
+              value: format_datetime(member.subscribed_at, @tz_offset)
             }
           ]
         end
@@ -196,9 +195,7 @@
               <% end %>
             </.table_default_cell>
             <.table_default_cell class="text-xs">
-              <%= if member.subscribed_at do %>
-                {Calendar.strftime(member.subscribed_at, "%Y-%m-%d %H:%M")}
-              <% end %>
+              {format_datetime(member.subscribed_at, @tz_offset)}
             </.table_default_cell>
             <.table_default_cell>
               <div class="flex gap-1">

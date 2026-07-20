@@ -202,6 +202,28 @@ defmodule PhoenixKit.Newsletters.Web.BroadcastEditorTest do
     end
   end
 
+  describe "schedule_preview/3" do
+    test "shows the local time typed, its label, and the resolved UTC time" do
+      preview = BroadcastEditor.schedule_preview("2026-07-20T21:58", "3", "UTC+3")
+
+      assert preview == "Sends at 21:58 (UTC+3) · 18:58 UTC"
+    end
+
+    test "reflects a negative offset, including the day rollover in the UTC time" do
+      preview = BroadcastEditor.schedule_preview("2026-07-20T23:30", "-5", "UTC-5")
+
+      assert preview == "Sends at 23:30 (UTC-5) · 04:30 UTC"
+    end
+
+    test "is nil for an empty value" do
+      assert BroadcastEditor.schedule_preview("", "3", "UTC+3") == nil
+    end
+
+    test "is nil for an unparseable value" do
+      assert BroadcastEditor.schedule_preview("not-a-date", "3", "UTC+3") == nil
+    end
+  end
+
   describe "handle_params(:new) — resolves the viewer's timezone from the current user" do
     test "tz_offset/tz_label come from phoenix_kit_current_user.user_timezone" do
       socket =

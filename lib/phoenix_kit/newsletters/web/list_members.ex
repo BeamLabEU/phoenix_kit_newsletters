@@ -9,8 +9,10 @@ defmodule PhoenixKit.Newsletters.Web.ListMembers do
   import PhoenixKitWeb.Components.Core.EmptyState
   import PhoenixKitWeb.Components.Core.Icon
   import PhoenixKitWeb.Components.Core.TableDefault
+  import PhoenixKit.Newsletters.Web.Timezone, only: [format_datetime: 2]
 
   alias PhoenixKit.Newsletters
+  alias PhoenixKit.Newsletters.Web.Timezone
   alias PhoenixKit.Settings
   alias PhoenixKit.Users.Auth
   alias PhoenixKit.Utils.Routes
@@ -18,6 +20,8 @@ defmodule PhoenixKit.Newsletters.Web.ListMembers do
   @impl true
   def mount(_params, _session, socket) do
     if Newsletters.enabled?() do
+      tz_offset = Timezone.user_tz_offset(socket)
+
       socket =
         socket
         |> assign(:page_title, gettext("Members"))
@@ -35,6 +39,8 @@ defmodule PhoenixKit.Newsletters.Web.ListMembers do
         |> assign(:confirm_target, nil)
         |> assign(:confirm_title, "")
         |> assign(:confirm_message, "")
+        |> assign(:tz_offset, tz_offset)
+        |> assign(:tz_label, Timezone.tz_label(tz_offset))
 
       {:ok, socket}
     else
