@@ -19,6 +19,9 @@
       </.pk_link>
     </.empty_state>
   <% else %>
+    <p class="text-xs text-base-content/50 mb-2">
+      {gettext("Times shown in %{tz}", tz: @tz_label)}
+    </p>
     <.table_default
       id="broadcasts-table"
       variant="zebra"
@@ -37,7 +40,11 @@
             %{label: gettext("Delivered"), value: broadcast.delivered_count},
             %{label: gettext("Opened"), value: broadcast.opened_count},
             %{label: gettext("Bounced"), value: broadcast.bounced_count},
-            %{label: gettext("Sent at"), value: format_datetime(broadcast.sent_at)}
+            %{
+              label: gettext("Scheduled at"),
+              value: format_datetime(broadcast.scheduled_at, @tz_offset)
+            },
+            %{label: gettext("Sent at"), value: format_datetime(broadcast.sent_at, @tz_offset)}
           ]
         end
       }
@@ -97,6 +104,7 @@
           </.table_default_header_cell>
           <.table_default_header_cell class="text-right">{gettext("Opened")}</.table_default_header_cell>
           <.table_default_header_cell class="text-right">{gettext("Bounced")}</.table_default_header_cell>
+          <.table_default_header_cell>{gettext("Scheduled at")}</.table_default_header_cell>
           <.table_default_header_cell>{gettext("Sent at")}</.table_default_header_cell>
         </.table_default_row>
       </.table_default_header>
@@ -134,7 +142,10 @@
             {broadcast.bounced_count}
           </.table_default_cell>
           <.table_default_cell class="text-sm text-base-content/70">
-            {format_datetime(broadcast.sent_at)}
+            {format_datetime(broadcast.scheduled_at, @tz_offset)}
+          </.table_default_cell>
+          <.table_default_cell class="text-sm text-base-content/70">
+            {format_datetime(broadcast.sent_at, @tz_offset)}
           </.table_default_cell>
         </.table_default_row>
       </.table_default_body>

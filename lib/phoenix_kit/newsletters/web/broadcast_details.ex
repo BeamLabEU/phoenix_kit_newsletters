@@ -11,8 +11,11 @@ defmodule PhoenixKit.Newsletters.Web.BroadcastDetails do
   import PhoenixKitWeb.Components.Core.PkLink
   import PhoenixKitWeb.Components.Core.TableDefault
 
+  import PhoenixKit.Newsletters.Web.Timezone, only: [format_datetime: 2]
+
   alias PhoenixKit.Newsletters
   alias PhoenixKit.Newsletters.CRMSource
+  alias PhoenixKit.Newsletters.Web.Timezone
   alias PhoenixKit.Settings
   alias PhoenixKit.Utils.Routes
 
@@ -22,6 +25,8 @@ defmodule PhoenixKit.Newsletters.Web.BroadcastDetails do
   @impl true
   def mount(_params, _session, socket) do
     if Newsletters.enabled?() do
+      tz_offset = Timezone.user_tz_offset(socket)
+
       socket =
         socket
         |> assign(:broadcast_id, nil)
@@ -44,6 +49,11 @@ defmodule PhoenixKit.Newsletters.Web.BroadcastDetails do
         |> assign(:confirm_target, nil)
         |> assign(:confirm_title, "")
         |> assign(:confirm_message, "")
+        |> assign(:tz_offset, tz_offset)
+        |> assign(
+          :tz_label,
+          Settings.get_timezone_label(tz_offset, Settings.get_setting_options())
+        )
 
       {:ok, socket}
     else
@@ -200,12 +210,6 @@ defmodule PhoenixKit.Newsletters.Web.BroadcastDetails do
   def recipient_display(%{user: %{email: email}}), do: email
   def recipient_display(%{recipient_email: email}) when is_binary(email), do: email
   def recipient_display(%{user_uuid: user_uuid}), do: user_uuid
-
-  defp format_datetime(nil), do: "-"
-
-  defp format_datetime(dt) do
-    Calendar.strftime(dt, "%Y-%m-%d %H:%M")
-  end
 
   defp stat_value(stats, key) do
     Map.get(stats, key, 0)
