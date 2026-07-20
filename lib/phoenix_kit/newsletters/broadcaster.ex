@@ -115,7 +115,7 @@ defmodule PhoenixKit.Newsletters.Broadcaster do
       {:ok, %{inserted: inserted, duplicate: duplicate}} ->
         # total_recipients was set from the pre-send estimate above; a
         # re-enqueue of a broadcast that already has deliveries (the
-        # V154 unique indexes turning some inserts into no-ops) means
+        # V155 unique indexes turning some inserts into no-ops) means
         # `inserted` here is only THIS round's delta, not the audience
         # size — using it directly would zero out total_recipients on a
         # duplicate-only resend even though the broadcast's original N
@@ -264,7 +264,7 @@ defmodule PhoenixKit.Newsletters.Broadcaster do
   # with no `conflict_target` — Postgres's `ON CONFLICT DO NOTHING` with no
   # arbiter applies to a violation of ANY of the table's unique
   # constraints, which is what's needed here: a duplicate can trip any one
-  # of the V154 partial unique indexes (per-user, per-contact, or
+  # of the V155 partial unique indexes (per-user, per-contact, or
   # per-email), depending on which recipient source produced the row.
   # `RETURNING` on a conflicting row returns nothing for it (Postgres
   # semantics), so `inserted` already excludes duplicates — the count is
