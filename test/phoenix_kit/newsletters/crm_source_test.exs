@@ -16,6 +16,7 @@ defmodule PhoenixKit.Newsletters.CRMSourceTest do
   use PhoenixKitNewsletters.DataCase, async: false
 
   alias PhoenixKit.Newsletters.CRMSource
+  alias PhoenixKit.Users.Auth
   alias PhoenixKitCRM.Contacts
   alias PhoenixKitCRM.Lists
 
@@ -199,5 +200,105 @@ defmodule PhoenixKit.Newsletters.CRMSourceTest do
 
     reloaded = CRMSource.get_contact(contact.uuid)
     assert {:ok, %{opted_out_at: ^opted_out_at}} = CRMSource.opt_out(reloaded)
+  end
+
+  test "opt_in/1 clears a previous opt_out/1, and is idempotent when not opted out" do
+    contact = add_contact()
+    {:ok, opted_out} = CRMSource.opt_out(contact)
+    assert opted_out.opted_out_at != nil
+
+    assert {:ok, %{opted_out_at: nil}} = CRMSource.opt_in(opted_out)
+
+    reloaded = CRMSource.get_contact(contact.uuid)
+    assert {:ok, %{opted_out_at: nil}} = CRMSource.opt_in(reloaded)
+  end
+
+  test "list_subscribable_lists/0 only returns active lists with subscribable: true" do
+    {:ok, subscribable} =
+      Lists.create_list(%{
+        name: "Subscribable #{System.unique_integer([:positive])}",
+        subscribable: true
+      })
+
+    {:ok, _not_subscribable} =
+      Lists.create_list(%{name: "Not subscribable #{System.unique_integer([:positive])}"})
+
+    {:ok, archived} =
+      Lists.create_list(%{
+        name: "Archived #{System.unique_integer([:positive])}",
+        subscribable: true
+      })
+
+    {:ok, _archived} = Lists.archive_list(archived)
+
+    uuids = CRMSource.list_subscribable_lists() |> Enum.map(& &1.uuid)
+
+    assert subscribable.uuid in uuids
+    refute archived.uuid in uuids
+  end
+
+  test "subscribed?/2, subscribe/2 and remove_from_list/2 round-trip a contact's membership", %{
+    list: list
+  } do
+    contact = add_contact()
+
+    refute CRMSource.subscribed?(contact, list)
+
+    assert {:ok, _member} = CRMSource.subscribe(contact, list)
+    assert CRMSource.subscribed?(contact, list)
+
+    assert {:ok, %{status: "removed"}} = CRMSource.remove_from_list(contact, list)
+    refute CRMSource.subscribed?(contact, list)
+  end
+
+  describe "find_or_link_contact_for_user/1" do
+    test "creates and links a new contact when none exists for this user or email" do
+      user_uuid = Ecto.UUID.generate()
+      email = "new-user-#{System.unique_integer([:positive])}@example.com"
+
+      assert {:ok, contact} =
+               CRMSource.find_or_link_contact_for_user(%{uuid: user_uuid, email: email})
+
+      assert contact.email == email
+      assert contact.user_uuid == user_uuid
+    end
+
+    test "is called twice for the same user and creates exactly one contact" do
+      user_uuid = Ecto.UUID.generate()
+      email = "repeat-user-#{System.unique_integer([:positive])}@example.com"
+      user = %{uuid: user_uuid, email: email}
+
+      assert {:ok, first} = CRMSource.find_or_link_contact_for_user(user)
+      assert {:ok, second} = CRMSource.find_or_link_contact_for_user(user)
+
+      assert first.uuid == second.uuid
+      assert length(Contacts.list_by_email(email)) == 1
+    end
+
+    test "links an existing contact holding this email, instead of creating a duplicate" do
+      email = "existing-contact-#{System.unique_integer([:positive])}@example.com"
+      existing = add_contact(%{email: email})
+      user_uuid = Ecto.UUID.generate()
+
+      assert {:ok, linked} =
+               CRMSource.find_or_link_contact_for_user(%{uuid: user_uuid, email: email})
+
+      assert linked.uuid == existing.uuid
+      assert linked.user_uuid == user_uuid
+      assert length(Contacts.list_by_email(email)) == 1
+    end
+
+    test "never goes through Contacts.connect_user/2 — no placeholder core user is registered" do
+      user_uuid = Ecto.UUID.generate()
+      email = "no-placeholder-#{System.unique_integer([:positive])}@example.com"
+
+      assert {:ok, _contact} =
+               CRMSource.find_or_link_contact_for_user(%{uuid: user_uuid, email: email})
+
+      # connect_user/2's placeholder path tags the created user with
+      # custom_fields["source"] == "crm_contact" — nothing in this flow
+      # should ever create a core user at all, placeholder or otherwise.
+      refute Auth.get_user_by_email(email)
+    end
   end
 end

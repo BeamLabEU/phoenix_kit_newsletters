@@ -26,6 +26,8 @@ defmodule PhoenixKit.Newsletters.Workers.DeliveryWorkerTest do
   alias PhoenixKit.Newsletters.Delivery
   alias PhoenixKit.Newsletters.Workers.DeliveryWorker
   alias PhoenixKit.Users.Auth.User
+  alias PhoenixKitCRM.Contacts, as: CRMContacts
+  alias PhoenixKitCRM.Lists, as: CRMLists
   alias PhoenixKitNewsletters.Test.Repo
 
   defp add_integration(provider \\ "smtp", name \\ "test connection") do
@@ -235,6 +237,45 @@ defmodule PhoenixKit.Newsletters.Workers.DeliveryWorkerTest do
         to: "crm-recipient@example.com",
         subject: "CRM send"
       )
+    end
+
+    test "substitutes {{preferences_url}} with a resolved preference-center link for a real CRM member" do
+      PhoenixKit.Settings.update_setting("from_name", "My Newsletter")
+      PhoenixKit.Settings.update_setting("from_email", "news@example.com")
+
+      {:ok, crm_list} =
+        CRMLists.create_list(%{name: "Test CRM list #{System.unique_integer([:positive])}"})
+
+      {:ok, contact} =
+        CRMContacts.create_contact(%{name: "Recipient", email: "crm-prefs@example.com"})
+
+      {:ok, _member} = CRMLists.add_contact_to_list(contact, crm_list, source: "manual")
+
+      broadcast =
+        create_broadcast(%{
+          subject: "CRM send with preferences link",
+          source_type: "crm_list",
+          crm_list_uuid: crm_list.uuid,
+          list_uuid: nil,
+          html_body: "<p>Manage: {{preferences_url}}</p>",
+          text_body: "Manage: {{preferences_url}}"
+        })
+
+      {:ok, delivery} =
+        %Delivery{}
+        |> Delivery.changeset(%{broadcast_uuid: broadcast.uuid, recipient_email: contact.email})
+        |> Repo.insert()
+
+      job = %Oban.Job{
+        args: %{"delivery_uuid" => delivery.uuid, "broadcast_uuid" => broadcast.uuid}
+      }
+
+      assert :ok = DeliveryWorker.perform(job)
+
+      assert_email_sent(fn email ->
+        assert email.html_body =~ "/newsletters/preferences?token="
+        refute email.html_body =~ "{{preferences_url}}"
+      end)
     end
   end
 

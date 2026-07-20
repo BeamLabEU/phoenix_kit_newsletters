@@ -37,6 +37,7 @@ defmodule PhoenixKit.Newsletters.Workers.DeliveryWorker do
   alias PhoenixKit.Newsletters.Broadcast
   alias PhoenixKit.Newsletters.CRMSource
   alias PhoenixKit.Newsletters.Delivery
+  alias PhoenixKit.Newsletters.PreferenceToken
   alias PhoenixKit.Utils.Date, as: UtilsDate
   alias PhoenixKit.Utils.Routes
 
@@ -51,7 +52,9 @@ defmodule PhoenixKit.Newsletters.Workers.DeliveryWorker do
          {:ok, broadcast} <- get_broadcast(broadcast_uuid),
          {:ok, recipient} <- get_recipient(delivery),
          {unsubscribe_url, list_unsubscribe_url} = build_unsubscribe_url(recipient, broadcast),
-         {:ok, html_body, text_body} <- render_email(broadcast, recipient, unsubscribe_url),
+         preferences_url = build_preferences_url(recipient, broadcast),
+         {:ok, html_body, text_body} <-
+           render_email(broadcast, recipient, unsubscribe_url, preferences_url),
          {:ok, result} <-
            send_email(
              broadcast,
@@ -178,8 +181,8 @@ defmodule PhoenixKit.Newsletters.Workers.DeliveryWorker do
 
   defp get_recipient(%Delivery{}), do: {:error, :no_recipient}
 
-  defp render_email(broadcast, recipient, unsubscribe_url) do
-    variables = build_variables(recipient, unsubscribe_url)
+  defp render_email(broadcast, recipient, unsubscribe_url, preferences_url) do
+    variables = build_variables(recipient, unsubscribe_url, preferences_url)
     html = substitute_variables(broadcast.html_body || "", variables)
     text = substitute_variables(broadcast.text_body || "", variables)
 
@@ -188,11 +191,12 @@ defmodule PhoenixKit.Newsletters.Workers.DeliveryWorker do
     {:ok, html, text}
   end
 
-  defp build_variables(recipient, unsubscribe_url) do
+  defp build_variables(recipient, unsubscribe_url, preferences_url) do
     %{
       "name" => recipient.username || recipient.email,
       "email" => recipient.email,
-      "unsubscribe_url" => unsubscribe_url
+      "unsubscribe_url" => unsubscribe_url,
+      "preferences_url" => preferences_url
     }
   end
 
@@ -242,6 +246,36 @@ defmodule PhoenixKit.Newsletters.Workers.DeliveryWorker do
 
   defp one_click_unsubscribe_url(token),
     do: Routes.url("/newsletters/unsubscribe/one-click?token=#{token}")
+
+  # Preference-center link (spec §7) — only for crm_list recipients today.
+  # Reuses the exact membership lookup build_unsubscribe_url/2's crm_list
+  # clause already does, so the contact_uuid is the real, unambiguous
+  # member of THIS list receiving THIS email (not a fresh directory-wide
+  # email search, which could land on a different same-email contact under
+  # the "always create new contact" import policy, §4.3).
+  #
+  # Deliberately does NOT extend to the legacy `%{uuid: uuid}` (newsletters
+  # user-list) recipient shape — that would mean lazily creating a CRM
+  # contact for every legacy-list recipient on every single send (a
+  # write on the hot delivery path, for a system slated for removal once
+  # §4.5's migration lands). That eager-linking case belongs with the
+  # user_group/role recipient work (S4-C) and the list migration (S4-E),
+  # not here — until then, a legacy-list recipient simply gets no
+  # preferences link, same "no match, no broken link" precedent as
+  # build_unsubscribe_url/2's own catch-all.
+  defp build_preferences_url(%{uuid: nil, email: email}, %{crm_list_uuid: crm_list_uuid})
+       when is_binary(email) and is_binary(crm_list_uuid) do
+    case CRMSource.get_member_by_email(crm_list_uuid, email) do
+      %{contact_uuid: contact_uuid} -> preferences_page_url(sign_preferences_token(contact_uuid))
+      nil -> ""
+    end
+  end
+
+  defp build_preferences_url(_recipient, _broadcast), do: ""
+
+  defp sign_preferences_token(contact_uuid), do: PreferenceToken.sign(contact_uuid)
+
+  defp preferences_page_url(token), do: Routes.url("/newsletters/preferences?token=#{token}")
 
   defp substitute_variables(content, variables) do
     Enum.reduce(variables, content, fn {key, value}, acc ->
