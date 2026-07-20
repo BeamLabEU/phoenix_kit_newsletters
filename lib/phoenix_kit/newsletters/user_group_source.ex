@@ -46,6 +46,8 @@ defmodule PhoenixKit.Newsletters.UserGroupSource do
 
   import Ecto.Query
 
+  require Logger
+
   alias PhoenixKit.RepoHelper
   alias PhoenixKit.Users.Auth
   alias PhoenixKit.Users.Auth.User
@@ -147,9 +149,18 @@ defmodule PhoenixKit.Newsletters.UserGroupSource do
        both, and the contact-level state CRM-list sends check stays
        consistent.
 
-  Idempotent either way: writing the same custom_fields value twice is
-  a no-op update, and `CRMSource.opt_out/1` is already idempotent on an
-  already-opted-out contact.
+  Idempotent either way: the custom_fields opt-out state is idempotent
+  — the stored timestamp simply refreshes on a repeat call — and
+  `CRMSource.opt_out/1` is already idempotent on an already-opted-out
+  contact.
+
+  The custom_fields write is the source of truth this function's return
+  value reflects; a failure opting out the *linked contact* (CRM down,
+  a changeset error) does not fail the overall call — the role-sourced
+  opt-out already succeeded and future `sendable_recipients/1` calls
+  already honor it — but is not silent either: it's logged, since it
+  leaves the contact-level state (which CRM-list sends check) out of
+  sync until it's retried.
   """
   @spec record_opt_out(User.t()) :: {:ok, User.t()} | {:error, term()}
   def record_opt_out(%User{} = user) do
@@ -176,8 +187,22 @@ defmodule PhoenixKit.Newsletters.UserGroupSource do
 
   defp maybe_opt_out_linked_contact(user) do
     case CRMSource.get_contact_by_user_uuid(user.uuid) do
-      %{} = contact -> CRMSource.opt_out(contact)
-      nil -> :ok
+      %{} = contact ->
+        case CRMSource.opt_out(contact) do
+          {:ok, _contact} ->
+            :ok
+
+          {:error, reason} ->
+            Logger.warning(
+              "UserGroupSource.record_opt_out/1: role opt-out for user #{user.uuid} " <>
+                "succeeded, but opting out its linked CRM contact #{contact.uuid} failed: " <>
+                "#{inspect(reason)}. That contact's opted_out_at was not updated — CRM-list " <>
+                "sends to it won't reflect this opt-out until it's retried."
+            )
+        end
+
+      nil ->
+        :ok
     end
   end
 

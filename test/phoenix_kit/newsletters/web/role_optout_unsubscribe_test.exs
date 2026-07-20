@@ -20,6 +20,7 @@ defmodule PhoenixKit.Newsletters.Web.RoleOptoutUnsubscribeTest do
 
   use PhoenixKitNewsletters.DataCase, async: false
 
+  alias PhoenixKit.Newsletters
   alias PhoenixKit.Newsletters.UserGroupSource
   alias PhoenixKit.Newsletters.Web.UnsubscribeController
   alias PhoenixKit.Users.Auth.User
@@ -31,6 +32,16 @@ defmodule PhoenixKit.Newsletters.Web.RoleOptoutUnsubscribeTest do
   defp sign_token(user_uuid) do
     endpoint = PhoenixKit.Config.get(:endpoint, PhoenixKitWeb.Endpoint)
     Phoenix.Token.sign(endpoint, "newsletters_user_optout", %{user_uuid: user_uuid})
+  end
+
+  # A flavor-A (newsletters_list) token — same claim key (user_uuid) the
+  # role flavor uses, plus list_uuid, signed under the *other* salt.
+  # Its claims are a superset of the role flavor's bare %{user_uuid:},
+  # which is exactly the shape overlap verify_token/1's salt tagging
+  # exists to defuse — see the cross-flavor rejection tests below.
+  defp sign_list_flavor_token(user_uuid, list_uuid) do
+    endpoint = PhoenixKit.Config.get(:endpoint, PhoenixKitWeb.Endpoint)
+    Phoenix.Token.sign(endpoint, "unsubscribe", %{user_uuid: user_uuid, list_uuid: list_uuid})
   end
 
   defp build_conn(method, path) do
@@ -237,6 +248,49 @@ defmodule PhoenixKit.Newsletters.Web.RoleOptoutUnsubscribeTest do
       {:ok, _user} = UserGroupSource.record_opt_out(Repo.get(User, user.uuid))
 
       assert %{sendable: 0, unsendable: 1} = UserGroupSource.preflight([role.uuid])
+    end
+  end
+
+  describe "cross-flavor rejection — verify_token/1's salt tag is load-bearing" do
+    test "a flavor-A (newsletters_list) token is rejected by scope=role_optout, not treated as a role opt-out" do
+      {:ok, list} =
+        Newsletters.create_list(%{
+          name: "Cross-flavor check list",
+          slug: "cross-flavor-check-list-#{System.unique_integer([:positive])}"
+        })
+
+      user = create_user()
+      token = sign_list_flavor_token(user.uuid, list.uuid)
+
+      conn =
+        build_conn(:post, "/newsletters/unsubscribe")
+        |> UnsubscribeController.process_unsubscribe(%{
+          "token" => token,
+          "scope" => "role_optout"
+        })
+
+      assert conn.status == 302
+
+      reloaded = Repo.get(User, user.uuid)
+      refute UserGroupSource.opted_out?(reloaded)
+    end
+
+    test "a role_optout token is not absorbed by scope=all's ListMember-based unsubscribe" do
+      user = create_user()
+      token = sign_token(user.uuid)
+
+      conn =
+        build_conn(:post, "/newsletters/unsubscribe")
+        |> UnsubscribeController.process_unsubscribe(%{"token" => token, "scope" => "all"})
+
+      assert conn.status == 302
+
+      # Not opted out via the role-optout path — scope=all must not have
+      # silently routed this to Newsletters.unsubscribe_from_all/1, which
+      # writes no custom_fields state at all and leaves the user still
+      # sendable through UserGroupSource.
+      reloaded = Repo.get(User, user.uuid)
+      refute UserGroupSource.opted_out?(reloaded)
     end
   end
 end
