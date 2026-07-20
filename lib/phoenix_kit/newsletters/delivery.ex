@@ -15,16 +15,16 @@ defmodule PhoenixKit.Newsletters.Delivery do
   # pollutes bounce metrics.
   @valid_statuses ["pending", "sent", "delivered", "opened", "bounced", "failed", "blocked"]
 
-  # The only status meaning "no send attempt has been made yet." Every
-  # other status has some attempt behind it — including "failed" on a
-  # delivery Oban will still retry (DeliveryWorker.handle_failure/4 marks a
-  # non-terminal transient failure "failed" too, purely for UI visibility),
-  # so a delivery leaving "pending" doesn't guarantee Oban is done with it,
-  # only that dispatch has started. Broadcast finalization (below) treats
-  # "started" as good enough — the same way it already doesn't wait for
-  # delivered/opened webhooks once a message is "sent"; a still-retrying
-  # delivery only delays the status flip by the retry's backoff window, and
-  # its counter still lands correctly in the background regardless.
+  # The only status meaning "no attempt has finished yet" — a delivery
+  # still awaiting an Oban retry (DeliveryWorker.handle_failure/4's
+  # non-terminal branch) is deliberately kept "pending" rather than
+  # "failed", precisely so it keeps counting as incomplete here. Every
+  # other status has a concluded attempt behind it. Broadcast finalization
+  # (below) doesn't wait for delivered/opened webhooks once a message is
+  # "sent" — but it does wait for every delivery's send attempt (including
+  # retries) to actually conclude, otherwise a broadcast could finalize to
+  # "sent" (and lose its "Cancel broadcast" button, gated on status ==
+  # "sending") while a recipient's send is still queued to run.
   @non_terminal_statuses ["pending"]
 
   schema "phoenix_kit_newsletters_deliveries" do

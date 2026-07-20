@@ -483,7 +483,7 @@ defmodule PhoenixKit.Newsletters.Workers.DeliveryWorkerTest do
       assert updated_delivery.message_id == "already-sent-message-id"
     end
 
-    test "a non-terminal transient failure (more retries left) marks the delivery failed but does not bump bounced_count" do
+    test "a non-terminal transient failure (more retries left) keeps the delivery pending, records the error, and does not bump bounced_count" do
       user = create_user()
       broadcast = create_broadcast(%{subject: "Will fail", html_body: "<p>Hi</p>"})
       delivery = create_delivery(broadcast, user)
@@ -491,7 +491,12 @@ defmodule PhoenixKit.Newsletters.Workers.DeliveryWorkerTest do
       DeliveryWorker.handle_failure(delivery.uuid, broadcast.uuid, "timeout", false)
 
       updated_delivery = Repo.get(Delivery, delivery.uuid)
-      assert updated_delivery.status == "failed"
+      # Must stay "pending" — the only status
+      # Delivery.non_terminal_broadcast_uuids_query/0 treats as incomplete —
+      # so a broadcast whose last delivery hits a still-retryable failure
+      # isn't finalized to "sent" out from under the queued retry.
+      assert updated_delivery.status == "pending"
+      assert updated_delivery.error == "\"timeout\""
 
       updated_broadcast = Repo.get(Broadcast, broadcast.uuid)
       assert updated_broadcast.bounced_count == 0
@@ -525,7 +530,7 @@ defmodule PhoenixKit.Newsletters.Workers.DeliveryWorkerTest do
       # compile and run end-to-end. The terminal?-gated bounce-count logic
       # itself is covered precisely by the two handle_failure/4 unit tests
       # above (this job's broadcast_uuid doesn't exist, so
-      # update_broadcast_counter/2 here is a real no-op, not a meaningful
+      # maybe_bump_counter/2 here is a real no-op, not a meaningful
       # assertion).
       job = %Oban.Job{
         args: %{"delivery_uuid" => delivery.uuid, "broadcast_uuid" => Ecto.UUID.generate()},

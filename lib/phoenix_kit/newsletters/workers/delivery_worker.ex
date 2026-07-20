@@ -478,7 +478,7 @@ defmodule PhoenixKit.Newsletters.Workers.DeliveryWorker do
   # retry only ever increments sent_count, never touches bounced_count).
   # Not `defp` so it can be unit-tested directly — same rationale as
   # `resolve_send_profile/1` above.
-  def handle_failure(delivery_uuid, broadcast_uuid, reason, terminal?) do
+  def handle_failure(delivery_uuid, broadcast_uuid, reason, true) do
     case get_delivery(delivery_uuid) do
       {:ok, delivery} ->
         update_delivery_result(
@@ -486,12 +486,33 @@ defmodule PhoenixKit.Newsletters.Workers.DeliveryWorker do
           "failed",
           %{error: inspect(reason)},
           broadcast_uuid,
-          if(terminal?, do: :bounced_count)
+          :bounced_count
         )
 
       _ ->
         :ok
     end
+  end
+
+  # Still-retryable: Oban has already scheduled another attempt, so this
+  # delivery isn't actually done. Records the error for admin visibility
+  # but deliberately does NOT advance `status` away from "pending" — the
+  # only status Delivery.non_terminal_broadcast_uuids_query/0 treats as
+  # incomplete. Writing "failed" here (as a prior version of this
+  # function did unconditionally) would let a single transient failure on
+  # a broadcast's last outstanding delivery finalize it to "sent" —
+  # dropping the "Cancel broadcast" button (gated on status == "sending")
+  # — while a send attempt is still queued to run.
+  def handle_failure(delivery_uuid, _broadcast_uuid, reason, false) do
+    case get_delivery(delivery_uuid) do
+      {:ok, delivery} ->
+        Newsletters.update_delivery_status(delivery, delivery.status, %{error: inspect(reason)})
+
+      _ ->
+        :ok
+    end
+
+    :ok
   end
 
   @doc false

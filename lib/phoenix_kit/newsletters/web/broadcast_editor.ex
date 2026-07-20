@@ -17,11 +17,14 @@ defmodule PhoenixKit.Newsletters.Web.BroadcastEditor do
   alias PhoenixKit.Newsletters
   alias PhoenixKit.Newsletters.{Broadcaster, Content, CRMSource}
   alias PhoenixKit.Settings
+  alias PhoenixKit.Utils.Date, as: DateUtils
   alias PhoenixKit.Utils.Routes
 
   @impl true
   def mount(_params, _session, socket) do
     if Newsletters.enabled?() do
+      tz_offset = user_tz_offset(socket)
+
       socket =
         socket
         |> assign(:page_title, gettext("New broadcast"))
@@ -47,6 +50,11 @@ defmodule PhoenixKit.Newsletters.Web.BroadcastEditor do
         |> assign(:markdown_content, "")
         |> assign(:preview_html, "")
         |> assign(:scheduled_at, "")
+        |> assign(:tz_offset, tz_offset)
+        |> assign(
+          :tz_label,
+          Settings.get_timezone_label(tz_offset, Settings.get_setting_options())
+        )
         |> assign(:saving, false)
 
       {:ok, socket}
@@ -81,6 +89,10 @@ defmodule PhoenixKit.Newsletters.Web.BroadcastEditor do
      |> assign(
        :preview_html,
        render_preview(broadcast.markdown_body, broadcast.template_uuid, templates)
+     )
+     |> assign(
+       :scheduled_at,
+       DateUtils.format_datetime_local(broadcast.scheduled_at, socket.assigns.tz_offset)
      )
      |> assign_preflight()}
   rescue
@@ -171,7 +183,14 @@ defmodule PhoenixKit.Newsletters.Web.BroadcastEditor do
         {:noreply, put_flash(socket, :error, gettext("Please select a schedule date and time"))}
 
       scheduled_at_str ->
-        save_broadcast(socket, "scheduled", %{scheduled_at: parse_datetime(scheduled_at_str)})
+        case DateUtils.parse_datetime_local(scheduled_at_str, socket.assigns.tz_offset) do
+          {:ok, scheduled_at} ->
+            save_broadcast(socket, "scheduled", %{scheduled_at: scheduled_at})
+
+          {:error, _reason} ->
+            {:noreply,
+             put_flash(socket, :error, gettext("Please select a valid schedule date and time"))}
+        end
     end
   end
 
@@ -388,20 +407,37 @@ defmodule PhoenixKit.Newsletters.Web.BroadcastEditor do
     end
   end
 
-  defp parse_datetime(str) when is_binary(str) do
-    case DateTime.from_iso8601(str <> ":00Z") do
-      {:ok, dt, _} ->
-        dt
-
-      _ ->
-        case NaiveDateTime.from_iso8601(str <> ":00") do
-          {:ok, ndt} -> DateTime.from_naive!(ndt, "Etc/UTC")
-          _ -> nil
-        end
+  # The viewer's timezone offset — user profile → system setting → "0" (UTC),
+  # via core's `PhoenixKit.Utils.Date.get_user_timezone/1`. Drives how the
+  # `scheduled_at` datetime-local input is interpreted/displayed (storage
+  # is always UTC).
+  defp user_tz_offset(socket) do
+    case socket.assigns[:phoenix_kit_current_user] do
+      %{} = user -> DateUtils.get_user_timezone(user)
+      _ -> Settings.get_setting("time_zone", "0")
     end
+  rescue
+    _ -> "0"
   end
 
-  defp parse_datetime(_), do: nil
+  # Human-readable confirmation of what the typed local time resolves to,
+  # shown next to the schedule input so the interpretation is never a guess
+  # (e.g. "Sends at 21:58 (UTC+3 (...)) · 18:58 UTC"). `nil` when there's
+  # nothing typed yet or the value can't be parsed.
+  defp schedule_preview("", _tz_offset, _tz_label), do: nil
+
+  defp schedule_preview(scheduled_at_str, tz_offset, tz_label) do
+    with [_date, local_time] <- String.split(scheduled_at_str, "T", parts: 2),
+         {:ok, utc_dt} <- DateUtils.parse_datetime_local(scheduled_at_str, tz_offset) do
+      gettext("Sends at %{local} (%{tz}) · %{utc} UTC",
+        local: String.slice(local_time, 0, 5),
+        tz: tz_label,
+        utc: Calendar.strftime(utc_dt, "%H:%M")
+      )
+    else
+      _ -> nil
+    end
+  end
 
   # Intentional apply/3 — calls optional soft-dependency modules to avoid compile-time warnings
   # credo:disable-for-next-line Credo.Check.Refactor.Apply
