@@ -160,123 +160,14 @@ defmodule PhoenixKit.Newsletters do
   @impl PhoenixKit.Module
   def route_module, do: PhoenixKit.Newsletters.Web.Routes
 
-  # ============================================================================
-  # Lists
-  # ============================================================================
-
   alias PhoenixKit.Newsletters.{
     Broadcast,
     Broadcaster,
     Content,
-    Delivery,
-    List,
-    ListMember
+    Delivery
   }
 
   import Ecto.Query
-
-  def list_lists(filters \\ %{}) do
-    List
-    |> maybe_filter_status(filters)
-    |> order_by([l], asc: l.name)
-    |> repo().all()
-  end
-
-  def get_list!(uuid), do: repo().get!(List, uuid)
-
-  def get_list(uuid), do: repo().get(List, uuid)
-
-  def create_list(attrs) do
-    %List{}
-    |> List.changeset(attrs)
-    |> repo().insert()
-  end
-
-  def update_list(%List{} = list, attrs) do
-    list
-    |> List.changeset(attrs)
-    |> repo().update()
-  end
-
-  def delete_list(%List{} = list), do: repo().delete(list)
-
-  # ============================================================================
-  # List Members
-  # ============================================================================
-
-  def list_members(list_uuid, filters \\ %{}) do
-    ListMember
-    |> where([m], m.list_uuid == ^list_uuid)
-    |> maybe_filter_member_status(filters)
-    |> preload(:user)
-    |> order_by([m], desc: m.subscribed_at)
-    |> apply_pagination(filters)
-    |> repo().all()
-  end
-
-  def count_active_members(list_uuid) do
-    ListMember
-    |> where([m], m.list_uuid == ^list_uuid and m.status == "active")
-    |> repo().aggregate(:count)
-  end
-
-  def subscribe_user(list_uuid, user_uuid) do
-    %ListMember{}
-    |> ListMember.changeset(%{list_uuid: list_uuid, user_uuid: user_uuid, status: "active"})
-    |> repo().insert(
-      on_conflict: {:replace, [:status, :subscribed_at]},
-      conflict_target: [:user_uuid, :list_uuid]
-    )
-    |> case do
-      {:ok, member} ->
-        update_subscriber_count(list_uuid)
-        {:ok, member}
-
-      error ->
-        error
-    end
-  end
-
-  def unsubscribe_user(list_uuid, user_uuid) do
-    ListMember
-    |> where([m], m.list_uuid == ^list_uuid and m.user_uuid == ^user_uuid)
-    |> repo().one()
-    |> case do
-      nil ->
-        {:error, :not_found}
-
-      member ->
-        member
-        |> ListMember.changeset(%{
-          status: "unsubscribed",
-          unsubscribed_at: PhoenixKit.Utils.Date.utc_now()
-        })
-        |> repo().update()
-        |> case do
-          {:ok, member} ->
-            update_subscriber_count(list_uuid)
-            {:ok, member}
-
-          error ->
-            error
-        end
-    end
-  end
-
-  def list_user_subscriptions(user_uuid) do
-    ListMember
-    |> where([m], m.user_uuid == ^user_uuid and m.status == "active")
-    |> preload(:list)
-    |> repo().all()
-  end
-
-  def unsubscribe_from_all(user_uuid) do
-    ListMember
-    |> where([m], m.user_uuid == ^user_uuid and m.status == "active")
-    |> repo().update_all(
-      set: [status: "unsubscribed", unsubscribed_at: PhoenixKit.Utils.Date.utc_now()]
-    )
-  end
 
   # ============================================================================
   # Broadcasts
@@ -463,27 +354,6 @@ defmodule PhoenixKit.Newsletters do
       broadcast
     end
   end
-
-  defp update_subscriber_count(list_uuid) do
-    count = count_active_members(list_uuid)
-
-    List
-    |> where([l], l.uuid == ^list_uuid)
-    |> repo().update_all(set: [subscriber_count: count])
-  end
-
-  defp maybe_filter_status(query, %{status: status}) when is_binary(status) and status != "" do
-    where(query, [l], l.status == ^status)
-  end
-
-  defp maybe_filter_status(query, _), do: query
-
-  defp maybe_filter_member_status(query, %{status: status})
-       when is_binary(status) and status != "" do
-    where(query, [m], m.status == ^status)
-  end
-
-  defp maybe_filter_member_status(query, _), do: query
 
   defp maybe_filter_broadcast_status(query, %{status: status})
        when is_binary(status) and status != "" do
