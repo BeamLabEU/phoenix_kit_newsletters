@@ -74,6 +74,14 @@
               <p class="text-base-content/60 text-xs font-medium uppercase mb-1">{gettext("List")}</p>
               <p class="font-medium">
                 <%= cond do %>
+                  <% @broadcast.source_type == "user_group" -> %>
+                    <%= case role_names_snapshot(@broadcast) do %>
+                      <% [] -> %>
+                        <span class="badge badge-ghost badge-xs">{gettext("Roles")}</span>
+                      <% names -> %>
+                        {Enum.join(names, ", ")}
+                        <span class="badge badge-ghost badge-xs">{gettext("Roles")}</span>
+                    <% end %>
                   <% @broadcast.list -> %>
                     {@broadcast.list.name}
                   <% @crm_list -> %>
@@ -109,6 +117,18 @@
       <p :if={@crm_list && @crm_list.status != "active"} class="text-sm text-warning mb-2">
         <.icon name="hero-exclamation-triangle" class="w-3 h-3 inline" />
         {gettext("This list is archived and cannot be sent to.")}
+      </p>
+      <p
+        :if={@user_group_preflight && @user_group_preflight.stale_roles > 0}
+        class="text-sm text-warning mb-2"
+      >
+        <.icon name="hero-exclamation-triangle" class="w-3 h-3 inline" />
+        {ngettext(
+          "%{count} selected role no longer exists",
+          "%{count} selected roles no longer exist",
+          @user_group_preflight.stale_roles,
+          count: @user_group_preflight.stale_roles
+        )}
       </p>
       <p :if={@crm_preflight} class="text-sm text-base-content/70 mb-6">
         {gettext(
