@@ -114,7 +114,6 @@ msgstr ""
 msgid "Status"
 msgstr ""
 
-#: lib/phoenix_kit/newsletters/web/broadcast_details.html.heex:74
 #: lib/phoenix_kit/newsletters/web/broadcasts.html.heex:36
 #: lib/phoenix_kit/newsletters/web/broadcasts.html.heex:99
 #, elixir-autogen
@@ -947,4 +946,9 @@ msgstr ""
 #: lib/phoenix_kit/newsletters/web/list_members.html.heex:95
 #, elixir-autogen, elixir-format
 msgid "Times shown in %{tz}"
+msgstr ""
+
+#: lib/phoenix_kit/newsletters/web/broadcast_details.html.heex:74
+#, elixir-autogen, elixir-format
+msgid "Source"
 msgstr ""

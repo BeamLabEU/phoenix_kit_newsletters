@@ -114,7 +114,6 @@ msgstr "Värskenda"
 msgid "Status"
 msgstr "Olek"
 
-#: lib/phoenix_kit/newsletters/web/broadcast_details.html.heex:74
 #: lib/phoenix_kit/newsletters/web/broadcasts.html.heex:36
 #: lib/phoenix_kit/newsletters/web/broadcasts.html.heex:99
 #, elixir-autogen
@@ -948,3 +947,8 @@ msgstr "Ajastatud"
 #, elixir-autogen, elixir-format
 msgid "Times shown in %{tz}"
 msgstr "Ajad vööndis %{tz}"
+
+#: lib/phoenix_kit/newsletters/web/broadcast_details.html.heex:74
+#, elixir-autogen, elixir-format
+msgid "Source"
+msgstr "Allikas"
