@@ -192,6 +192,20 @@ defmodule PhoenixKit.Newsletters.Broadcaster do
     broadcast |> Broadcast.role_uuids() |> UserGroupSource.sendable_recipients()
   end
 
+  # Totality guard: V156 re-pointed every 'newsletters_list' row and the
+  # changeset only admits crm_list/user_group, so this clause should be
+  # unreachable — but an unexpected stray row should degrade to "sent to
+  # nobody" with a log line, not take the send path down with a
+  # FunctionClauseError.
+  defp resolve_recipients(%Broadcast{} = broadcast) do
+    Logger.warning(
+      "Broadcaster: broadcast #{broadcast.uuid} has unknown source_type " <>
+        "#{inspect(broadcast.source_type)} — resolving to zero recipients"
+    )
+
+    []
+  end
+
   # A crm_list or user_group broadcast's recipients are already resolved
   # (by resolve_recipients/1, called once in do_send/1) — a
   # fully-materialized, deduplicated list (both run in the low thousands,

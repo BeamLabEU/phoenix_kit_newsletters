@@ -101,5 +101,8 @@ defmodule PhoenixKit.Newsletters.Web.Broadcasts do
 
   defp gettext_source("crm_list"), do: gettext("CRM list")
   defp gettext_source("user_group"), do: gettext("Roles")
+  # Pre-V156 'sent' rows keep their historical source_type value; show a
+  # human label rather than the internal identifier.
+  defp gettext_source("newsletters_list"), do: gettext("Legacy list")
   defp gettext_source(other), do: other
 end

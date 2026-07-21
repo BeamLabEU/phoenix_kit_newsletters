@@ -559,3 +559,8 @@ msgstr "Source"
 #, elixir-autogen, elixir-format
 msgid "Times shown in %{tz}"
 msgstr ""
+
+#: lib/phoenix_kit/newsletters/web/broadcasts.ex:106
+#, elixir-autogen, elixir-format
+msgid "Legacy list"
+msgstr "Legacy list"
