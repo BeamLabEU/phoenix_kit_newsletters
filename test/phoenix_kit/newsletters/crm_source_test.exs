@@ -15,7 +15,12 @@ defmodule PhoenixKit.Newsletters.CRMSourceTest do
 
   use PhoenixKitNewsletters.DataCase, async: false
 
+  import Ecto.Query, only: [from: 2]
+
   alias PhoenixKit.Newsletters.CRMSource
+  alias PhoenixKit.RepoHelper
+  alias PhoenixKit.Users.Auth
+  alias PhoenixKit.Users.Auth.User
   alias PhoenixKitCRM.Contacts
   alias PhoenixKitCRM.Lists
 
@@ -199,5 +204,173 @@ defmodule PhoenixKit.Newsletters.CRMSourceTest do
 
     reloaded = CRMSource.get_contact(contact.uuid)
     assert {:ok, %{opted_out_at: ^opted_out_at}} = CRMSource.opt_out(reloaded)
+  end
+
+  test "opt_in/1 clears a previous opt_out/1, and is idempotent when not opted out" do
+    contact = add_contact()
+    {:ok, opted_out} = CRMSource.opt_out(contact)
+    assert opted_out.opted_out_at != nil
+
+    assert {:ok, %{opted_out_at: nil}} = CRMSource.opt_in(opted_out)
+
+    reloaded = CRMSource.get_contact(contact.uuid)
+    assert {:ok, %{opted_out_at: nil}} = CRMSource.opt_in(reloaded)
+  end
+
+  test "list_subscribable_lists/0 only returns active lists with subscribable: true" do
+    {:ok, subscribable} =
+      Lists.create_list(%{
+        name: "Subscribable #{System.unique_integer([:positive])}",
+        subscribable: true
+      })
+
+    {:ok, _not_subscribable} =
+      Lists.create_list(%{name: "Not subscribable #{System.unique_integer([:positive])}"})
+
+    {:ok, archived} =
+      Lists.create_list(%{
+        name: "Archived #{System.unique_integer([:positive])}",
+        subscribable: true
+      })
+
+    {:ok, _archived} = Lists.archive_list(archived)
+
+    uuids = CRMSource.list_subscribable_lists() |> Enum.map(& &1.uuid)
+
+    assert subscribable.uuid in uuids
+    refute archived.uuid in uuids
+  end
+
+  test "subscribed?/2, subscribe/2 and remove_from_list/2 round-trip a contact's membership", %{
+    list: list
+  } do
+    contact = add_contact()
+
+    refute CRMSource.subscribed?(contact, list)
+
+    assert {:ok, _member} = CRMSource.subscribe(contact, list)
+    assert CRMSource.subscribed?(contact, list)
+
+    assert {:ok, %{status: "removed"}} = CRMSource.remove_from_list(contact, list)
+    refute CRMSource.subscribed?(contact, list)
+  end
+
+  # A real core user row: phoenix_kit_crm_contacts.user_uuid carries an FK
+  # to it, so linking against a freshly generated uuid violates the
+  # constraint. Mirrors the fixture delivery_worker_test.exs uses.
+  defp create_core_user(email) do
+    {:ok, user} =
+      %User{}
+      |> User.guest_user_changeset(%{email: email})
+      |> RepoHelper.repo().insert()
+
+    user
+  end
+
+  describe "find_or_link_contact_for_user/1" do
+    test "creates and links a new contact when none exists for this user or email" do
+      email = "new-user-#{System.unique_integer([:positive])}@example.com"
+      user_uuid = create_core_user(email).uuid
+
+      assert {:ok, contact} =
+               CRMSource.find_or_link_contact_for_user(%{uuid: user_uuid, email: email})
+
+      assert contact.email == email
+      assert contact.user_uuid == user_uuid
+    end
+
+    test "is called twice for the same user and creates exactly one contact" do
+      email = "repeat-user-#{System.unique_integer([:positive])}@example.com"
+      user_uuid = create_core_user(email).uuid
+      user = %{uuid: user_uuid, email: email}
+
+      assert {:ok, first} = CRMSource.find_or_link_contact_for_user(user)
+      assert {:ok, second} = CRMSource.find_or_link_contact_for_user(user)
+
+      assert first.uuid == second.uuid
+      assert length(Contacts.list_by_email(email)) == 1
+    end
+
+    test "links an existing contact holding this email, instead of creating a duplicate" do
+      email = "existing-contact-#{System.unique_integer([:positive])}@example.com"
+      existing = add_contact(%{email: email})
+      user_uuid = create_core_user(email).uuid
+
+      assert {:ok, linked} =
+               CRMSource.find_or_link_contact_for_user(%{uuid: user_uuid, email: email})
+
+      assert linked.uuid == existing.uuid
+      assert linked.user_uuid == user_uuid
+      assert length(Contacts.list_by_email(email)) == 1
+    end
+
+    test "creates a new contact instead of guessing when the email is ambiguous (N>1 unlinked matches)" do
+      email = "ambiguous-#{System.unique_integer([:positive])}@example.com"
+      first = add_contact(%{email: email})
+      second = add_contact(%{email: email})
+      user_uuid = create_core_user(email).uuid
+
+      assert {:ok, linked} =
+               CRMSource.find_or_link_contact_for_user(%{uuid: user_uuid, email: email})
+
+      # Neither pre-existing contact was touched — both are still
+      # unlinked, and the returned contact is a brand-new third row.
+      assert linked.uuid not in [first.uuid, second.uuid]
+      assert linked.user_uuid == user_uuid
+
+      reloaded_first = CRMSource.get_contact(first.uuid)
+      reloaded_second = CRMSource.get_contact(second.uuid)
+      assert reloaded_first.user_uuid == nil
+      assert reloaded_second.user_uuid == nil
+
+      assert length(Contacts.list_by_email(email)) == 3
+    end
+
+    test "an already-linked contact holding this email doesn't block a fresh link — it's not a candidate" do
+      email = "linked-to-someone-else-#{System.unique_integer([:positive])}@example.com"
+
+      other_user_uuid =
+        create_core_user("other-#{System.unique_integer([:positive])}@example.com").uuid
+
+      already_linked = add_contact(%{email: email})
+
+      {:ok, already_linked} =
+        CRMSource.find_or_link_contact_for_user(%{
+          uuid: other_user_uuid,
+          email: already_linked.email
+        })
+
+      user_uuid = create_core_user(email).uuid
+
+      assert {:ok, linked} =
+               CRMSource.find_or_link_contact_for_user(%{uuid: user_uuid, email: email})
+
+      # Not the contact already claimed by the other user — a fresh one.
+      assert linked.uuid != already_linked.uuid
+      assert linked.user_uuid == user_uuid
+    end
+
+    test "never goes through Contacts.connect_user/2 — no placeholder core user is registered" do
+      email = "no-placeholder-#{System.unique_integer([:positive])}@example.com"
+      user_uuid = create_core_user(email).uuid
+
+      assert {:ok, _contact} =
+               CRMSource.find_or_link_contact_for_user(%{uuid: user_uuid, email: email})
+
+      # connect_user/2's placeholder path registers a core user tagged
+      # custom_fields["source"] == "crm_contact". This flow must link to
+      # the user that already exists and register nobody: the account
+      # under this address stays the one the fixture created (same uuid,
+      # untouched tag), and no second account appears for it.
+      linked_user = Auth.get_user_by_email(email)
+
+      assert linked_user.uuid == user_uuid
+      refute linked_user.custom_fields["source"] == "crm_contact"
+
+      assert RepoHelper.repo().aggregate(
+               from(u in User, where: u.email == ^email),
+               :count
+             ) == 1
+    end
   end
 end

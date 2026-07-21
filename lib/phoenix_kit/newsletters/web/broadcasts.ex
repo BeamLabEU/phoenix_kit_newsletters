@@ -11,13 +11,18 @@ defmodule PhoenixKit.Newsletters.Web.Broadcasts do
   import PhoenixKitWeb.Components.Core.PkLink
   import PhoenixKitWeb.Components.Core.TableDefault
 
+  import PhoenixKit.Newsletters.Web.Timezone, only: [format_datetime: 2]
+
   alias PhoenixKit.Newsletters
+  alias PhoenixKit.Newsletters.Web.Timezone
   alias PhoenixKit.Settings
   alias PhoenixKit.Utils.Routes
 
   @impl true
   def mount(_params, _session, socket) do
     if Newsletters.enabled?() do
+      tz_offset = Timezone.user_tz_offset(socket)
+
       socket =
         socket
         |> assign(:page_title, gettext("Broadcasts"))
@@ -25,6 +30,8 @@ defmodule PhoenixKit.Newsletters.Web.Broadcasts do
         |> assign(:project_title, Settings.get_project_title())
         |> assign(:broadcasts, [])
         |> assign(:status_filter, "")
+        |> assign(:tz_offset, tz_offset)
+        |> assign(:tz_label, Timezone.tz_label(tz_offset))
 
       {:ok, socket}
     else
@@ -86,10 +93,4 @@ defmodule PhoenixKit.Newsletters.Web.Broadcasts do
   defp gettext_status("cancelled"), do: gettext("Cancelled")
   defp gettext_status("failed"), do: gettext("Failed")
   defp gettext_status(other), do: other
-
-  defp format_datetime(nil), do: "-"
-
-  defp format_datetime(dt) do
-    Calendar.strftime(dt, "%Y-%m-%d %H:%M")
-  end
 end

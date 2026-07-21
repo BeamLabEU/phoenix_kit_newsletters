@@ -1,12 +1,19 @@
 defmodule PhoenixKit.Newsletters.Web.Routes do
   @moduledoc """
-  Route definitions for Newsletters public routes (unsubscribe flow).
+  Route definitions for Newsletters public routes (unsubscribe flow, the
+  subscription preference center).
 
   Admin LiveView routes are auto-generated from live_view: fields in admin_tabs/0.
-  This module only handles non-LiveView public routes.
+  This module handles non-LiveView public routes, plus the preference
+  center's own `live_session` — it can't ride the admin_tabs/
+  user_dashboard_tabs auto-registration mechanism (both wrap their routes
+  in an auth-gated live_session), and this page must stay reachable by a
+  signed token with no login at all (spec §7).
   """
 
+  alias PhoenixKit.Newsletters.Web.PreferenceCenterLive
   alias PhoenixKit.Newsletters.Web.UnsubscribeController
+  alias PhoenixKitWeb.Users.Auth
 
   def generate(url_prefix) do
     quote do
@@ -41,6 +48,15 @@ defmodule PhoenixKit.Newsletters.Web.Routes do
 
         get("/newsletters/unsubscribe", unquote(UnsubscribeController), :unsubscribe)
         post("/newsletters/unsubscribe", unquote(UnsubscribeController), :process_unsubscribe)
+
+        # Permissive on_mount (same one core's own public auth pages use,
+        # e.g. login) — it populates @phoenix_kit_current_scope when a
+        # session exists but never requires one. The LiveView itself
+        # branches on token vs. authenticated scope vs. neither.
+        live_session :phoenix_kit_newsletters_preferences,
+          on_mount: [{unquote(Auth), :phoenix_kit_mount_current_scope}] do
+          live("/newsletters/preferences", unquote(PreferenceCenterLive), :index)
+        end
       end
     end
   end

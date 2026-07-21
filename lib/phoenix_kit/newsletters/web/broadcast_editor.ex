@@ -16,7 +16,9 @@ defmodule PhoenixKit.Newsletters.Web.BroadcastEditor do
 
   alias PhoenixKit.Newsletters
   alias PhoenixKit.Newsletters.{Broadcast, Broadcaster, Content, CRMSource, UserGroupSource}
+  alias PhoenixKit.Newsletters.Web.Timezone
   alias PhoenixKit.Settings
+  alias PhoenixKit.Utils.Date, as: DateUtils
   alias PhoenixKit.Utils.Routes
 
   @impl true
@@ -66,6 +68,7 @@ defmodule PhoenixKit.Newsletters.Web.BroadcastEditor do
     crm_lists = CRMSource.list_lists()
     templates = load_templates()
     broadcast = Newsletters.get_broadcast!(id)
+    socket = assign_tz(socket)
 
     {:noreply,
      socket
@@ -85,6 +88,10 @@ defmodule PhoenixKit.Newsletters.Web.BroadcastEditor do
        :preview_html,
        render_preview(broadcast.markdown_body, broadcast.template_uuid, templates)
      )
+     |> assign(
+       :scheduled_at,
+       DateUtils.format_datetime_local(broadcast.scheduled_at, socket.assigns.tz_offset)
+     )
      |> assign_preflight()}
   rescue
     Ecto.NoResultsError ->
@@ -102,6 +109,7 @@ defmodule PhoenixKit.Newsletters.Web.BroadcastEditor do
 
     {:noreply,
      socket
+     |> assign_tz()
      |> assign(:lists, lists)
      |> assign(:crm_lists, crm_lists)
      |> assign(:templates, templates)
@@ -176,7 +184,14 @@ defmodule PhoenixKit.Newsletters.Web.BroadcastEditor do
         {:noreply, put_flash(socket, :error, gettext("Please select a schedule date and time"))}
 
       scheduled_at_str ->
-        save_broadcast(socket, "scheduled", %{scheduled_at: parse_datetime(scheduled_at_str)})
+        case DateUtils.parse_datetime_local(scheduled_at_str, socket.assigns.tz_offset) do
+          {:ok, scheduled_at} ->
+            save_broadcast(socket, "scheduled", %{scheduled_at: scheduled_at})
+
+          {:error, _reason} ->
+            {:noreply,
+             put_flash(socket, :error, gettext("Please select a valid schedule date and time"))}
+        end
     end
   end
 
@@ -442,20 +457,44 @@ defmodule PhoenixKit.Newsletters.Web.BroadcastEditor do
     end
   end
 
-  defp parse_datetime(str) when is_binary(str) do
-    case DateTime.from_iso8601(str <> ":00Z") do
-      {:ok, dt, _} ->
-        dt
+  # Resolves and assigns the viewer's timezone from handle_params (not
+  # mount, which runs twice per connection — once for the disconnected
+  # render, once for the connected one — doubling this DB read). Mirrors
+  # phoenix_kit_crm's contact_show_live.ex, which resolves the same way
+  # from its own handle_params for the same reason.
+  #
+  # Resolution and label formatting live in Web.Timezone, shared with the
+  # broadcasts list, details and list-members views so all four render
+  # times identically; the label lookup there also avoids loading every
+  # role just to name one zone.
+  defp assign_tz(socket) do
+    tz_offset = Timezone.user_tz_offset(socket)
 
-      _ ->
-        case NaiveDateTime.from_iso8601(str <> ":00") do
-          {:ok, ndt} -> DateTime.from_naive!(ndt, "Etc/UTC")
-          _ -> nil
-        end
-    end
+    socket
+    |> assign(:tz_offset, tz_offset)
+    |> assign(:tz_label, Timezone.tz_label(tz_offset))
   end
 
-  defp parse_datetime(_), do: nil
+  # Human-readable confirmation of what the typed local time resolves to,
+  # shown next to the schedule input so the interpretation is never a guess
+  # (e.g. "Sends at 21:58 (UTC+3 (...)) · 18:58 UTC"). `nil` when there's
+  # nothing typed yet or the value can't be parsed. Exported (still
+  # undocumented, same as this module's other small helpers) so tests can
+  # call it directly.
+  def schedule_preview("", _tz_offset, _tz_label), do: nil
+
+  def schedule_preview(scheduled_at_str, tz_offset, tz_label) do
+    with [_date, local_time] <- String.split(scheduled_at_str, "T", parts: 2),
+         {:ok, utc_dt} <- DateUtils.parse_datetime_local(scheduled_at_str, tz_offset) do
+      gettext("Sends at %{local} (%{tz}) · %{utc} UTC",
+        local: String.slice(local_time, 0, 5),
+        tz: tz_label,
+        utc: Calendar.strftime(utc_dt, "%H:%M")
+      )
+    else
+      _ -> nil
+    end
+  end
 
   # Intentional apply/3 — calls optional soft-dependency modules to avoid compile-time warnings
   # credo:disable-for-next-line Credo.Check.Refactor.Apply

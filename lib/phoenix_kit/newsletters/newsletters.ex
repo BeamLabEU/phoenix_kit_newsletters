@@ -175,6 +175,32 @@ defmodule PhoenixKit.Newsletters do
   end
 
   @impl PhoenixKit.Module
+  def user_dashboard_tabs do
+    alias PhoenixKit.Newsletters.CRMSource
+
+    [
+      Tab.new!(
+        id: :dashboard_newsletters_preferences,
+        label: "Email preferences",
+        icon: "hero-envelope",
+        # Absolute — this is NOT one of user_dashboard_tabs/0's own
+        # auto-registered routes (those all require an authenticated
+        # scope). The preference center lives on its own live_session
+        # (PhoenixKit.Newsletters.Web.Routes) that stays reachable by a
+        # signed token with no login at all, so it has no `live_view`
+        # field here — clicking this nav entry is a normal cross-session
+        # navigation to that separately-registered route, not a
+        # dashboard-internal live_patch.
+        path: "/newsletters/preferences",
+        priority: 700,
+        group: :account,
+        visible: fn _scope -> CRMSource.available?() end,
+        gettext_backend: PhoenixKit.Newsletters.Gettext
+      )
+    ]
+  end
+
+  @impl PhoenixKit.Module
   def css_sources, do: [:phoenix_kit_newsletters]
 
   @impl PhoenixKit.Module
