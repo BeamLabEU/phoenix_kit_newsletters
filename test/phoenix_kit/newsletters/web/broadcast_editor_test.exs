@@ -16,8 +16,7 @@ defmodule PhoenixKit.Newsletters.Web.BroadcastEditorTest do
   defp socket(assigns) do
     base = %{
       subject: "",
-      source_type: "newsletters_list",
-      list_uuid: "",
+      source_type: "crm_list",
       crm_list_uuid: "",
       template_uuid: "",
       scheduled_at: "",
@@ -36,33 +35,13 @@ defmodule PhoenixKit.Newsletters.Web.BroadcastEditorTest do
     %Phoenix.LiveView.Socket{assigns: Map.merge(base, assigns)}
   end
 
-  defp create_list do
-    {:ok, list} =
-      Newsletters.create_list(%{
-        name: "Test list",
-        slug: "test-list-#{System.unique_integer([:positive])}"
-      })
-
-    list
-  end
-
-  test "switching from newsletters_list to crm_list clears the stale list_uuid" do
-    socket = socket(%{source_type: "newsletters_list", list_uuid: "some-newsletters-list-uuid"})
-
-    {:noreply, updated} =
-      BroadcastEditor.handle_event("validate", %{"source_type" => "crm_list"}, socket)
-
-    assert updated.assigns.source_type == "crm_list"
-    assert updated.assigns.list_uuid == ""
-  end
-
-  test "switching from crm_list to newsletters_list clears the stale crm_list_uuid" do
+  test "switching from crm_list to user_group clears the stale crm_list_uuid" do
     socket = socket(%{source_type: "crm_list", crm_list_uuid: "some-crm-list-uuid"})
 
     {:noreply, updated} =
-      BroadcastEditor.handle_event("validate", %{"source_type" => "newsletters_list"}, socket)
+      BroadcastEditor.handle_event("validate", %{"source_type" => "user_group"}, socket)
 
-    assert updated.assigns.source_type == "newsletters_list"
+    assert updated.assigns.source_type == "user_group"
     assert updated.assigns.crm_list_uuid == ""
   end
 
@@ -82,12 +61,10 @@ defmodule PhoenixKit.Newsletters.Web.BroadcastEditorTest do
 
   describe "handle_event(\"schedule\", ...) — local time is interpreted in the viewer's timezone" do
     test "positive offset (UTC+3): local evening converts to UTC same day" do
-      list = create_list()
-
       socket =
         socket(%{
           subject: "Hello",
-          list_uuid: list.uuid,
+          crm_list_uuid: Ecto.UUID.generate(),
           scheduled_at: "2026-07-20T21:58",
           tz_offset: "3"
         })
@@ -99,12 +76,10 @@ defmodule PhoenixKit.Newsletters.Web.BroadcastEditorTest do
     end
 
     test "negative offset (UTC-5): local late night rolls over to the next UTC day" do
-      list = create_list()
-
       socket =
         socket(%{
           subject: "Hello",
-          list_uuid: list.uuid,
+          crm_list_uuid: Ecto.UUID.generate(),
           scheduled_at: "2026-07-20T23:30",
           tz_offset: "-5"
         })
@@ -116,12 +91,10 @@ defmodule PhoenixKit.Newsletters.Web.BroadcastEditorTest do
     end
 
     test "positive offset near midnight rolls back to the previous UTC day" do
-      list = create_list()
-
       socket =
         socket(%{
           subject: "Hello",
-          list_uuid: list.uuid,
+          crm_list_uuid: Ecto.UUID.generate(),
           scheduled_at: "2026-07-20T00:30",
           tz_offset: "3"
         })
@@ -133,12 +106,10 @@ defmodule PhoenixKit.Newsletters.Web.BroadcastEditorTest do
     end
 
     test "zero offset (no personal/system timezone configured) preserves the old UTC-as-typed behavior" do
-      list = create_list()
-
       socket =
         socket(%{
           subject: "Hello",
-          list_uuid: list.uuid,
+          crm_list_uuid: Ecto.UUID.generate(),
           scheduled_at: "2026-07-20T21:58",
           tz_offset: "0"
         })
@@ -150,12 +121,10 @@ defmodule PhoenixKit.Newsletters.Web.BroadcastEditorTest do
     end
 
     test "an unparseable schedule value flashes an error instead of saving" do
-      list = create_list()
-
       socket =
         socket(%{
           subject: "Hello",
-          list_uuid: list.uuid,
+          crm_list_uuid: Ecto.UUID.generate(),
           scheduled_at: "not-a-date",
           tz_offset: "3"
         })
@@ -169,12 +138,11 @@ defmodule PhoenixKit.Newsletters.Web.BroadcastEditorTest do
 
   describe "handle_params(:edit) — restores the schedule field in the viewer's local time" do
     test "a UTC scheduled_at is displayed shifted into the viewer's timezone" do
-      list = create_list()
-
       {:ok, broadcast} =
         Newsletters.create_broadcast(%{
           subject: "Hello",
-          list_uuid: list.uuid,
+          source_type: "crm_list",
+          crm_list_uuid: Ecto.UUID.generate(),
           status: "scheduled",
           scheduled_at: ~U[2026-07-20 18:58:00Z]
         })
@@ -183,7 +151,6 @@ defmodule PhoenixKit.Newsletters.Web.BroadcastEditorTest do
         %Phoenix.LiveView.Socket{
           assigns: %{
             phoenix_kit_current_user: %{user_timezone: "3"},
-            lists: [],
             crm_lists: [],
             templates: [],
             page_title: "",
@@ -230,7 +197,6 @@ defmodule PhoenixKit.Newsletters.Web.BroadcastEditorTest do
         %Phoenix.LiveView.Socket{
           assigns: %{
             phoenix_kit_current_user: %{user_timezone: "5"},
-            lists: [],
             crm_lists: [],
             templates: [],
             template_uuid: "",

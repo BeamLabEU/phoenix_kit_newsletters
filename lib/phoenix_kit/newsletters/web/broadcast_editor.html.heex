@@ -31,16 +31,6 @@
         <fieldset class="fieldset">
           <label class="label">{gettext("Send to")}</label>
           <div class="join">
-            <label class={["btn btn-sm join-item", @source_type == "newsletters_list" && "btn-active"]}>
-              <input
-                type="radio"
-                name="source_type"
-                value="newsletters_list"
-                checked={@source_type == "newsletters_list"}
-                class="hidden"
-              />
-              {gettext("Newsletter list")}
-            </label>
             <label class={["btn btn-sm join-item", @source_type == "user_group" && "btn-active"]}>
               <input
                 type="radio"
@@ -137,24 +127,6 @@
               count: @preflight.stale_roles
             )}
           </p>
-        </fieldset>
-
-        <fieldset :if={@source_type not in ["crm_list", "user_group"]} class="fieldset">
-          <label class="label">{gettext("Newsletter list")}</label>
-          <label class="select w-full">
-            <select name="list_uuid">
-              <option value="">{gettext("Select a list...")}</option>
-              <option :for={list <- @lists} value={list.uuid} selected={@list_uuid == list.uuid}>
-                {ngettext(
-                  "%{name} (%{count} subscriber)",
-                  "%{name} (%{count} subscribers)",
-                  list.subscriber_count,
-                  name: list.name,
-                  count: list.subscriber_count
-                )}
-              </option>
-            </select>
-          </label>
         </fieldset>
 
         <%!-- Template selector (only shown when Emails module available) --%>
