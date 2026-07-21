@@ -165,11 +165,11 @@ defmodule PhoenixKit.Newsletters.Workers.DeliveryWorker do
     end
   end
 
-  # The recipient is either a core User (newsletters-list broadcast — the
-  # original path, unchanged) or a plain map standing in for one (crm_list
-  # broadcast — no core User exists for most CRM contacts). Both shapes
-  # answer `.email`/`.username`/`.uuid`, so render_email/2 and send_email/4
-  # below don't need to know which kind they got.
+  # The recipient is either a core User (user_group broadcast) or a plain
+  # map standing in for one (crm_list broadcast — no core User exists for
+  # most CRM contacts). Both shapes answer `.email`/`.username`/`.uuid`,
+  # so render_email/2 and send_email/4 below don't need to know which
+  # kind they got.
   defp get_recipient(%Delivery{user_uuid: user_uuid})
        when is_binary(user_uuid) and user_uuid != "" do
     get_user(user_uuid)
@@ -210,33 +210,17 @@ defmodule PhoenixKit.Newsletters.Workers.DeliveryWorker do
   defp maybe_put_preferences_url(variables, ""), do: variables
   defp maybe_put_preferences_url(variables, url), do: Map.put(variables, "preferences_url", url)
 
-  # user_group recipient: a real core User, but no newsletters list at
-  # all (broadcast.list_uuid is nil for this source) — the list-flavor
-  # clause below would mint a token pointing at a nil list, which
-  # verifies fine but resolves to nothing (Newsletters.unsubscribe_user/2
-  # with a nil list_uuid silently matches no ListMember row: a one-click
-  # POST that always returns 200 but never actually opts anyone out —
-  # the bug this clause exists to close). This flavor's token carries
-  # only `user_uuid`, signed under its own salt (not "unsubscribe" —
-  # deliberate: the claim shape alone isn't enough to keep this from
-  # colliding with the list flavor's `%{user_uuid:, list_uuid:}` token in
-  # UnsubscribeController's pattern matches, since a bare `%{user_uuid:}`
-  # pattern also matches a map that additionally has `list_uuid`).
-  # UserGroupSource.record_opt_out/1 is what actually reads this token's
-  # claim on the receiving end.
+  # user_group recipient: a real core User, no CRM contact required. The
+  # token carries only `user_uuid`, signed under its own salt (not
+  # "unsubscribe" — deliberate: UnsubscribeController.verify_token/1
+  # tags a match under this salt distinctly from the "unsubscribe" salt's
+  # matches, so this claim shape can never be mistaken for the crm_list
+  # flavor's `%{contact_uuid:, crm_list_uuid:}` token regardless of
+  # clause order). UserGroupSource.record_opt_out/1 is what actually
+  # reads this token's claim on the receiving end.
   defp build_unsubscribe_url(%{uuid: uuid}, %Broadcast{source_type: "user_group"})
        when is_binary(uuid) do
     token = sign_user_optout_token(%{user_uuid: uuid})
-    {unsubscribe_page_url(token), one_click_unsubscribe_url(token)}
-  end
-
-  # newsletters-list recipient: the original user_uuid/list_uuid token,
-  # unchanged — verified by the existing flavor in UnsubscribeController.
-  # Same token backs both URLs, same reasoning as the crm_list clause
-  # below: the interactive landing page for the email body link, and the
-  # dedicated one-click endpoint for the List-Unsubscribe(-Post) headers.
-  defp build_unsubscribe_url(%{uuid: uuid} = recipient, broadcast) when is_binary(uuid) do
-    token = sign_unsubscribe_token(%{user_uuid: recipient.uuid, list_uuid: broadcast.list_uuid})
     {unsubscribe_page_url(token), one_click_unsubscribe_url(token)}
   end
 
@@ -285,22 +269,14 @@ defmodule PhoenixKit.Newsletters.Workers.DeliveryWorker do
   defp one_click_unsubscribe_url(token),
     do: Routes.url("/newsletters/unsubscribe/one-click?token=#{token}")
 
-  # Preference-center link (spec §7) — only for crm_list recipients today.
+  # Preference-center link (spec §7) — only for crm_list recipients today
+  # (a user_group recipient has no CRM contact by default, so nothing to
+  # link a preferences page to; see build_preferences_url/2's catch-all).
   # Reuses the exact membership lookup build_unsubscribe_url/2's crm_list
   # clause already does, so the contact_uuid is the real, unambiguous
   # member of THIS list receiving THIS email (not a fresh directory-wide
   # email search, which could land on a different same-email contact under
   # the "always create new contact" import policy, §4.3).
-  #
-  # Deliberately does NOT extend to the legacy `%{uuid: uuid}` (newsletters
-  # user-list) recipient shape — that would mean lazily creating a CRM
-  # contact for every legacy-list recipient on every single send (a
-  # write on the hot delivery path, for a system slated for removal once
-  # §4.5's migration lands). That eager-linking case belongs with the
-  # user_group/role recipient work (S4-C) and the list migration (S4-E),
-  # not here — until then, a legacy-list recipient simply gets no
-  # preferences link, same "no match, no broken link" precedent as
-  # build_unsubscribe_url/2's own catch-all.
   defp build_preferences_url(%{uuid: nil, email: email}, %{crm_list_uuid: crm_list_uuid})
        when is_binary(email) and is_binary(crm_list_uuid) do
     case CRMSource.get_member_by_email(crm_list_uuid, email) do

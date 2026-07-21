@@ -10,9 +10,10 @@ defmodule PhoenixKit.Newsletters.Workers.DeliveryWorkerTest do
   adapter from the integration's stored provider, so there's no
   Swoosh.Adapters.Test seam for that leg — it's covered live in D5
   against real credentials. What IS fully exercised here, end-to-end
-  with Swoosh.Adapters.Test capture, is the *legacy* path (no profile
-  resolves) — proving existing user-list broadcasts still send
-  identically (backward compatibility).
+  with Swoosh.Adapters.Test capture, is the no-profile-resolves path
+  (`create_broadcast/1`'s default fixture is a `user_group` broadcast
+  addressed to a real core User — same recipient shape the legacy
+  newsletters_list flavor used to exercise here, before its removal).
   """
 
   use PhoenixKitNewsletters.DataCase, async: false
@@ -56,22 +57,11 @@ defmodule PhoenixKit.Newsletters.Workers.DeliveryWorkerTest do
     user
   end
 
-  defp create_list do
-    {:ok, list} =
-      Newsletters.create_list(%{
-        name: "Test list",
-        slug: "test-list-#{System.unique_integer([:positive])}"
-      })
-
-    list
-  end
-
   defp create_broadcast(attrs) do
-    list = create_list()
-
     base = %{
       subject: "Hello",
-      list_uuid: list.uuid,
+      source_type: "user_group",
+      source_params: %{"role_uuids" => [Ecto.UUID.generate()], "role_names_snapshot" => []},
       html_body: "<p>Body</p>",
       text_body: "Body"
     }
@@ -166,7 +156,7 @@ defmodule PhoenixKit.Newsletters.Workers.DeliveryWorkerTest do
     end
   end
 
-  describe "perform/1 — legacy path (no profile resolves)" do
+  describe "perform/1 — no profile resolves" do
     setup :set_swoosh_global
 
     test "sends identically to the pre-Stage-D behavior" do
@@ -256,7 +246,6 @@ defmodule PhoenixKit.Newsletters.Workers.DeliveryWorkerTest do
           subject: "CRM send with preferences link",
           source_type: "crm_list",
           crm_list_uuid: crm_list.uuid,
-          list_uuid: nil,
           html_body: "<p>Manage: {{preferences_url}}</p>",
           text_body: "Manage: {{preferences_url}}"
         })
@@ -294,7 +283,6 @@ defmodule PhoenixKit.Newsletters.Workers.DeliveryWorkerTest do
           subject: "CRM send, no matching member",
           source_type: "crm_list",
           crm_list_uuid: Ecto.UUID.generate(),
-          list_uuid: nil,
           html_body: ~s(<p>Manage: <a href="{{preferences_url}}">preferences</a></p>),
           text_body: "Manage: {{preferences_url}}"
         })
@@ -322,7 +310,7 @@ defmodule PhoenixKit.Newsletters.Workers.DeliveryWorkerTest do
       end)
     end
 
-    test "legacy newsletters_list recipient: same catch-all, same unsubstituted placeholder" do
+    test "user_group recipient: same catch-all, same unsubstituted placeholder" do
       PhoenixKit.Settings.update_setting("from_name", "My Newsletter")
       PhoenixKit.Settings.update_setting("from_email", "news@example.com")
 
@@ -376,39 +364,12 @@ defmodule PhoenixKit.Newsletters.Workers.DeliveryWorkerTest do
       refute Map.has_key?(result.headers, "List-Unsubscribe")
       refute Map.has_key?(result.headers, "List-Unsubscribe-Post")
     end
-
-    test "adds List-Unsubscribe + List-Unsubscribe-Post for a newsletters_list broadcast with a resolved url too" do
-      broadcast = %Broadcast{source_type: "newsletters_list"}
-      email = Swoosh.Email.new()
-
-      result =
-        DeliveryWorker.maybe_put_list_unsubscribe_headers(
-          email,
-          broadcast,
-          "https://example.com/newsletters/unsubscribe/one-click?token=abc"
-        )
-
-      assert result.headers["List-Unsubscribe"] ==
-               "<https://example.com/newsletters/unsubscribe/one-click?token=abc>"
-
-      assert result.headers["List-Unsubscribe-Post"] == "List-Unsubscribe=One-Click"
-    end
-
-    test "adds nothing for a newsletters_list broadcast when the url didn't resolve (empty string)" do
-      broadcast = %Broadcast{source_type: "newsletters_list"}
-      email = Swoosh.Email.new()
-
-      result = DeliveryWorker.maybe_put_list_unsubscribe_headers(email, broadcast, "")
-
-      refute Map.has_key?(result.headers, "List-Unsubscribe")
-      refute Map.has_key?(result.headers, "List-Unsubscribe-Post")
-    end
   end
 
   describe "perform/1 — List-Unsubscribe headers on the sent email" do
     setup :set_swoosh_global
 
-    test "a crm_list send with no resolvable link adds no headers and doesn't crash; a newsletters_list send is unaffected" do
+    test "a crm_list send with no resolvable link adds no headers and doesn't crash; a user_group send is unaffected" do
       PhoenixKit.Settings.update_setting("from_name", "My Newsletter")
       PhoenixKit.Settings.update_setting("from_email", "news@example.com")
 
@@ -423,7 +384,6 @@ defmodule PhoenixKit.Newsletters.Workers.DeliveryWorkerTest do
           subject: "CRM send",
           source_type: "crm_list",
           crm_list_uuid: Ecto.UUID.generate(),
-          list_uuid: nil,
           html_body: "<p>Hi</p>",
           text_body: "Hi"
         })
@@ -449,18 +409,18 @@ defmodule PhoenixKit.Newsletters.Workers.DeliveryWorkerTest do
         assert Map.has_key?(email.headers, "List-Unsubscribe") == false
       end)
 
-      # newsletters_list broadcast — a core User recipient always resolves
-      # a personalized link, so this now gets the same headers as the
-      # crm_list flavor.
+      # user_group broadcast — a core User recipient always resolves a
+      # personalized link, so this gets the same headers as the crm_list
+      # flavor above (once it actually has a resolvable link).
       user = create_user()
-      list_broadcast = create_broadcast(%{subject: "List send", html_body: "<p>Hi</p>"})
-      list_delivery = create_delivery(list_broadcast, user)
+      role_broadcast = create_broadcast(%{subject: "Role send", html_body: "<p>Hi</p>"})
+      role_delivery = create_delivery(role_broadcast, user)
 
       assert :ok =
                DeliveryWorker.perform(%Oban.Job{
                  args: %{
-                   "delivery_uuid" => list_delivery.uuid,
-                   "broadcast_uuid" => list_broadcast.uuid
+                   "delivery_uuid" => role_delivery.uuid,
+                   "broadcast_uuid" => role_broadcast.uuid
                  }
                })
 
