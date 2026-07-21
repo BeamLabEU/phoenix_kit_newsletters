@@ -25,111 +25,137 @@
           />
         </fieldset>
 
-        <%!-- Recipient source — the CRM option only appears when the CRM
-             module is installed; otherwise this is just the newsletters
-             list dropdown, unchanged. --%>
-        <%= if @crm_available do %>
-          <fieldset class="fieldset">
-            <label class="label">{gettext("Send to")}</label>
-            <div class="join">
-              <label class={["btn btn-sm join-item", @source_type == "newsletters_list" && "btn-active"]}>
-                <input
-                  type="radio"
-                  name="source_type"
-                  value="newsletters_list"
-                  checked={@source_type == "newsletters_list"}
-                  class="hidden"
-                />
-                {gettext("Newsletter list")}
-              </label>
-              <label class={["btn btn-sm join-item", @source_type == "crm_list" && "btn-active"]}>
-                <input
-                  type="radio"
-                  name="source_type"
-                  value="crm_list"
-                  checked={@source_type == "crm_list"}
-                  class="hidden"
-                />
-                {gettext("CRM list")}
-              </label>
-            </div>
-          </fieldset>
+        <%!-- Recipient source — "Roles" targets core users by role and is
+             always available; "CRM list" only appears when the CRM module
+             is installed. --%>
+        <fieldset class="fieldset">
+          <label class="label">{gettext("Send to")}</label>
+          <div class="join">
+            <label class={["btn btn-sm join-item", @source_type == "newsletters_list" && "btn-active"]}>
+              <input
+                type="radio"
+                name="source_type"
+                value="newsletters_list"
+                checked={@source_type == "newsletters_list"}
+                class="hidden"
+              />
+              {gettext("Newsletter list")}
+            </label>
+            <label class={["btn btn-sm join-item", @source_type == "user_group" && "btn-active"]}>
+              <input
+                type="radio"
+                name="source_type"
+                value="user_group"
+                checked={@source_type == "user_group"}
+                class="hidden"
+              />
+              {gettext("Roles")}
+            </label>
+            <label
+              :if={@crm_available}
+              class={["btn btn-sm join-item", @source_type == "crm_list" && "btn-active"]}
+            >
+              <input
+                type="radio"
+                name="source_type"
+                value="crm_list"
+                checked={@source_type == "crm_list"}
+                class="hidden"
+              />
+              {gettext("CRM list")}
+            </label>
+          </div>
+        </fieldset>
 
-          <fieldset :if={@source_type == "crm_list"} class="fieldset">
-            <label class="label">{gettext("CRM list")}</label>
-            <label class="select w-full">
-              <select name="crm_list_uuid">
-                <option value="">{gettext("Select a list...")}</option>
-                <option
-                  :for={list <- @crm_lists}
-                  value={list.uuid}
-                  selected={@crm_list_uuid == list.uuid}
-                >
-                  {ngettext(
-                    "%{name} (%{count} member)",
-                    "%{name} (%{count} members)",
-                    list.subscriber_count,
-                    name: list.name,
-                    count: list.subscriber_count
-                  )}
-                </option>
-              </select>
-            </label>
-            <p :if={@crm_list_archived?} class="text-xs text-warning mt-1">
-              <.icon name="hero-exclamation-triangle" class="w-3 h-3 inline" />
-              {gettext("This list is archived and cannot be sent to.")}
-            </p>
-            <p :if={@preflight} class="text-xs text-base-content/60 mt-1">
-              {gettext(
-                "%{total} members: %{sendable} sendable, %{no_email} no email, %{unsendable} unsubscribed/opted-out",
-                total: @preflight.total,
-                sendable: @preflight.sendable,
-                no_email: @preflight.no_email,
-                unsendable: @preflight.unsendable
-              )}
-            </p>
-          </fieldset>
+        <fieldset :if={@source_type == "crm_list" && @crm_available} class="fieldset">
+          <label class="label">{gettext("CRM list")}</label>
+          <label class="select w-full">
+            <select name="crm_list_uuid">
+              <option value="">{gettext("Select a list...")}</option>
+              <option
+                :for={list <- @crm_lists}
+                value={list.uuid}
+                selected={@crm_list_uuid == list.uuid}
+              >
+                {ngettext(
+                  "%{name} (%{count} member)",
+                  "%{name} (%{count} members)",
+                  list.subscriber_count,
+                  name: list.name,
+                  count: list.subscriber_count
+                )}
+              </option>
+            </select>
+          </label>
+          <p :if={@crm_list_archived?} class="text-xs text-warning mt-1">
+            <.icon name="hero-exclamation-triangle" class="w-3 h-3 inline" />
+            {gettext("This list is archived and cannot be sent to.")}
+          </p>
+          <p :if={@preflight} class="text-xs text-base-content/60 mt-1">
+            {gettext(
+              "%{total} members: %{sendable} sendable, %{no_email} no email, %{unsendable} unsubscribed/opted-out",
+              total: @preflight.total,
+              sendable: @preflight.sendable,
+              no_email: @preflight.no_email,
+              unsendable: @preflight.unsendable
+            )}
+          </p>
+        </fieldset>
 
-          <fieldset :if={@source_type != "crm_list"} class="fieldset">
-            <label class="label">{gettext("Newsletter list")}</label>
-            <label class="select w-full">
-              <select name="list_uuid">
-                <option value="">{gettext("Select a list...")}</option>
-                <option
-                  :for={list <- @lists}
-                  value={list.uuid}
-                  selected={@list_uuid == list.uuid}
-                >
-                  {ngettext(
-                    "%{name} (%{count} subscriber)",
-                    "%{name} (%{count} subscribers)",
-                    list.subscriber_count,
-                    name: list.name,
-                    count: list.subscriber_count
-                  )}
-                </option>
-              </select>
+        <fieldset :if={@source_type == "user_group"} class="fieldset">
+          <label class="label">{gettext("Roles")}</label>
+          <div class="flex flex-col gap-1">
+            <label
+              :for={role <- @available_roles}
+              class="flex items-center gap-2 cursor-pointer"
+            >
+              <input
+                type="checkbox"
+                name="role_uuids[]"
+                value={role.uuid}
+                checked={role.uuid in @role_uuids}
+                class="checkbox checkbox-sm"
+              />
+              <span>{role.name}</span>
             </label>
-          </fieldset>
-        <% else %>
-          <fieldset class="fieldset">
-            <label class="label">{gettext("Newsletter list")}</label>
-            <label class="select w-full">
-              <select name="list_uuid">
-                <option value="">{gettext("Select a list...")}</option>
-                <option :for={list <- @lists} value={list.uuid} selected={@list_uuid == list.uuid}>
-                  {ngettext(
-                    "%{name} (%{count} subscriber)",
-                    "%{name} (%{count} subscribers)",
-                    list.subscriber_count,
-                    name: list.name,
-                    count: list.subscriber_count
-                  )}
-                </option>
-              </select>
-            </label>
-          </fieldset>
-        <% end %>
+          </div>
+          <p :if={@preflight} class="text-xs text-base-content/60 mt-1">
+            {gettext(
+              "%{total} users: %{sendable} sendable, %{no_email} no email, %{unsendable} unsubscribed/opted-out",
+              total: @preflight.total,
+              sendable: @preflight.sendable,
+              no_email: @preflight.no_email,
+              unsendable: @preflight.unsendable
+            )}
+          </p>
+          <p :if={@preflight && @preflight.stale_roles > 0} class="text-xs text-warning mt-1">
+            <.icon name="hero-exclamation-triangle" class="w-3 h-3 inline" />
+            {ngettext(
+              "%{count} selected role no longer exists",
+              "%{count} selected roles no longer exist",
+              @preflight.stale_roles,
+              count: @preflight.stale_roles
+            )}
+          </p>
+        </fieldset>
+
+        <fieldset :if={@source_type not in ["crm_list", "user_group"]} class="fieldset">
+          <label class="label">{gettext("Newsletter list")}</label>
+          <label class="select w-full">
+            <select name="list_uuid">
+              <option value="">{gettext("Select a list...")}</option>
+              <option :for={list <- @lists} value={list.uuid} selected={@list_uuid == list.uuid}>
+                {ngettext(
+                  "%{name} (%{count} subscriber)",
+                  "%{name} (%{count} subscribers)",
+                  list.subscriber_count,
+                  name: list.name,
+                  count: list.subscriber_count
+                )}
+              </option>
+            </select>
+          </label>
+        </fieldset>
 
         <%!-- Template selector (only shown when Emails module available) --%>
         <%= if @templates != [] do %>

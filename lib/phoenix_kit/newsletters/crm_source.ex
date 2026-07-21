@@ -203,6 +203,22 @@ defmodule PhoenixKit.Newsletters.CRMSource do
   end
 
   @doc """
+  The (at most one) CRM contact linked to a given core user, via the
+  contact's own `user_uuid` soft-link — never creates one. Returns nil
+  if not found, invalid, or CRM isn't installed.
+  """
+  @spec get_contact_by_user_uuid(String.t() | nil) :: struct() | nil
+  def get_contact_by_user_uuid(nil), do: nil
+
+  def get_contact_by_user_uuid(user_uuid) do
+    if available?() do
+      soft_call(@contacts_mod, :get_by_user_uuid, [user_uuid])
+    else
+      nil
+    end
+  end
+
+  @doc """
   The membership (any status) currently holding `email` in the CRM list —
   used to resolve a delivery's `recipient_email` back to a `contact_uuid`
   for the unsubscribe token, and to detect an already-unsubscribed click

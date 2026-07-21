@@ -1,0 +1,35 @@
+<div class="min-h-screen flex items-center justify-center bg-base-200 p-4">
+  <div class="card bg-base-100 shadow-xl w-full max-w-md">
+    <div class="card-body">
+      <h2 class="card-title text-lg">Manage Email Subscriptions</h2>
+
+      <%= if @role_optout_state == :invalid do %>
+        <div class="alert alert-warning text-sm">
+          <span>This unsubscribe link is no longer valid.</span>
+        </div>
+      <% else %>
+        <p class="text-sm text-base-content/70">
+          <%= case @role_optout_state do %>
+            <% :confirm -> %>
+              Unsubscribe from these newsletters?
+            <% :already_unsubscribed -> %>
+              You've already unsubscribed from these newsletters.
+            <% :unsubscribed -> %>
+              You've been unsubscribed from these newsletters.
+          <% end %>
+        </p>
+
+        <%= if @role_optout_state == :confirm do %>
+          <form method="post" action={PhoenixKit.Utils.Routes.path("/newsletters/unsubscribe")}>
+            <input type="hidden" name="_csrf_token" value={Plug.CSRFProtection.get_csrf_token()} />
+            <input type="hidden" name="token" value={@token} />
+            <input type="hidden" name="scope" value="role_optout" />
+            <button type="submit" class="btn btn-warning btn-outline btn-block">
+              Unsubscribe
+            </button>
+          </form>
+        <% end %>
+      <% end %>
+    </div>
+  </div>
+</div>

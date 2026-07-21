@@ -10,7 +10,7 @@ defmodule PhoenixKit.Newsletters.Broadcast do
   @primary_key {:uuid, UUIDv7, autogenerate: true}
 
   @valid_statuses ["draft", "scheduled", "sending", "sent", "cancelled", "failed"]
-  @valid_source_types ["newsletters_list", "crm_list"]
+  @valid_source_types ["newsletters_list", "crm_list", "user_group"]
 
   schema "phoenix_kit_newsletters_broadcasts" do
     field(:subject, :string)
@@ -33,8 +33,21 @@ defmodule PhoenixKit.Newsletters.Broadcast do
     # "crm_list" sends to `crm_list_uuid` instead — a bare UUID, deliberately
     # with no belongs_to/FK, same soft-reference pattern as send_profile_uuid:
     # newsletters must not hard-depend on the CRM module being installed.
+    # "user_group" sends to `source_params`'s role selection instead — core
+    # roles are a hard dependency already, so no soft-reference is needed
+    # there, but a broadcast can target more than one role, so a scalar
+    # uuid column doesn't fit; see UserGroupSource. `source_params` stores
+    # `%{"role_uuids" => [...], "role_names_snapshot" => [...]}` — uuids
+    # because a role's `name` is mutable (Roles.update_role/2 doesn't
+    # protect it even for system roles), so resolving by name would let a
+    # rename silently re-point (or empty out) an already-saved broadcast;
+    # the name snapshot is display-only, same precedent as
+    # `recipient_email`/`supplier_name_snapshot` elsewhere in this
+    # ecosystem — it shows what the broadcast targeted even after a role
+    # is renamed or deleted, while resolution stays on the stable uuid.
     field(:source_type, :string, default: "newsletters_list")
     field(:crm_list_uuid, UUIDv7)
+    field(:source_params, :map, default: %{})
 
     belongs_to(:list, PhoenixKit.Newsletters.List,
       foreign_key: :list_uuid,
@@ -89,7 +102,8 @@ defmodule PhoenixKit.Newsletters.Broadcast do
       :created_by_user_uuid,
       :send_profile_uuid,
       :source_type,
-      :crm_list_uuid
+      :crm_list_uuid,
+      :source_params
     ])
     |> validate_required([:subject])
     |> validate_length(:subject, min: 1, max: 998)
@@ -98,15 +112,43 @@ defmodule PhoenixKit.Newsletters.Broadcast do
     |> validate_source_reference()
   end
 
-  # The source-specific reference (list_uuid / crm_list_uuid) is required
-  # only for the matching source_type — a crm_list broadcast has no
-  # newsletters list, and vice versa.
+  # The source-specific reference is required only for the matching
+  # source_type: crm_list needs crm_list_uuid, user_group needs at least
+  # one role uuid in source_params, and anything else (newsletters_list)
+  # needs list_uuid.
   defp validate_source_reference(changeset) do
     case get_field(changeset, :source_type) do
       "crm_list" -> validate_required(changeset, [:crm_list_uuid])
+      "user_group" -> validate_role_uuids_present(changeset)
       _ -> validate_required(changeset, [:list_uuid])
     end
   end
+
+  defp validate_role_uuids_present(changeset) do
+    if changeset |> get_field(:source_params) |> role_uuids() != [] do
+      changeset
+    else
+      add_error(changeset, :source_params, "select at least one role")
+    end
+  end
+
+  @doc "The role uuids selected for a `user_group` broadcast's `source_params`, or `[]`."
+  @spec role_uuids(%__MODULE__{} | map() | nil) :: [String.t()]
+  def role_uuids(%__MODULE__{source_params: source_params}), do: role_uuids(source_params)
+  def role_uuids(%{"role_uuids" => role_uuids}) when is_list(role_uuids), do: role_uuids
+  def role_uuids(_), do: []
+
+  @doc """
+  The role NAMES as they were at save time, for display only — resolving
+  a `user_group` broadcast's actual recipients always goes through
+  `role_uuids/1`, never this. Stays `[]` if unset.
+  """
+  @spec role_names_snapshot(%__MODULE__{} | map() | nil) :: [String.t()]
+  def role_names_snapshot(%__MODULE__{source_params: source_params}),
+    do: role_names_snapshot(source_params)
+
+  def role_names_snapshot(%{"role_names_snapshot" => names}) when is_list(names), do: names
+  def role_names_snapshot(_), do: []
 
   def valid_statuses, do: @valid_statuses
   def valid_source_types, do: @valid_source_types

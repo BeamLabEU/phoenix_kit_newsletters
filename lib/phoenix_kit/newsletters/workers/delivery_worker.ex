@@ -210,6 +210,26 @@ defmodule PhoenixKit.Newsletters.Workers.DeliveryWorker do
   defp maybe_put_preferences_url(variables, ""), do: variables
   defp maybe_put_preferences_url(variables, url), do: Map.put(variables, "preferences_url", url)
 
+  # user_group recipient: a real core User, but no newsletters list at
+  # all (broadcast.list_uuid is nil for this source) — the list-flavor
+  # clause below would mint a token pointing at a nil list, which
+  # verifies fine but resolves to nothing (Newsletters.unsubscribe_user/2
+  # with a nil list_uuid silently matches no ListMember row: a one-click
+  # POST that always returns 200 but never actually opts anyone out —
+  # the bug this clause exists to close). This flavor's token carries
+  # only `user_uuid`, signed under its own salt (not "unsubscribe" —
+  # deliberate: the claim shape alone isn't enough to keep this from
+  # colliding with the list flavor's `%{user_uuid:, list_uuid:}` token in
+  # UnsubscribeController's pattern matches, since a bare `%{user_uuid:}`
+  # pattern also matches a map that additionally has `list_uuid`).
+  # UserGroupSource.record_opt_out/1 is what actually reads this token's
+  # claim on the receiving end.
+  defp build_unsubscribe_url(%{uuid: uuid}, %Broadcast{source_type: "user_group"})
+       when is_binary(uuid) do
+    token = sign_user_optout_token(%{user_uuid: uuid})
+    {unsubscribe_page_url(token), one_click_unsubscribe_url(token)}
+  end
+
   # newsletters-list recipient: the original user_uuid/list_uuid token,
   # unchanged — verified by the existing flavor in UnsubscribeController.
   # Same token backs both URLs, same reasoning as the crm_list clause
@@ -250,6 +270,14 @@ defmodule PhoenixKit.Newsletters.Workers.DeliveryWorker do
   defp sign_unsubscribe_token(token_data) do
     endpoint = PhoenixKit.Config.get(:endpoint, PhoenixKitWeb.Endpoint)
     Phoenix.Token.sign(endpoint, "unsubscribe", token_data)
+  end
+
+  # Separate salt (not "unsubscribe") — see the user_group clause of
+  # build_unsubscribe_url/2 for why claim shape alone doesn't suffice.
+  # UnsubscribeController.verify_token/1 tries this salt too.
+  defp sign_user_optout_token(token_data) do
+    endpoint = PhoenixKit.Config.get(:endpoint, PhoenixKitWeb.Endpoint)
+    Phoenix.Token.sign(endpoint, "newsletters_user_optout", token_data)
   end
 
   defp unsubscribe_page_url(token), do: Routes.url("/newsletters/unsubscribe?token=#{token}")
