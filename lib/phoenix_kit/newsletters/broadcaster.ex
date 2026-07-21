@@ -23,10 +23,9 @@ defmodule PhoenixKit.Newsletters.Broadcaster do
 
   alias PhoenixKit.Email.SendProfile
   alias PhoenixKit.Newsletters
-  alias PhoenixKit.Newsletters.{Broadcast, Content, CRMSource, Delivery, ListMember}
+  alias PhoenixKit.Newsletters.{Broadcast, Content, CRMSource, Delivery}
   alias PhoenixKit.Newsletters.UserGroupSource
   alias PhoenixKit.Newsletters.Workers.DeliveryWorker
-  alias PhoenixKit.Users.Auth.User
   alias PhoenixKit.Utils.Date, as: UtilsDate
 
   @batch_size 500
@@ -63,8 +62,7 @@ defmodule PhoenixKit.Newsletters.Broadcaster do
   # up front — before status flips to "sending" — keeps the broadcast's
   # own status honest instead of quietly "succeeding" at sending to no
   # one. A missing list (deleted, or CRM not installed) is unchanged from
-  # before: proceeds and resolves to 0 recipients, matching how a deleted
-  # newsletters_list already behaves.
+  # before: proceeds and resolves to 0 recipients rather than erroring.
   defp validate_recipient_source(%Broadcast{
          source_type: "crm_list",
          crm_list_uuid: crm_list_uuid
@@ -92,17 +90,12 @@ defmodule PhoenixKit.Newsletters.Broadcaster do
         sent_at: UtilsDate.utc_now()
       })
 
-    # A CRM-sourced broadcast resolves its recipients once, upfront, and
-    # reuses that same list for both the total_recipients count and the
-    # actual enqueue below (was two separate identical queries). A
-    # newsletters-list broadcast gets nil here and keeps its existing
-    # separate count-query/stream-query split instead — a plain COUNT is
-    # cheap and streaming avoids loading a potentially large list into
-    # memory at once, neither of which applies to CRM (already
-    # materializes fully — see enqueue_all_recipients/4's moduledoc note).
+    # Recipients are resolved once, upfront, and reused for both the
+    # total_recipients count and the actual enqueue below (rather than
+    # two separate identical queries).
     recipients = resolve_recipients(broadcast)
 
-    total = count_recipients(broadcast, recipients)
+    total = length(recipients)
     {:ok, broadcast} = Newsletters.update_broadcast(broadcast, %{total_recipients: total})
 
     # Resolve the very profile the worker will send with, so the throttle we
@@ -199,39 +192,13 @@ defmodule PhoenixKit.Newsletters.Broadcaster do
     broadcast |> Broadcast.role_uuids() |> UserGroupSource.sendable_recipients()
   end
 
-  defp resolve_recipients(%Broadcast{}), do: nil
-
-  defp count_recipients(%Broadcast{source_type: source_type}, recipients)
-       when source_type in ["crm_list", "user_group"] do
-    length(recipients)
-  end
-
-  # Deliberately NOT Newsletters.count_active_members/1 — that function
-  # also drives the admin-facing subscriber_count display, which counts
-  # ListMember rows only and must keep doing so regardless of a member's
-  # is_active status (a deactivated account is still a "subscriber" in
-  # that sense). This send-time estimate has to match what
-  # stream_active_members/1 will actually enqueue, so it mirrors that
-  # function's filter instead of reusing the display one.
-  defp count_recipients(%Broadcast{list_uuid: list_uuid}, _recipients) do
-    count_sendable_members(list_uuid)
-  end
-
-  defp count_sendable_members(list_uuid) do
-    ListMember
-    |> join(:inner, [m], u in User, on: u.uuid == m.user_uuid)
-    |> where([m, u], m.list_uuid == ^list_uuid and m.status == "active" and u.is_active == true)
-    |> repo().aggregate(:count)
-  end
-
   # A crm_list or user_group broadcast's recipients are already resolved
-  # (by resolve_recipients/1, called once in do_send/1) — already a
+  # (by resolve_recipients/1, called once in do_send/1) — a
   # fully-materialized, deduplicated list (both run in the low thousands,
-  # not worth streaming), each carrying an email and a contact_uuid but no user_uuid (crm_list)
-  # or a user_uuid (user_group). A newsletters_list broadcast keeps the
-  # original streamed user_uuid path instead. All three funnel into the
-  # same process_batch/5, which only cares that each recipient map has a
-  # user_uuid and/or recipient_email.
+  # not worth streaming), each carrying an email and a contact_uuid (no
+  # user_uuid, for crm_list) or a user_uuid (for user_group). Both funnel
+  # into the same process_batch/5, which only cares that each recipient
+  # map has a user_uuid and/or recipient_email.
   defp enqueue_all_recipients(
          %Broadcast{source_type: "crm_list"} = broadcast,
          recipients,
@@ -260,16 +227,6 @@ defmodule PhoenixKit.Newsletters.Broadcaster do
     |> reduce_batches(broadcast, repo, interval)
   end
 
-  defp enqueue_all_recipients(broadcast, _recipients, repo, interval) do
-    broadcast.list_uuid
-    |> stream_active_members()
-    |> Stream.map(fn user_uuid ->
-      %{user_uuid: user_uuid, crm_contact_uuid: nil, recipient_email: nil}
-    end)
-    |> Stream.chunk_every(@batch_size)
-    |> reduce_batches(broadcast, repo, interval)
-  end
-
   # Shared batch-accumulation loop for both recipient sources: `offset`
   # continues across batches based on how many rows each batch actually
   # inserted (not how many were requested), so throttle spacing isn't
@@ -288,23 +245,6 @@ defmodule PhoenixKit.Newsletters.Broadcaster do
       }
     end)
     |> Map.take([:inserted, :duplicate])
-  end
-
-  # Excludes a deactivated user even when their ListMember row is still
-  # "active" — aligned with UserGroupSource.sendable?/1, which already
-  # excludes deactivated users for the user_group source (external
-  # review flagged the two flavors silently disagreeing on this).
-  # count_sendable_members/1 (count_recipients/2's list-flavor clause)
-  # mirrors this same filter, so the pre-send total_recipients estimate
-  # stays accurate — Newsletters.count_active_members/1 (the admin-facing
-  # subscriber_count) is deliberately left untouched, a different concern
-  # this filter shouldn't affect.
-  defp stream_active_members(list_uuid) do
-    ListMember
-    |> join(:inner, [m], u in User, on: u.uuid == m.user_uuid)
-    |> where([m, u], m.list_uuid == ^list_uuid and m.status == "active" and u.is_active == true)
-    |> select([m], m.user_uuid)
-    |> repo().stream()
   end
 
   # Returns `{inserted_count, duplicate_count}`. `on_conflict: :nothing`
@@ -371,10 +311,10 @@ defmodule PhoenixKit.Newsletters.Broadcaster do
   # Mirrors Delivery.changeset/2's "at least one" validation, which
   # insert_all never runs. Neither current recipient source can actually
   # produce a both-nil row today (CRMSource.sendable_recipients/1 filters
-  # `not is_nil(m.email)`; stream_active_members/1 selects a NOT NULL
-  # column) — this is a defensive backstop against a future source, or
-  # corrupt data, silently inserting an unaddressable delivery. Not `defp`
-  # so it can be unit-tested directly — same rationale as
+  # `not is_nil(m.email)`; UserGroupSource.sendable_recipients/1 selects a
+  # NOT NULL user_uuid) — this is a defensive backstop against a future
+  # source, or corrupt data, silently inserting an unaddressable delivery.
+  # Not `defp` so it can be unit-tested directly — same rationale as
   # `resolve_send_profile/1`/`build_profile_email/5` in DeliveryWorker.
   def valid_recipient?(%{user_uuid: user_uuid, recipient_email: recipient_email}) do
     not is_nil(user_uuid) or not is_nil(recipient_email)

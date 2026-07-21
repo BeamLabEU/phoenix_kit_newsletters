@@ -17,7 +17,6 @@ defmodule PhoenixKit.Newsletters.BroadcasterTest do
       broadcast = %Broadcast{
         uuid: "test-uuid",
         status: "sent",
-        list_uuid: "list-uuid",
         markdown_body: "Hello"
       }
 
@@ -28,7 +27,6 @@ defmodule PhoenixKit.Newsletters.BroadcasterTest do
       broadcast = %Broadcast{
         uuid: "test-uuid",
         status: "sending",
-        list_uuid: "list-uuid",
         markdown_body: "Hello"
       }
 
@@ -85,7 +83,7 @@ defmodule PhoenixKit.Newsletters.BroadcasterTest do
   end
 
   describe "valid_recipient?/1" do
-    test "true when only user_uuid is present (newsletters_list path)" do
+    test "true when only user_uuid is present (user_group path)" do
       assert Broadcaster.valid_recipient?(%{user_uuid: "uuid", recipient_email: nil})
     end
 

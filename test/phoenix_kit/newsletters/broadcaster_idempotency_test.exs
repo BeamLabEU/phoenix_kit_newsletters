@@ -20,6 +20,7 @@ defmodule PhoenixKit.Newsletters.BroadcasterIdempotencyTest do
   alias PhoenixKit.Newsletters
   alias PhoenixKit.Newsletters.Broadcaster
   alias PhoenixKit.Users.Auth.User
+  alias PhoenixKit.Users.Roles
   alias PhoenixKitCRM.Contacts
   alias PhoenixKitCRM.Lists
   alias PhoenixKitNewsletters.Test.Repo
@@ -40,68 +41,49 @@ defmodule PhoenixKit.Newsletters.BroadcasterIdempotencyTest do
     Broadcaster.send(reset)
   end
 
-  describe "newsletters_list source" do
+  describe "user_group source" do
     setup do
       start_supervised!({Oban, repo: Repo, testing: :manual, queues: [], plugins: false})
 
-      {:ok, list} =
-        Newsletters.create_list(%{
-          name: "Idempotency list",
-          slug: "idempotency-list-#{System.unique_integer([:positive])}"
-        })
-
+      {:ok, role} = Roles.create_role(%{name: "Idempotency role #{System.unique_integer()}"})
       users = for _ <- 1..2, do: create_user()
-      Enum.each(users, &Newsletters.subscribe_user(list.uuid, &1.uuid))
+      Enum.each(users, &Roles.assign_role(&1, role.name))
 
       {:ok, broadcast} =
         Newsletters.create_broadcast(%{
           subject: "Idempotency test",
-          list_uuid: list.uuid,
+          source_type: "user_group",
+          source_params: %{"role_uuids" => [role.uuid], "role_names_snapshot" => [role.name]},
           markdown_body: "Hello",
           html_body: "<p>Hello</p>",
           text_body: "Hello"
         })
 
-      %{broadcast: broadcast, users: users}
+      %{broadcast: broadcast, role: role, users: users}
     end
 
-    test "re-sending creates no duplicate delivery rows", %{broadcast: broadcast} do
-      assert {:ok, first} = Broadcaster.send(broadcast)
-      assert first.total_recipients == 2
-      assert length(Newsletters.list_deliveries(first.uuid)) == 2
-
-      assert {:ok, second} = resend!(first)
-      assert length(Newsletters.list_deliveries(second.uuid)) == 2
-    end
-
-    test "re-sending a fully-duplicate broadcast does not zero out total_recipients", %{
+    test "re-sending creates no duplicate delivery rows and keeps total_recipients accurate", %{
       broadcast: broadcast
     } do
       assert {:ok, first} = Broadcaster.send(broadcast)
       assert first.total_recipients == 2
+      assert length(Newsletters.list_deliveries(first.uuid)) == 2
 
-      # Every recipient already has a delivery for this broadcast, so the
-      # resend's insert_all deduplicates all of them (0 new rows this
-      # round) — total_recipients must still reflect the broadcast's
-      # actual delivery count (2), not this round's insert delta. Using
-      # the delta here would show "Recipients: 0" on broadcast_details
-      # while sent_count keeps climbing toward 2, and make any sent/total
-      # ratio divide by zero.
       assert {:ok, second} = resend!(first)
-      assert second.total_recipients == 2
       assert length(Newsletters.list_deliveries(second.uuid)) == 2
+      assert second.total_recipients == 2
     end
 
     test "a mixed resend (one duplicate + one new member) gives the original N plus the new one",
-         %{broadcast: broadcast, users: [existing_user, _]} do
+         %{broadcast: broadcast, role: role, users: [existing_user, _]} do
       assert {:ok, first} = Broadcaster.send(broadcast)
       assert length(Newsletters.list_deliveries(first.uuid)) == 2
 
       new_user = create_user()
-      {:ok, _} = Newsletters.subscribe_user(first.list_uuid, new_user.uuid)
+      {:ok, _} = Roles.assign_role(new_user, role.name)
 
       assert {:ok, second} = resend!(first)
-      # 3 active members now; 2 are duplicates, 1 is new — total_recipients
+      # 3 role members now; 2 are duplicates, 1 is new — total_recipients
       # is the actual row count (3), not just this round's insert (1).
       assert second.total_recipients == 3
 
