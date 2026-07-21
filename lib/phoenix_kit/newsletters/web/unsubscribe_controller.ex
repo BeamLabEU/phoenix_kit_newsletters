@@ -5,7 +5,6 @@ defmodule PhoenixKit.Newsletters.Web.UnsubscribeController do
 
   require Logger
 
-  alias PhoenixKit.Newsletters
   alias PhoenixKit.Newsletters.CRMSource
   alias PhoenixKit.Newsletters.UserGroupSource
   alias PhoenixKit.Users.Auth
@@ -15,50 +14,43 @@ defmodule PhoenixKit.Newsletters.Web.UnsubscribeController do
 
   # GET /newsletters/unsubscribe?token=...
   #
-  # The token carries one of three claim shapes, set at send time by
+  # The token carries one of two claim shapes, set at send time by
   # DeliveryWorker.build_unsubscribe_url/2:
-  #   - %{user_uuid:, list_uuid:} — newsletters-list broadcast (original
-  #     flavor). Shows the list/all choice page — never mutates on GET.
   #   - %{contact_uuid:, crm_list_uuid:} — crm_list broadcast. Renders a
-  #     confirm page (see render_crm_confirm/4) — also never mutates on
-  #     GET, matching flavor-A: corporate link-scanners/antivirus tools
-  #     routinely GET every link found in an email body, and a GET that
-  #     silently unsubscribed people would be exactly that footgun. The
-  #     actual removal only happens on POST (process_unsubscribe/2 below).
-  #     RFC 8058's one-click automation is unaffected — it lives entirely
-  #     at the separate /newsletters/unsubscribe/one-click endpoint.
-  #   - %{user_uuid:} (bare — no list_uuid) — user_group broadcast,
-  #     signed under the separate "newsletters_user_optout" salt.
-  #     verify_token/1 tags a match under that salt as `{:role_optout,
-  #     claims}` rather than `{:ok, claims}` specifically so this clause
-  #     can't be reached by a flavor-A token: a bare %{user_uuid:}
-  #     pattern is a subset of flavor-A's %{user_uuid:, list_uuid:}
-  #     claims, so matching on shape alone (both tagged `:ok`) would let
-  #     a flavor-A token silently fall through here too. The salt tag
-  #     makes the two flavors mutually exclusive regardless of clause
-  #     order — see role_optout_unsubscribe_test.exs's "salt/scope
-  #     cross-flavor rejection" tests. Renders a confirm page
-  #     (render_role_optout_confirm/3) — same never-mutates-on-GET rule.
+  #     confirm page (see render_crm_confirm/4) — never mutates on GET:
+  #     corporate link-scanners/antivirus tools routinely GET every link
+  #     found in an email body, and a GET that silently unsubscribed
+  #     people would be exactly that footgun. The actual removal only
+  #     happens on POST (process_unsubscribe/2 below). RFC 8058's
+  #     one-click automation is unaffected — it lives entirely at the
+  #     separate /newsletters/unsubscribe/one-click endpoint.
+  #   - %{user_uuid:} — user_group broadcast, signed under the separate
+  #     "newsletters_user_optout" salt. verify_token/1 tags a match
+  #     under that salt as `{:role_optout, claims}` rather than `{:ok,
+  #     claims}`. Renders a confirm page (render_role_optout_confirm/3)
+  #     — same never-mutates-on-GET rule.
+  #
+  # A THIRD shape can still show up here even though nothing signs it
+  # anymore: %{user_uuid:, list_uuid:}, the retired newsletters_list
+  # flavor's token, under the "unsubscribe" salt these two current
+  # shapes also use. Phoenix.Token has no expiry shorter than
+  # `max_age` (604_800s / 7 days) and no way to invalidate one flavor
+  # of a salt without invalidating all of them, so a link sent before
+  # this removal keeps verifying successfully — just with claims that
+  # don't match either `{:ok, ...}` clause below. The catch-all
+  # degrades it to the same friendly "link no longer valid" redirect
+  # every other invalid/expired token already gets, instead of a
+  # CaseClauseError (no matching branch — a 500) if it fell through
+  # every clause unhandled.
   def unsubscribe(conn, %{"token" => token}) do
     case verify_token(token) do
-      {:ok, %{user_uuid: user_uuid, list_uuid: list_uuid}} ->
-        list = Newsletters.get_list(list_uuid)
-        all_lists = Newsletters.list_user_subscriptions(user_uuid)
-
-        conn
-        |> assign(:token, token)
-        |> assign(:list, list)
-        |> assign(:all_lists, all_lists)
-        |> assign(:user_uuid, user_uuid)
-        |> render(:unsubscribe)
-
       {:ok, %{contact_uuid: contact_uuid, crm_list_uuid: crm_list_uuid}} ->
         render_crm_confirm(conn, token, contact_uuid, crm_list_uuid)
 
       {:role_optout, %{user_uuid: user_uuid}} ->
         render_role_optout_confirm(conn, token, user_uuid)
 
-      {:error, _reason} ->
+      _ ->
         conn
         |> put_flash(:error, "Invalid or expired unsubscribe link.")
         |> redirect(to: Routes.path("/"))
@@ -71,25 +63,18 @@ defmodule PhoenixKit.Newsletters.Web.UnsubscribeController do
     |> redirect(to: Routes.path("/"))
   end
 
-  # POST /newsletters/unsubscribe — process the choice. Flavor-A redirects
-  # home with a flash (its own existing UX); the crm_list flavor re-renders
-  # the same confirm page in its "unsubscribed" state, since it already
-  # carries the list's name for the message.
+  # POST /newsletters/unsubscribe (scope=list) — crm_unsubscribe.html.heex's
+  # "unsubscribe from this list" button; re-renders the same confirm page
+  # in its "unsubscribed" state, since it already carries the list's name
+  # for the message. The retired newsletters_list flavor used to have its
+  # own clause here too (a real %{user_uuid:, list_uuid:} claim, not the
+  # crm_list flavor's %{contact_uuid:, crm_list_uuid:}) — gone along with
+  # that flavor; a stray old link with that claim shape doesn't match
+  # this clause's pattern and falls through to process_unsubscribe/2's
+  # catch-all below, same graceful "invalid link" redirect every other
+  # unrecognized POST already gets.
   def process_unsubscribe(conn, %{"token" => token, "scope" => "list"}) do
     case verify_token(token) do
-      {:ok, %{user_uuid: user_uuid, list_uuid: list_uuid}} ->
-        case Newsletters.unsubscribe_user(list_uuid, user_uuid) do
-          {:ok, _member} ->
-            conn
-            |> put_flash(:info, "You have been unsubscribed from this list.")
-            |> redirect(to: Routes.path("/"))
-
-          {:error, _reason} ->
-            conn
-            |> put_flash(:error, "We could not unsubscribe you right now. Please try again.")
-            |> redirect(to: Routes.path("/"))
-        end
-
       {:ok, %{contact_uuid: contact_uuid, crm_list_uuid: crm_list_uuid}} ->
         handle_crm_list_unsubscribe(conn, token, contact_uuid, crm_list_uuid)
 
@@ -100,15 +85,8 @@ defmodule PhoenixKit.Newsletters.Web.UnsubscribeController do
     end
   end
 
-  # "Unsubscribe from all" — flavor-A goes through the newsletters
-  # ListMember table (unchanged); flavor-B (the crm_unsubscribe landing
-  # page's secondary button) opts the contact out entirely, which the CRM
-  # send path already checks across every list it belongs to. A
-  # user_group token can never reach the %{user_uuid: user_uuid} clause
-  # below — verify_token/1 tags it `{:role_optout, ...}`, not `{:ok,
-  # ...}`, precisely so it isn't absorbed here and misrouted to the
-  # ListMember-based unsubscribe_from_all/1 instead of
-  # UserGroupSource.record_opt_out/1.
+  # "Unsubscribe from all" (scope=all) — crm_unsubscribe.html.heex's
+  # secondary button.
   def process_unsubscribe(conn, %{"token" => token, "scope" => "all"}) do
     case verify_token(token) do
       {:ok, %{contact_uuid: contact_uuid}} ->
@@ -129,13 +107,6 @@ defmodule PhoenixKit.Newsletters.Web.UnsubscribeController do
             |> redirect(to: Routes.path("/"))
         end
 
-      {:ok, %{user_uuid: user_uuid}} ->
-        Newsletters.unsubscribe_from_all(user_uuid)
-
-        conn
-        |> put_flash(:info, "You have been unsubscribed from all lists.")
-        |> redirect(to: Routes.path("/"))
-
       _ ->
         conn
         |> put_flash(:error, "Invalid link.")
@@ -143,16 +114,9 @@ defmodule PhoenixKit.Newsletters.Web.UnsubscribeController do
     end
   end
 
-  # user_group flavor — a single unconditional action (no list/all
-  # choice; a role recipient has no ListMember rows to partially
-  # unsubscribe from). Its own scope value, deliberately not "all" —
-  # and this clause only accepts a `{:role_optout, ...}` verify_token/1
-  # result, not `{:ok, ...}`: a flavor-A (list) token's claims
-  # (%{user_uuid:, list_uuid:}) are a superset of this clause's bare
-  # %{user_uuid:} pattern, so without the salt tag a flavor-A token
-  # posted here (by tampering or a stray form) would silently opt
-  # someone out of every role-sourced newsletter over a token meant to
-  # unsubscribe them from a single list.
+  # user_group flavor — a single unconditional action. Its own scope
+  # value, deliberately not "all" — and this clause only accepts a
+  # `{:role_optout, ...}` verify_token/1 result, not `{:ok, ...}`.
   def process_unsubscribe(conn, %{"token" => token, "scope" => "role_optout"}) do
     case verify_token(token) do
       {:role_optout, %{user_uuid: user_uuid}} ->
@@ -189,13 +153,11 @@ defmodule PhoenixKit.Newsletters.Web.UnsubscribeController do
           CRMSource.remove_from_list(contact, list)
         end
 
-      {:ok, %{user_uuid: user_uuid, list_uuid: list_uuid}} ->
-        Newsletters.unsubscribe_user(list_uuid, user_uuid)
-
-      # user_group flavor — tagged `{:role_optout, ...}` by
-      # verify_token/1 (see unsubscribe/2's comment), so this can't be
-      # reached by a flavor-A token even though its claims are a subset
-      # of flavor-A's.
+      # A stray old newsletters_list-flavor token (%{user_uuid:,
+      # list_uuid:}, retired but still verifiable — see unsubscribe/2's
+      # comment) falls through to the catch-all below, `:ok` and a no-op
+      # — same graceful degrade RFC 8058 already requires for any
+      # unresolvable one-click token.
       {:role_optout, %{user_uuid: user_uuid}} ->
         case Auth.get_user(user_uuid) do
           %{} = user -> UserGroupSource.record_opt_out(user)
@@ -243,15 +205,17 @@ defmodule PhoenixKit.Newsletters.Web.UnsubscribeController do
   #
   # A "newsletters_user_optout" match is tagged `{:role_optout, claims}`
   # rather than `{:ok, claims}` — deliberately a different shape, not
-  # just a different salt. The user_group flavor's claims
-  # (%{user_uuid:}) are a proper subset of flavor-A's
-  # (%{user_uuid:, list_uuid:}), so if both flavors returned `{:ok,
-  # claims}` here, every call site would have to keep re-deriving safety
-  # from clause *order* (more-specific pattern first) to avoid a
-  # flavor-A token being silently accepted by a role-flavor clause, or
-  # vice versa. Tagging by which salt matched makes that safety
-  # independent of order — see role_optout_unsubscribe_test.exs's
-  # cross-flavor rejection tests.
+  # just a different salt. This dates back to when the "unsubscribe"
+  # salt also signed a now-retired newsletters_list flavor
+  # (%{user_uuid:, list_uuid:}), whose claims were a proper superset of
+  # user_group's bare %{user_uuid:} — tagging by salt kept the two from
+  # ever colliding regardless of clause order, instead of every call
+  # site re-deriving safety from clause order alone. Still relevant
+  # today for a different reason: an already-sent email can still carry
+  # a valid old-flavor "unsubscribe"-salted token (Phoenix.Token has no
+  # way to invalidate one flavor of a salt without invalidating all of
+  # it), and the tag keeps that stray shape from being silently accepted
+  # by a clause it was never meant for.
   defp verify_token(token) do
     endpoint = PhoenixKit.Config.get(:endpoint, PhoenixKitWeb.Endpoint)
 
