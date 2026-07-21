@@ -20,7 +20,6 @@ defmodule PhoenixKit.Newsletters.Web.RoleOptoutUnsubscribeTest do
 
   use PhoenixKitNewsletters.DataCase, async: false
 
-  alias PhoenixKit.Newsletters
   alias PhoenixKit.Newsletters.UserGroupSource
   alias PhoenixKit.Newsletters.Web.UnsubscribeController
   alias PhoenixKit.Users.Auth.User
