@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.1.8 - 2026-07-21
+
+### Added
+- New `user_group` broadcast recipient source — target core users by role (`PhoenixKit.Users.Roles`/`RoleAssignment`) directly, without requiring the CRM module. The broadcast editor gains a "Roles" multi-select alongside "Newsletter list"/"CRM list", with the same sendable/no-email/unsendable preflight breakdown as the other sources.
+- A dedicated unsubscribe/opt-out flow for role-sourced recipients: a separately-salted one-click token, a confirm/already-unsubscribed/unsubscribed landing page, and `UserGroupSource.record_opt_out/1`, which writes the user's own opt-out state and (when linked) the corresponding CRM contact's, keeping both consistent.
+
+### Fixed
+- A role-sourced (`user_group`) delivery's unsubscribe link previously reused the `newsletters_list` token shape with a `nil` list_uuid, so it verified but silently opted nobody out; it now signs its own token flavor.
+- `newsletters_list` sends now exclude deactivated (`is_active: false`) users, matching what `user_group` already excluded — previously a deactivated user with a stale "active" `ListMember` row still received `newsletters_list` broadcasts.
+- The broadcast editor's role list is now loaded in `handle_params/3` instead of `mount/3`, avoiding a doubled roles query on every visit to the page (`mount/3` runs once for the disconnected render, once for the connected one) — matches how the newsletter/CRM list options were already loaded.
+- The new "Roles" recipient-source UI strings (role picker label, preflight summary, stale-role warning) are now fully translated (en/et/ru); they had shipped without gettext extraction.
+
 ## 0.1.7 - 2026-07-20
 
 ### Fixed

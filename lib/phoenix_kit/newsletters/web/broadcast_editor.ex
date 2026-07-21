@@ -41,7 +41,7 @@ defmodule PhoenixKit.Newsletters.Web.BroadcastEditor do
         |> assign(:crm_available, CRMSource.available?())
         |> assign(:crm_lists, [])
         |> assign(:crm_list_uuid, "")
-        |> assign(:available_roles, UserGroupSource.list_roles())
+        |> assign(:available_roles, [])
         |> assign(:role_uuids, [])
         |> assign(:preflight, nil)
         |> assign(:crm_list_archived?, false)
@@ -76,6 +76,7 @@ defmodule PhoenixKit.Newsletters.Web.BroadcastEditor do
      |> assign(:subject, broadcast.subject || "")
      |> assign(:source_type, broadcast.source_type)
      |> assign(:crm_list_uuid, broadcast.crm_list_uuid || "")
+     |> assign(:available_roles, UserGroupSource.list_roles())
      |> assign(:role_uuids, Broadcast.role_uuids(broadcast))
      |> assign(:template_uuid, broadcast.template_uuid || "")
      |> assign(:markdown_content, broadcast.markdown_body || "")
@@ -106,6 +107,7 @@ defmodule PhoenixKit.Newsletters.Web.BroadcastEditor do
      |> assign_tz()
      |> assign(:crm_lists, crm_lists)
      |> assign(:templates, templates)
+     |> assign(:available_roles, UserGroupSource.list_roles())
      |> assign(:template_uuid, default_template_uuid || "")}
   end
 
