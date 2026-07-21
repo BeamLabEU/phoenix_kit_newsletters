@@ -124,52 +124,6 @@ defmodule PhoenixKit.Newsletters do
         visible: false,
         live_view: {Web.BroadcastDetails, :show},
         gettext_backend: PhoenixKit.Newsletters.Gettext
-      ),
-      Tab.new!(
-        id: :admin_newsletters_lists,
-        label: "Lists",
-        icon: "hero-list-bullet",
-        path: "newsletters/lists",
-        priority: 522,
-        level: :admin,
-        permission: "newsletters",
-        parent: :admin_newsletters,
-        match: :prefix,
-        live_view: {Web.Lists, :index},
-        gettext_backend: PhoenixKit.Newsletters.Gettext
-      ),
-      Tab.new!(
-        id: :admin_newsletters_list_new,
-        label: "New list",
-        path: "newsletters/lists/new",
-        level: :admin,
-        permission: "newsletters",
-        parent: :admin_newsletters,
-        visible: false,
-        live_view: {Web.ListEditor, :new},
-        gettext_backend: PhoenixKit.Newsletters.Gettext
-      ),
-      Tab.new!(
-        id: :admin_newsletters_list_edit,
-        label: "Edit list",
-        path: "newsletters/lists/:id/edit",
-        level: :admin,
-        permission: "newsletters",
-        parent: :admin_newsletters,
-        visible: false,
-        live_view: {Web.ListEditor, :edit},
-        gettext_backend: PhoenixKit.Newsletters.Gettext
-      ),
-      Tab.new!(
-        id: :admin_newsletters_list_members,
-        label: "List members",
-        path: "newsletters/lists/:id/members",
-        level: :admin,
-        permission: "newsletters",
-        parent: :admin_newsletters,
-        visible: false,
-        live_view: {Web.ListMembers, :index},
-        gettext_backend: PhoenixKit.Newsletters.Gettext
       )
     ]
   end
