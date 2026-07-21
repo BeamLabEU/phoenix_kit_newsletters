@@ -10,19 +10,12 @@ defmodule PhoenixKit.Newsletters.BroadcastTest do
   alias PhoenixKit.Newsletters.Broadcast
 
   describe "changeset/2 — source_type defaults and requirements" do
-    test "defaults to newsletters_list and requires list_uuid" do
+    test "defaults to crm_list and requires crm_list_uuid" do
       changeset = Broadcast.changeset(%Broadcast{}, %{subject: "Hi"})
 
       refute changeset.valid?
-      assert %{list_uuid: ["can't be blank"]} = errors_on(changeset)
-      assert Ecto.Changeset.get_field(changeset, :source_type) == "newsletters_list"
-    end
-
-    test "newsletters_list source is valid with a list_uuid" do
-      changeset =
-        Broadcast.changeset(%Broadcast{}, %{subject: "Hi", list_uuid: Ecto.UUID.generate()})
-
-      assert changeset.valid?
+      assert %{crm_list_uuid: ["can't be blank"]} = errors_on(changeset)
+      assert Ecto.Changeset.get_field(changeset, :source_type) == "crm_list"
     end
 
     test "crm_list source requires crm_list_uuid, not list_uuid" do
@@ -47,7 +40,6 @@ defmodule PhoenixKit.Newsletters.BroadcastTest do
       changeset =
         Broadcast.changeset(%Broadcast{}, %{
           subject: "Hi",
-          list_uuid: Ecto.UUID.generate(),
           source_type: "bogus"
         })
 
@@ -125,8 +117,8 @@ defmodule PhoenixKit.Newsletters.BroadcastTest do
     end
   end
 
-  test "valid_source_types/0 lists all three sources" do
-    assert Broadcast.valid_source_types() == ["newsletters_list", "crm_list", "user_group"]
+  test "valid_source_types/0 lists both sources" do
+    assert Broadcast.valid_source_types() == ["crm_list", "user_group"]
   end
 
   defp errors_on(changeset) do

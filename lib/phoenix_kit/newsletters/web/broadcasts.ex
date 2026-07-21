@@ -93,4 +93,13 @@ defmodule PhoenixKit.Newsletters.Web.Broadcasts do
   defp gettext_status("cancelled"), do: gettext("Cancelled")
   defp gettext_status("failed"), do: gettext("Failed")
   defp gettext_status(other), do: other
+
+  # Cheap per-row label — no per-broadcast CRM list name lookup (that
+  # would mean an N+1 across this whole listing); the details page
+  # already resolves the actual list/role names for a single broadcast.
+  def source_label(source_type), do: gettext_source(source_type)
+
+  defp gettext_source("crm_list"), do: gettext("CRM list")
+  defp gettext_source("user_group"), do: gettext("Roles")
+  defp gettext_source(other), do: other
 end

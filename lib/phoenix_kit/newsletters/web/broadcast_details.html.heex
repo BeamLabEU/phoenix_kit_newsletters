@@ -74,8 +74,6 @@
               <p class="text-base-content/60 text-xs font-medium uppercase mb-1">{gettext("List")}</p>
               <p class="font-medium">
                 <%= cond do %>
-                  <% @broadcast.list -> %>
-                    {@broadcast.list.name}
                   <% @crm_list -> %>
                     {@crm_list.name} <span class="badge badge-ghost badge-xs">{gettext("CRM")}</span>
                   <% true -> %>

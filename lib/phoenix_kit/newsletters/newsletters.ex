@@ -176,17 +176,12 @@ defmodule PhoenixKit.Newsletters do
   def list_broadcasts(filters \\ %{}) do
     Broadcast
     |> maybe_filter_broadcast_status(filters)
-    |> preload([:list])
     |> order_by([b], desc: b.inserted_at)
     |> apply_pagination(filters)
     |> repo().all()
   end
 
-  def get_broadcast!(uuid) do
-    Broadcast
-    |> preload([:list])
-    |> repo().get!(uuid)
-  end
+  def get_broadcast!(uuid), do: repo().get!(Broadcast, uuid)
 
   @doc """
   Returns a broadcast with optional template loaded.
