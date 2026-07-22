@@ -82,8 +82,6 @@
                         {Enum.join(names, ", ")}
                         <span class="badge badge-ghost badge-xs">{gettext("Roles")}</span>
                     <% end %>
-                  <% @broadcast.list -> %>
-                    {@broadcast.list.name}
                   <% @crm_list -> %>
                     {@crm_list.name} <span class="badge badge-ghost badge-xs">{gettext("CRM")}</span>
                   <% true -> %>

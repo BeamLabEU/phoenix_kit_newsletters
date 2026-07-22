@@ -34,12 +34,10 @@ defmodule PhoenixKit.Newsletters.Web.BroadcastEditor do
         |> assign(:page_section, gettext("Broadcasts"))
         |> assign(:page_section_path, Routes.path("/admin/newsletters/broadcasts"))
         |> assign(:project_title, Settings.get_project_title())
-        |> assign(:lists, [])
         |> assign(:templates, [])
         |> assign(:broadcast, nil)
         |> assign(:subject, "")
-        |> assign(:source_type, "newsletters_list")
-        |> assign(:list_uuid, "")
+        |> assign(:source_type, "crm_list")
         |> assign(:crm_available, CRMSource.available?())
         |> assign(:crm_lists, [])
         |> assign(:crm_list_uuid, "")
@@ -64,7 +62,6 @@ defmodule PhoenixKit.Newsletters.Web.BroadcastEditor do
 
   @impl true
   def handle_params(%{"id" => id}, _url, %{assigns: %{live_action: :edit}} = socket) do
-    lists = Newsletters.list_lists(%{status: "active"})
     crm_lists = CRMSource.list_lists()
     templates = load_templates()
     broadcast = Newsletters.get_broadcast!(id)
@@ -72,14 +69,12 @@ defmodule PhoenixKit.Newsletters.Web.BroadcastEditor do
 
     {:noreply,
      socket
-     |> assign(:lists, lists)
      |> assign(:crm_lists, crm_lists)
      |> assign(:templates, templates)
      |> assign(:page_title, gettext("Edit broadcast"))
      |> assign(:broadcast, broadcast)
      |> assign(:subject, broadcast.subject || "")
      |> assign(:source_type, broadcast.source_type)
-     |> assign(:list_uuid, broadcast.list_uuid || "")
      |> assign(:crm_list_uuid, broadcast.crm_list_uuid || "")
      |> assign(:available_roles, UserGroupSource.list_roles())
      |> assign(:role_uuids, Broadcast.role_uuids(broadcast))
@@ -103,7 +98,6 @@ defmodule PhoenixKit.Newsletters.Web.BroadcastEditor do
   end
 
   def handle_params(_params, _url, socket) do
-    lists = Newsletters.list_lists(%{status: "active"})
     crm_lists = CRMSource.list_lists()
     templates = load_templates()
     default_template_uuid = default_template_uuid()
@@ -111,7 +105,6 @@ defmodule PhoenixKit.Newsletters.Web.BroadcastEditor do
     {:noreply,
      socket
      |> assign_tz()
-     |> assign(:lists, lists)
      |> assign(:crm_lists, crm_lists)
      |> assign(:templates, templates)
      |> assign(:available_roles, UserGroupSource.list_roles())
@@ -122,7 +115,7 @@ defmodule PhoenixKit.Newsletters.Web.BroadcastEditor do
   def handle_event("validate", params, socket) do
     subject = params["subject"] || socket.assigns.subject
     source_type = params["source_type"] || socket.assigns.source_type
-    {list_uuid, crm_list_uuid} = resolve_source_fields(socket.assigns, source_type, params)
+    crm_list_uuid = resolve_crm_list_uuid(socket.assigns, source_type, params)
     role_uuids = resolve_role_uuids(source_type, params)
     template_uuid = params["template_uuid"] || socket.assigns.template_uuid
     scheduled_at = params["scheduled_at"] || socket.assigns.scheduled_at
@@ -134,7 +127,6 @@ defmodule PhoenixKit.Newsletters.Web.BroadcastEditor do
      socket
      |> assign(:subject, subject)
      |> assign(:source_type, source_type)
-     |> assign(:list_uuid, list_uuid)
      |> assign(:crm_list_uuid, crm_list_uuid)
      |> assign(:role_uuids, role_uuids)
      |> assign(:template_uuid, template_uuid)
@@ -231,37 +223,26 @@ defmodule PhoenixKit.Newsletters.Web.BroadcastEditor do
 
   defp update_assigns_from_params(socket, params) do
     source_type = params["source_type"] || socket.assigns.source_type
-    {list_uuid, crm_list_uuid} = resolve_source_fields(socket.assigns, source_type, params)
+    crm_list_uuid = resolve_crm_list_uuid(socket.assigns, source_type, params)
     role_uuids = resolve_role_uuids(source_type, params)
 
     socket
     |> assign(:subject, params["subject"] || socket.assigns.subject)
     |> assign(:source_type, source_type)
-    |> assign(:list_uuid, list_uuid)
     |> assign(:crm_list_uuid, crm_list_uuid)
     |> assign(:role_uuids, role_uuids)
     |> assign(:template_uuid, params["template_uuid"] || socket.assigns.template_uuid)
     |> assign(:scheduled_at, params["scheduled_at"] || socket.assigns.scheduled_at)
   end
 
-  # Resolves list_uuid/crm_list_uuid from params, but drops whichever one
-  # belongs to the *other* source the moment source_type actually changes
-  # — otherwise switching from "newsletters list" to "CRM list" (or back)
-  # leaves the previous selection's uuid stranded in assigns (and from
-  # there, in the saved broadcast row) even though its own field is no
-  # longer rendered/editable.
-  defp resolve_source_fields(assigns, source_type, params) do
-    list_uuid = params["list_uuid"] || assigns.list_uuid
+  # Drops the CRM list selection the moment source_type switches away from
+  # "crm_list" — otherwise switching to "Roles" leaves the previous list
+  # selection stranded in assigns (and from there, in the saved broadcast
+  # row) even though the field is no longer rendered/editable.
+  defp resolve_crm_list_uuid(assigns, source_type, params) do
     crm_list_uuid = params["crm_list_uuid"] || assigns.crm_list_uuid
 
-    if source_type != assigns.source_type do
-      case source_type do
-        "crm_list" -> {"", crm_list_uuid}
-        _ -> {list_uuid, ""}
-      end
-    else
-      {list_uuid, crm_list_uuid}
-    end
+    if source_type == "crm_list", do: crm_list_uuid, else: ""
   end
 
   # role_uuids doesn't fit the params[field] || assigns.field fallback the
@@ -272,7 +253,7 @@ defmodule PhoenixKit.Newsletters.Web.BroadcastEditor do
   # serializes the form's actual current checkbox state; params is
   # authoritative here, defaulting to [] rather than merging with the old
   # value. Not the selected source at all (fieldset unrendered) means no
-  # roles, same "drop the stale field" reasoning as list_uuid/crm_list_uuid.
+  # roles, same "drop the stale field" reasoning as resolve_crm_list_uuid/3.
   defp resolve_role_uuids("user_group", params) do
     params |> Map.get("role_uuids", []) |> List.wrap()
   end
@@ -282,8 +263,7 @@ defmodule PhoenixKit.Newsletters.Web.BroadcastEditor do
   # Recomputes the CRM preflight breakdown (and whether the selected list
   # is archived) whenever the crm_list selection changes, or the
   # user_group preflight whenever the role selection changes; nil/false
-  # for anything else — a newsletters_list source, or either other
-  # source with nothing picked yet.
+  # for anything else — either source with nothing picked yet.
   defp assign_preflight(
          %{assigns: %{source_type: "crm_list", crm_list_uuid: crm_list_uuid}} = socket
        )
@@ -321,7 +301,6 @@ defmodule PhoenixKit.Newsletters.Web.BroadcastEditor do
         %{
           subject: socket.assigns.subject,
           source_type: socket.assigns.source_type,
-          list_uuid: socket.assigns.list_uuid,
           crm_list_uuid: socket.assigns.crm_list_uuid,
           source_params: role_group_source_params(socket.assigns),
           template_uuid:
@@ -369,7 +348,7 @@ defmodule PhoenixKit.Newsletters.Web.BroadcastEditor do
   # @available_roles was loaded once for this LiveView session, so a role
   # renamed by someone else mid-edit won't be reflected here — an
   # accepted, narrow race; refreshing it defeats the point of loading it
-  # once per session like @lists/@crm_lists already do.
+  # once per session like @crm_lists already does.
   defp role_group_source_params(%{source_type: "user_group"} = assigns) do
     names =
       assigns.available_roles
@@ -403,15 +382,15 @@ defmodule PhoenixKit.Newsletters.Web.BroadcastEditor do
     role_uuids == []
   end
 
-  defp recipient_source_missing?(%{list_uuid: list_uuid}) do
-    list_uuid in [nil, ""]
-  end
+  # Unreachable in normal flow (source_type is always "crm_list" or
+  # "user_group" — see mount/1's default and the picker's own options),
+  # but fails closed rather than crashing if it ever isn't.
+  defp recipient_source_missing?(_assigns), do: true
 
   defp save_broadcast_and_return(socket) do
     attrs = %{
       subject: socket.assigns.subject,
       source_type: socket.assigns.source_type,
-      list_uuid: socket.assigns.list_uuid,
       crm_list_uuid: socket.assigns.crm_list_uuid,
       source_params: role_group_source_params(socket.assigns),
       template_uuid:

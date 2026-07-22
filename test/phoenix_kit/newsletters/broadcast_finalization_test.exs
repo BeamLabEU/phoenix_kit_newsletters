@@ -41,22 +41,11 @@ defmodule PhoenixKit.Newsletters.BroadcastFinalizationTest do
     user
   end
 
-  defp create_list do
-    {:ok, list} =
-      Newsletters.create_list(%{
-        name: "Test list",
-        slug: "test-list-#{System.unique_integer([:positive])}"
-      })
-
-    list
-  end
-
   defp create_broadcast(attrs) do
-    list = create_list()
-
     base = %{
       subject: "Hello",
-      list_uuid: list.uuid,
+      source_type: "user_group",
+      source_params: %{"role_uuids" => [Ecto.UUID.generate()], "role_names_snapshot" => []},
       html_body: "<p>Body</p>",
       text_body: "Body",
       status: "sending"

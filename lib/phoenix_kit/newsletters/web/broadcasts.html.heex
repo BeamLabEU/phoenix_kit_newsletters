@@ -32,10 +32,7 @@
       card_fields={
         fn broadcast ->
           [
-            %{
-              label: gettext("List"),
-              value: if(broadcast.list, do: broadcast.list.name, else: "-")
-            },
+            %{label: gettext("Source"), value: source_label(broadcast.source_type)},
             %{label: gettext("Sent"), value: broadcast.sent_count},
             %{label: gettext("Delivered"), value: broadcast.delivered_count},
             %{label: gettext("Opened"), value: broadcast.opened_count},
@@ -96,7 +93,7 @@
       <.table_default_header>
         <.table_default_row>
           <.table_default_header_cell>{gettext("Subject")}</.table_default_header_cell>
-          <.table_default_header_cell>{gettext("List")}</.table_default_header_cell>
+          <.table_default_header_cell>{gettext("Source")}</.table_default_header_cell>
           <.table_default_header_cell>{gettext("Status")}</.table_default_header_cell>
           <.table_default_header_cell class="text-right">{gettext("Sent")}</.table_default_header_cell>
           <.table_default_header_cell class="text-right">
@@ -120,11 +117,7 @@
             {broadcast.subject}
           </.table_default_cell>
           <.table_default_cell>
-            <%= if broadcast.list do %>
-              {broadcast.list.name}
-            <% else %>
-              <span class="text-base-content/40">-</span>
-            <% end %>
+            {source_label(broadcast.source_type)}
           </.table_default_cell>
           <.table_default_cell>
             <span class={"badge badge-sm #{status_badge_class(broadcast.status)}"}>

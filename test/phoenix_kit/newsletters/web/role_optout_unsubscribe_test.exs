@@ -20,7 +20,6 @@ defmodule PhoenixKit.Newsletters.Web.RoleOptoutUnsubscribeTest do
 
   use PhoenixKitNewsletters.DataCase, async: false
 
-  alias PhoenixKit.Newsletters
   alias PhoenixKit.Newsletters.UserGroupSource
   alias PhoenixKit.Newsletters.Web.UnsubscribeController
   alias PhoenixKit.Users.Auth.User
@@ -253,14 +252,12 @@ defmodule PhoenixKit.Newsletters.Web.RoleOptoutUnsubscribeTest do
 
   describe "cross-flavor rejection — verify_token/1's salt tag is load-bearing" do
     test "a flavor-A (newsletters_list) token is rejected by scope=role_optout, not treated as a role opt-out" do
-      {:ok, list} =
-        Newsletters.create_list(%{
-          name: "Cross-flavor check list",
-          slug: "cross-flavor-check-list-#{System.unique_integer([:positive])}"
-        })
-
       user = create_user()
-      token = sign_list_flavor_token(user.uuid, list.uuid)
+      # A real list to reference no longer exists at all (core V156
+      # dropped the tables) — the token only needs the CLAIM SHAPE a
+      # genuine pre-removal flavor-A token had; verify_token/1 doesn't
+      # look the list up to accept the "unsubscribe" salt.
+      token = sign_list_flavor_token(user.uuid, Ecto.UUID.generate())
 
       conn =
         build_conn(:post, "/newsletters/unsubscribe")
@@ -275,7 +272,7 @@ defmodule PhoenixKit.Newsletters.Web.RoleOptoutUnsubscribeTest do
       refute UserGroupSource.opted_out?(reloaded)
     end
 
-    test "a role_optout token is not absorbed by scope=all's ListMember-based unsubscribe" do
+    test "a role_optout token is not absorbed by scope=all's crm_list-based opt-out" do
       user = create_user()
       token = sign_token(user.uuid)
 
@@ -285,10 +282,10 @@ defmodule PhoenixKit.Newsletters.Web.RoleOptoutUnsubscribeTest do
 
       assert conn.status == 302
 
-      # Not opted out via the role-optout path — scope=all must not have
-      # silently routed this to Newsletters.unsubscribe_from_all/1, which
-      # writes no custom_fields state at all and leaves the user still
-      # sendable through UserGroupSource.
+      # Not opted out via the role-optout path — scope=all's only
+      # remaining clause requires a contact_uuid claim, which this
+      # token doesn't carry, so it falls to the catch-all "invalid
+      # link" branch rather than silently succeeding at nothing.
       reloaded = Repo.get(User, user.uuid)
       refute UserGroupSource.opted_out?(reloaded)
     end

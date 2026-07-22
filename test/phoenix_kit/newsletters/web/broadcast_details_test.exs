@@ -134,23 +134,8 @@ defmodule PhoenixKit.Newsletters.Web.BroadcastDetailsTest do
       assert updated.assigns.user_group_preflight == nil
     end
 
-    test "is nil for a newsletters_list broadcast" do
-      {:ok, list} =
-        Newsletters.create_list(%{
-          name: "Check list",
-          slug: "broadcast-details-check-list-#{System.unique_integer([:positive])}"
-        })
-
-      {:ok, broadcast} =
-        Newsletters.create_broadcast(%{
-          subject: "newsletters_list broadcast check",
-          html_body: "<p>Hi</p>",
-          list_uuid: list.uuid
-        })
-
-      updated = load(broadcast.uuid)
-
-      assert updated.assigns.user_group_preflight == nil
-    end
+    # The "nil for a newsletters_list broadcast" variant was removed with
+    # the source itself (S4-E part 2) — the crm_list case above still
+    # pins the "nil for non-user_group sources" behavior.
   end
 end

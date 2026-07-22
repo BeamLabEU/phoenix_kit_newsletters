@@ -41,7 +41,6 @@ defmodule PhoenixKit.Newsletters.BroadcasterUserGroupTest do
     assert {:ok, sent} = Broadcaster.send(broadcast)
     assert sent.status == "sending"
     assert sent.total_recipients == 0
-    assert sent.list_uuid == nil
     assert sent.crm_list_uuid == nil
   end
 

@@ -77,7 +77,7 @@ defmodule PhoenixKitNewslettersTest do
       tab_ids = Newsletters.admin_tabs() |> Enum.map(& &1.id)
       assert :admin_newsletters in tab_ids
       assert :admin_newsletters_broadcasts in tab_ids
-      assert :admin_newsletters_lists in tab_ids
+      refute :admin_newsletters_lists in tab_ids
     end
 
     test "first tab has id :admin_newsletters" do

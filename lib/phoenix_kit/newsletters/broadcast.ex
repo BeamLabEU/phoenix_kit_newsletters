@@ -10,7 +10,7 @@ defmodule PhoenixKit.Newsletters.Broadcast do
   @primary_key {:uuid, UUIDv7, autogenerate: true}
 
   @valid_statuses ["draft", "scheduled", "sending", "sent", "cancelled", "failed"]
-  @valid_source_types ["newsletters_list", "crm_list", "user_group"]
+  @valid_source_types ["crm_list", "user_group"]
 
   schema "phoenix_kit_newsletters_broadcasts" do
     field(:subject, :string)
@@ -26,35 +26,36 @@ defmodule PhoenixKit.Newsletters.Broadcast do
     field(:opened_count, :integer, default: 0)
     field(:bounced_count, :integer, default: 0)
     field(:template_uuid, UUIDv7)
-    field(:list_uuid, UUIDv7)
     field(:created_by_user_uuid, UUIDv7)
     field(:send_profile_uuid, UUIDv7)
-    # "newsletters_list" (default) sends to this broadcast's own `list_uuid`;
-    # "crm_list" sends to `crm_list_uuid` instead — a bare UUID, deliberately
-    # with no belongs_to/FK, same soft-reference pattern as send_profile_uuid:
-    # newsletters must not hard-depend on the CRM module being installed.
-    # "user_group" sends to `source_params`'s role selection instead — core
-    # roles are a hard dependency already, so no soft-reference is needed
-    # there, but a broadcast can target more than one role, so a scalar
-    # uuid column doesn't fit; see UserGroupSource. `source_params` stores
-    # `%{"role_uuids" => [...], "role_names_snapshot" => [...]}` — uuids
-    # because a role's `name` is mutable (Roles.update_role/2 doesn't
-    # protect it even for system roles), so resolving by name would let a
-    # rename silently re-point (or empty out) an already-saved broadcast;
-    # the name snapshot is display-only, same precedent as
-    # `recipient_email`/`supplier_name_snapshot` elsewhere in this
-    # ecosystem — it shows what the broadcast targeted even after a role
-    # is renamed or deleted, while resolution stays on the stable uuid.
-    field(:source_type, :string, default: "newsletters_list")
+    # "crm_list" (default) sends to `crm_list_uuid` — a bare UUID,
+    # deliberately with no belongs_to/FK, same soft-reference pattern as
+    # send_profile_uuid: newsletters must not hard-depend on the CRM
+    # module being installed. "user_group" sends to `source_params`'s
+    # role selection instead — core roles are a hard dependency already,
+    # so no soft-reference is needed there, but a broadcast can target
+    # more than one role, so a scalar uuid column doesn't fit; see
+    # UserGroupSource. `source_params` stores `%{"role_uuids" => [...],
+    # "role_names_snapshot" => [...]}` — uuids because a role's `name`
+    # is mutable (Roles.update_role/2 doesn't protect it even for system
+    # roles), so resolving by name would let a rename silently re-point
+    # (or empty out) an already-saved broadcast; the name snapshot is
+    # display-only, same precedent as `recipient_email`/
+    # `supplier_name_snapshot` elsewhere in this ecosystem — it shows
+    # what the broadcast targeted even after a role is renamed or
+    # deleted, while resolution stays on the stable uuid.
+    #
+    # A third source_type, "newsletters_list", existed here until this
+    # module's own List/ListMember tables (and the list_uuid field that
+    # went with it) were dropped in core V156 — see this repo's S4-E
+    # removal. The DB COLUMN default is still literally
+    # 'newsletters_list'::character varying (core-owned DDL, out of
+    # scope for a newsletters-side change — see that PR's notes for the
+    # follow-up); this Ecto-level default is what every INSERT going
+    # through this changeset actually uses instead.
+    field(:source_type, :string, default: "crm_list")
     field(:crm_list_uuid, UUIDv7)
     field(:source_params, :map, default: %{})
-
-    belongs_to(:list, PhoenixKit.Newsletters.List,
-      foreign_key: :list_uuid,
-      references: :uuid,
-      define_field: false,
-      type: UUIDv7
-    )
 
     # belongs_to :template removed — Emails module is an optional soft dependency.
     # template_uuid field kept for DB compatibility.
@@ -98,7 +99,6 @@ defmodule PhoenixKit.Newsletters.Broadcast do
       :opened_count,
       :bounced_count,
       :template_uuid,
-      :list_uuid,
       :created_by_user_uuid,
       :send_profile_uuid,
       :source_type,
@@ -114,13 +114,13 @@ defmodule PhoenixKit.Newsletters.Broadcast do
 
   # The source-specific reference is required only for the matching
   # source_type: crm_list needs crm_list_uuid, user_group needs at least
-  # one role uuid in source_params, and anything else (newsletters_list)
-  # needs list_uuid.
+  # one role uuid in source_params. Any other value already failed
+  # validate_inclusion/3 above — nothing further to require here.
   defp validate_source_reference(changeset) do
     case get_field(changeset, :source_type) do
       "crm_list" -> validate_required(changeset, [:crm_list_uuid])
       "user_group" -> validate_role_uuids_present(changeset)
-      _ -> validate_required(changeset, [:list_uuid])
+      _ -> changeset
     end
   end
 
