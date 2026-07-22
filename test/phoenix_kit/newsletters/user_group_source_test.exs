@@ -243,4 +243,57 @@ defmodule PhoenixKit.Newsletters.UserGroupSourceTest do
              stale_roles: 0
            }
   end
+
+  describe "CRM contact lookup is batched, not N+1" do
+    defp query_count(fun) do
+      test_pid = self()
+      handler_id = {:query_count, make_ref()}
+
+      :telemetry.attach(
+        handler_id,
+        [:phoenix_kit_newsletters, :test, :repo, :query],
+        fn _event, _measurements, %{source: source}, _config ->
+          send(test_pid, {:query, source})
+        end,
+        nil
+      )
+
+      fun.()
+
+      :telemetry.detach(handler_id)
+
+      messages =
+        Stream.repeatedly(fn ->
+          receive do
+            {:query, source} -> source
+          after
+            0 -> nil
+          end
+        end)
+        |> Enum.take_while(&(&1 != nil))
+
+      Enum.count(messages, &(&1 == "phoenix_kit_crm_contacts"))
+    end
+
+    test "sendable_recipients/1 issues exactly one contacts query regardless of how many users resolve" do
+      role = create_role()
+      users = for _ <- 1..5, do: create_user() |> assign(role)
+      Enum.each(users, &link_contact/1)
+
+      assert query_count(fn -> UserGroupSource.sendable_recipients([role.uuid]) end) == 1
+    end
+
+    test "preflight/1 issues exactly one contacts query regardless of how many users resolve" do
+      role = create_role()
+      users = for _ <- 1..5, do: create_user() |> assign(role)
+      Enum.each(users, &link_contact/1)
+
+      assert query_count(fn -> UserGroupSource.preflight([role.uuid]) end) == 1
+    end
+
+    test "no users resolved means no contacts query at all" do
+      assert query_count(fn -> UserGroupSource.sendable_recipients([Ecto.UUID.generate()]) end) ==
+               0
+    end
+  end
 end
