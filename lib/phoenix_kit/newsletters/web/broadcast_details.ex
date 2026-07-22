@@ -14,7 +14,9 @@ defmodule PhoenixKit.Newsletters.Web.BroadcastDetails do
   import PhoenixKit.Newsletters.Web.Timezone, only: [format_datetime: 2]
 
   alias PhoenixKit.Newsletters
+  alias PhoenixKit.Newsletters.Broadcast
   alias PhoenixKit.Newsletters.CRMSource
+  alias PhoenixKit.Newsletters.UserGroupSource
   alias PhoenixKit.Newsletters.Web.Timezone
   alias PhoenixKit.Settings
   alias PhoenixKit.Utils.Routes
@@ -43,6 +45,7 @@ defmodule PhoenixKit.Newsletters.Web.BroadcastDetails do
         |> assign(:delivery_stats, %{})
         |> assign(:crm_list, nil)
         |> assign(:crm_preflight, nil)
+        |> assign(:user_group_preflight, nil)
         |> assign(:loading, true)
         |> assign(:show_confirm_modal, false)
         |> assign(:confirm_action, nil)
@@ -137,6 +140,7 @@ defmodule PhoenixKit.Newsletters.Web.BroadcastDetails do
       |> assign(:delivery_stats, stats)
       |> assign(:crm_list, CRMSource.get_list(broadcast.crm_list_uuid))
       |> assign(:crm_preflight, crm_preflight(broadcast))
+      |> assign(:user_group_preflight, user_group_preflight(broadcast))
       |> assign(:loading, false)
       |> assign(:page_title, broadcast.subject)
     rescue
@@ -154,6 +158,19 @@ defmodule PhoenixKit.Newsletters.Web.BroadcastDetails do
   end
 
   defp crm_preflight(_broadcast), do: nil
+
+  # Reuses UserGroupSource.preflight/1's stale_roles count — the only
+  # piece of the breakdown this page surfaces (see role_names_snapshot/1
+  # and the stale-roles warning in the template); the full sendable/
+  # no_email/unsendable breakdown stays editor-only, not asked for here.
+  defp user_group_preflight(%{source_type: "user_group"} = broadcast) do
+    broadcast |> Broadcast.role_uuids() |> UserGroupSource.preflight()
+  end
+
+  defp user_group_preflight(_broadcast), do: nil
+
+  @doc "Display-only role names a `user_group` broadcast targeted — see `Broadcast.role_names_snapshot/1`."
+  def role_names_snapshot(broadcast), do: Broadcast.role_names_snapshot(broadcast)
 
   def status_label(status), do: gettext_status(status)
 
