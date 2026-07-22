@@ -231,12 +231,21 @@ defmodule PhoenixKit.Newsletters.CRMSource do
   @spec get_contacts_by_user_uuids([String.t()]) :: %{String.t() => struct()}
   def get_contacts_by_user_uuids([]), do: %{}
 
+  # Chunked: `IN ^list` binds one parameter per uuid and Postgres caps a
+  # single query at 65,535 binds — a role set resolving to an "all users"
+  # audience could hit that ceiling (the per-user path this replaced had
+  # no such bound). 5k per chunk keeps queries comfortably small while
+  # still being ~N/5000 round-trips instead of N.
   def get_contacts_by_user_uuids(user_uuids) when is_list(user_uuids) do
     if available?() do
       contact = contact_schema()
 
-      from(c in contact, where: c.user_uuid in ^user_uuids)
-      |> repo().all()
+      user_uuids
+      |> Enum.uniq()
+      |> Enum.chunk_every(5_000)
+      |> Enum.flat_map(fn chunk ->
+        repo().all(from(c in contact, where: c.user_uuid in ^chunk))
+      end)
       |> Map.new(&{&1.user_uuid, &1})
     else
       %{}
