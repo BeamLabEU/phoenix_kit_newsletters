@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.1.9 - 2026-07-22
+
+### Removed
+- The legacy list system (companion to core V156, which migrated every legacy newsletters list into CRM and dropped `phoenix_kit_newsletters_lists`, `..._list_members`, and `broadcasts.list_uuid`): the list management admin UI, the `newsletters_list` broadcast source end to end (editor, `Broadcaster`, `DeliveryWorker`, `UnsubscribeController`), and the `List`/`ListMember` schemas. Requires core `>= 1.7.207` (V156); an already-delivered legacy unsubscribe link still resolves to a friendly "invalid or expired" page instead of a crash.
+
+### Added
+- The broadcast details page now shows the recipient source for `user_group` (role-sourced) broadcasts too — the frozen role-names snapshot with a "Roles" badge, plus a stale-roles warning when a targeted role has since been deleted. Previously this card rendered blank for role-sourced broadcasts.
+
+### Fixed
+- `UserGroupSource.sendable_recipients/1` and `preflight/1` (the latter recomputed on every role-checkbox click in the broadcast editor) now issue one batched CRM contacts query instead of one query per resolved user.
+- `Broadcasts`, `BroadcastDetails`, and `PreferenceCenterLive` resolved viewer timezone/contact state from `mount/3` instead of `handle_params/3` — since `mount/3` runs twice per connection (disconnected + connected render), this doubled an uncached settings query in the first two, and in `PreferenceCenterLive` could run the account-linking CRM contact write during a disconnected GET. All three now resolve in `handle_params/3`, matching the existing pattern in `BroadcastEditor`.
+
 ## 0.1.8 - 2026-07-21
 
 ### Added
