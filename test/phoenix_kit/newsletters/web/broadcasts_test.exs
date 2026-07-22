@@ -21,26 +21,36 @@ defmodule PhoenixKit.Newsletters.Web.BroadcastsTest do
     %Phoenix.LiveView.Socket{assigns: %{phoenix_kit_current_user: user, __changed__: %{}}}
   end
 
-  test "mount resolves tz_offset from the viewer's profile timezone" do
+  # Timezone resolution happens in handle_params, not mount — mount runs
+  # twice per connection (disconnected + connected render), which would
+  # double the uncached DB read behind a viewer with no personal timezone
+  # set. See BroadcastEditor's assign_tz/1 for the same pattern.
+  test "handle_params resolves tz_offset from the viewer's profile timezone" do
     user = %User{user_timezone: "3"}
 
-    {:ok, socket} = Broadcasts.mount(%{}, %{}, socket_with_user(user))
+    {:noreply, socket} =
+      Broadcasts.handle_params(%{}, "/admin/newsletters/broadcasts", socket_with_user(user))
 
     assert socket.assigns.tz_offset == "3"
   end
 
-  test "mount falls back to the system time_zone setting when no personal timezone is set" do
+  test "handle_params falls back to the system time_zone setting when no personal timezone is set" do
     Settings.update_setting("time_zone", "-5")
     user = %User{user_timezone: nil}
 
-    {:ok, socket} = Broadcasts.mount(%{}, %{}, socket_with_user(user))
+    {:noreply, socket} =
+      Broadcasts.handle_params(%{}, "/admin/newsletters/broadcasts", socket_with_user(user))
 
     assert socket.assigns.tz_offset == "-5"
   end
 
-  test "mount falls back to UTC when there's no viewer at all" do
-    {:ok, socket} =
-      Broadcasts.mount(%{}, %{}, %Phoenix.LiveView.Socket{assigns: %{__changed__: %{}}})
+  test "handle_params falls back to UTC when there's no viewer at all" do
+    {:noreply, socket} =
+      Broadcasts.handle_params(
+        %{},
+        "/admin/newsletters/broadcasts",
+        %Phoenix.LiveView.Socket{assigns: %{__changed__: %{}}}
+      )
 
     assert socket.assigns.tz_offset == "0"
   end

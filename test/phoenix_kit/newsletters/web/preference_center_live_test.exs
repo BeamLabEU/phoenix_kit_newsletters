@@ -29,6 +29,23 @@ defmodule PhoenixKit.Newsletters.Web.PreferenceCenterLiveTest do
     %Phoenix.LiveView.Socket{assigns: Map.merge(base, assigns)}
   end
 
+  # Token verification, contact resolution, and the account-path's
+  # find-or-create write all live in handle_params now (mount only does
+  # the enabled?/0 gate) — mirrors the real LiveView lifecycle, where
+  # handle_params always runs right after mount unless mount already
+  # redirected. Every test below drives the callbacks through this same
+  # sequence instead of assuming mount alone resolves `mode`/`contact`/`lists`.
+  defp mount_and_resolve(params, session, socket) do
+    case PreferenceCenterLive.mount(params, session, socket) do
+      {:ok, %{redirected: redirected} = socket} when not is_nil(redirected) ->
+        {:ok, socket}
+
+      {:ok, socket} ->
+        {:noreply, socket} = PreferenceCenterLive.handle_params(params, "/", socket)
+        {:ok, socket}
+    end
+  end
+
   defp create_user do
     {:ok, user} =
       %User{}
@@ -52,13 +69,13 @@ defmodule PhoenixKit.Newsletters.Web.PreferenceCenterLiveTest do
     list
   end
 
-  describe "mount/3 — token access (no login required)" do
+  describe "mount + handle_params — token access (no login required)" do
     test "a valid token loads the named contact's subscribable lists, mode: :token" do
       contact = add_contact()
       list = subscribable_list()
       token = PreferenceToken.sign(contact.uuid)
 
-      {:ok, updated} = PreferenceCenterLive.mount(%{"token" => token}, %{}, socket())
+      {:ok, updated} = mount_and_resolve(%{"token" => token}, %{}, socket())
 
       assert updated.assigns.mode == :token
       assert updated.assigns.contact.uuid == contact.uuid
@@ -69,14 +86,14 @@ defmodule PhoenixKit.Newsletters.Web.PreferenceCenterLiveTest do
       contact = add_contact()
       token = PreferenceToken.sign(contact.uuid)
 
-      {:ok, updated} = PreferenceCenterLive.mount(%{"token" => token}, %{}, socket())
+      {:ok, updated} = mount_and_resolve(%{"token" => token}, %{}, socket())
 
       assert updated.assigns.mode == :token
       refute updated.redirected
     end
 
     test "an invalid/garbage token yields mode: :invalid_token, not a crash" do
-      {:ok, updated} = PreferenceCenterLive.mount(%{"token" => "garbage"}, %{}, socket())
+      {:ok, updated} = mount_and_resolve(%{"token" => "garbage"}, %{}, socket())
 
       assert updated.assigns.mode == :invalid_token
       assert updated.assigns.contact == nil
@@ -85,39 +102,39 @@ defmodule PhoenixKit.Newsletters.Web.PreferenceCenterLiveTest do
     test "a well-formed token naming a nonexistent contact yields mode: :invalid_token — no data leaked" do
       token = PreferenceToken.sign(Ecto.UUID.generate())
 
-      {:ok, updated} = PreferenceCenterLive.mount(%{"token" => token}, %{}, socket())
+      {:ok, updated} = mount_and_resolve(%{"token" => token}, %{}, socket())
 
       assert updated.assigns.mode == :invalid_token
     end
   end
 
-  describe "mount/3 — logged-in account access" do
+  describe "mount + handle_params — logged-in account access" do
     test "lazily creates and links a contact on first visit, then reuses it on a later mount" do
       user = create_user()
       scope = Scope.for_user(user)
 
       {:ok, first} =
-        PreferenceCenterLive.mount(%{}, %{}, socket(%{phoenix_kit_current_scope: scope}))
+        mount_and_resolve(%{}, %{}, socket(%{phoenix_kit_current_scope: scope}))
 
       assert first.assigns.mode == :account
       assert first.assigns.contact.user_uuid == user.uuid
 
       {:ok, second} =
-        PreferenceCenterLive.mount(%{}, %{}, socket(%{phoenix_kit_current_scope: scope}))
+        mount_and_resolve(%{}, %{}, socket(%{phoenix_kit_current_scope: scope}))
 
       assert second.assigns.contact.uuid == first.assigns.contact.uuid
       assert length(Contacts.list_by_email(user.email)) == 1
     end
 
     test "no token and no authenticated scope redirects to login, without crashing" do
-      {:ok, updated} = PreferenceCenterLive.mount(%{}, %{}, socket())
+      {:ok, updated} = mount_and_resolve(%{}, %{}, socket())
 
       assert updated.redirected != nil
     end
 
     test "no token and an explicitly unauthenticated scope also redirects to login" do
       {:ok, updated} =
-        PreferenceCenterLive.mount(
+        mount_and_resolve(
           %{},
           %{},
           socket(%{phoenix_kit_current_scope: %Scope{authenticated?: false}})
@@ -133,7 +150,7 @@ defmodule PhoenixKit.Newsletters.Web.PreferenceCenterLiveTest do
       list = subscribable_list()
 
       {:ok, mounted} =
-        PreferenceCenterLive.mount(
+        mount_and_resolve(
           %{"token" => PreferenceToken.sign(contact.uuid)},
           %{},
           socket()
@@ -161,7 +178,7 @@ defmodule PhoenixKit.Newsletters.Web.PreferenceCenterLiveTest do
       _list = subscribable_list()
 
       {:ok, mounted} =
-        PreferenceCenterLive.mount(
+        mount_and_resolve(
           %{"token" => PreferenceToken.sign(contact.uuid)},
           %{},
           socket()
@@ -184,7 +201,7 @@ defmodule PhoenixKit.Newsletters.Web.PreferenceCenterLiveTest do
       _list = subscribable_list()
 
       {:ok, mounted} =
-        PreferenceCenterLive.mount(
+        mount_and_resolve(
           %{"token" => PreferenceToken.sign(contact.uuid)},
           %{},
           socket()

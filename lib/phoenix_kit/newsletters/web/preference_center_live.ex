@@ -31,32 +31,48 @@ defmodule PhoenixKit.Newsletters.Web.PreferenceCenterLive do
   alias PhoenixKit.Utils.Routes
 
   @impl true
-  def mount(params, _session, socket) do
+  def mount(_params, _session, socket) do
     socket = assign(socket, :page_title, gettext("Email preferences"))
 
-    cond do
-      not Newsletters.enabled?() ->
-        {:ok,
-         socket
-         |> put_flash(:error, gettext("Newsletters module is not enabled"))
-         |> push_navigate(to: Routes.path("/"))}
-
-      not CRMSource.available?() ->
-        {:ok, assign(socket, mode: :unavailable, contact: nil, lists: [])}
-
-      true ->
-        resolve_access(socket, params)
+    if Newsletters.enabled?() do
+      {:ok, assign(socket, mode: :loading, contact: nil, lists: [])}
+    else
+      {:ok,
+       socket
+       |> put_flash(:error, gettext("Newsletters module is not enabled"))
+       |> push_navigate(to: Routes.path("/"))}
     end
   end
+
+  # Token verification, contact resolution, and the account-path's
+  # find-or-create write all belong in handle_params, not mount — mount
+  # runs twice per connection (disconnected HTTP render, then the
+  # connected websocket one), which would double every read here and,
+  # worse, run the account-path's contact-creation INSERT/UPDATE during
+  # the plain disconnected GET. Mirrors BroadcastEditor/BroadcastDetails's
+  # assign_tz/1 pattern in this same package.
+  @impl true
+  def handle_params(params, _url, %{assigns: %{mode: :loading}} = socket) do
+    socket =
+      if CRMSource.available?() do
+        resolve_access(socket, params)
+      else
+        assign(socket, mode: :unavailable, contact: nil, lists: [])
+      end
+
+    {:noreply, socket}
+  end
+
+  def handle_params(_params, _url, socket), do: {:noreply, socket}
 
   # Token entry — works with or without an active login session, exactly
   # so a one-click link from an email never requires a password.
   defp resolve_access(socket, %{"token" => token}) when is_binary(token) and token != "" do
     with {:ok, contact_uuid} <- PreferenceToken.verify(token),
          %{} = contact <- CRMSource.get_contact(contact_uuid) do
-      {:ok, load_lists(socket, :token, contact)}
+      load_lists(socket, :token, contact)
     else
-      _ -> {:ok, assign(socket, mode: :invalid_token, contact: nil, lists: [])}
+      _ -> assign(socket, mode: :invalid_token, contact: nil, lists: [])
     end
   end
 
@@ -71,16 +87,15 @@ defmodule PhoenixKit.Newsletters.Web.PreferenceCenterLive do
       user = Scope.user(scope)
 
       case CRMSource.find_or_link_contact_for_user(%{uuid: user.uuid, email: user.email}) do
-        {:ok, contact} -> {:ok, load_lists(socket, :account, contact)}
-        {:error, _} -> {:ok, assign(socket, mode: :error, contact: nil, lists: [])}
+        {:ok, contact} -> load_lists(socket, :account, contact)
+        {:error, _} -> assign(socket, mode: :error, contact: nil, lists: [])
       end
     else
       return_to = URI.encode_www_form(Routes.path("/newsletters/preferences"))
 
-      {:ok,
-       socket
-       |> put_flash(:error, gettext("Please log in to manage your email subscriptions"))
-       |> push_navigate(to: Routes.path("/phoenix_kit/users/log-in") <> "?return_to=#{return_to}")}
+      socket
+      |> put_flash(:error, gettext("Please log in to manage your email subscriptions"))
+      |> push_navigate(to: Routes.path("/phoenix_kit/users/log-in") <> "?return_to=#{return_to}")
     end
   end
 

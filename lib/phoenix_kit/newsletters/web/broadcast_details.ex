@@ -27,8 +27,6 @@ defmodule PhoenixKit.Newsletters.Web.BroadcastDetails do
   @impl true
   def mount(_params, _session, socket) do
     if Newsletters.enabled?() do
-      tz_offset = Timezone.user_tz_offset(socket)
-
       socket =
         socket
         |> assign(:broadcast_id, nil)
@@ -52,8 +50,6 @@ defmodule PhoenixKit.Newsletters.Web.BroadcastDetails do
         |> assign(:confirm_target, nil)
         |> assign(:confirm_title, "")
         |> assign(:confirm_message, "")
-        |> assign(:tz_offset, tz_offset)
-        |> assign(:tz_label, Timezone.tz_label(tz_offset))
 
       {:ok, socket}
     else
@@ -68,9 +64,22 @@ defmodule PhoenixKit.Newsletters.Web.BroadcastDetails do
   def handle_params(%{"id" => id}, _url, socket) do
     {:noreply,
      socket
+     |> assign_tz()
      |> assign(:broadcast_id, id)
      |> assign(:loading, true)
      |> load_broadcast_data()}
+  end
+
+  # Resolves and assigns the viewer's timezone from handle_params (not
+  # mount, which runs twice per connection — once for the disconnected
+  # render, once for the connected one — doubling this DB read when the
+  # viewer has no personal timezone set). Mirrors BroadcastEditor.assign_tz/1.
+  defp assign_tz(socket) do
+    tz_offset = Timezone.user_tz_offset(socket)
+
+    socket
+    |> assign(:tz_offset, tz_offset)
+    |> assign(:tz_label, Timezone.tz_label(tz_offset))
   end
 
   @impl true
