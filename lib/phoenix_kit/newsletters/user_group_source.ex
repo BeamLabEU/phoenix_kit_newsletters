@@ -77,9 +77,11 @@ defmodule PhoenixKit.Newsletters.UserGroupSource do
   """
   @spec sendable_recipients([String.t()]) :: [%{user_uuid: String.t(), email: String.t()}]
   def sendable_recipients(role_uuids) when is_list(role_uuids) do
-    role_uuids
-    |> users_for_role_uuids()
-    |> Enum.filter(&sendable?/1)
+    users = users_for_role_uuids(role_uuids)
+    contacts_by_user_uuid = batch_contacts_by_user_uuid(users)
+
+    users
+    |> Enum.filter(&sendable?(&1, contacts_by_user_uuid))
     |> Enum.map(&%{user_uuid: &1.uuid, email: &1.email})
     |> Enum.sort_by(& &1.email)
   end
@@ -106,8 +108,9 @@ defmodule PhoenixKit.Newsletters.UserGroupSource do
   def preflight(role_uuids) when is_list(role_uuids) do
     role_uuids = Enum.uniq(role_uuids)
     users = users_for_role_uuids(role_uuids)
+    contacts_by_user_uuid = batch_contacts_by_user_uuid(users)
     total = length(users)
-    sendable = Enum.count(users, &sendable?/1)
+    sendable = Enum.count(users, &sendable?(&1, contacts_by_user_uuid))
     no_email = Enum.count(users, &(&1.email in [nil, ""]))
 
     %{
@@ -206,6 +209,17 @@ defmodule PhoenixKit.Newsletters.UserGroupSource do
     end
   end
 
+  # One query for every user in the batch instead of sendable?/1 (below)
+  # calling CRMSource.get_contact_by_user_uuid/1 per row — sendable_recipients/1
+  # and preflight/1 (the editor recomputes the latter on every role-checkbox
+  # click) would otherwise be an N+1 against the CRM contacts table for any
+  # role set whose users don't already carry the custom_fields opt-out flag
+  # (the common case). The single-user opted_out?/1 below is unrelated —
+  # a lookup for exactly one user has no batch to make.
+  defp batch_contacts_by_user_uuid(users) do
+    users |> Enum.map(& &1.uuid) |> CRMSource.get_contacts_by_user_uuids()
+  end
+
   defp users_for_role_uuids([]), do: []
 
   defp users_for_role_uuids(role_uuids) do
@@ -225,12 +239,23 @@ defmodule PhoenixKit.Newsletters.UserGroupSource do
     |> RepoHelper.repo().aggregate(:count)
   end
 
-  defp sendable?(%User{is_active: false}), do: false
-  defp sendable?(%User{email: email}) when email in [nil, ""], do: false
-  defp sendable?(%User{} = user), do: not opted_out?(user)
+  defp sendable?(%User{is_active: false}, _contacts_by_user_uuid), do: false
+  defp sendable?(%User{email: email}, _contacts_by_user_uuid) when email in [nil, ""], do: false
+
+  defp sendable?(%User{} = user, contacts_by_user_uuid) do
+    not custom_field_opted_out?(user) and
+      not batch_contact_opted_out?(user, contacts_by_user_uuid)
+  end
 
   defp custom_field_opted_out?(%User{custom_fields: fields}) do
     is_map(fields) and not is_nil(Map.get(fields, @opted_out_custom_field))
+  end
+
+  defp batch_contact_opted_out?(%User{uuid: user_uuid}, contacts_by_user_uuid) do
+    case Map.get(contacts_by_user_uuid, user_uuid) do
+      %{opted_out_at: opted_out_at} -> not is_nil(opted_out_at)
+      nil -> false
+    end
   end
 
   defp contact_opted_out?(%User{uuid: user_uuid}) do

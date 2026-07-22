@@ -219,6 +219,31 @@ defmodule PhoenixKit.Newsletters.CRMSource do
   end
 
   @doc """
+  Batch lookup: every CRM contact linked to one of the given core user
+  uuids, as a `%{user_uuid => contact}` map — the batch counterpart to
+  `get_contact_by_user_uuid/1`, for a caller resolving contacts for a
+  whole list of users at once (`UserGroupSource.sendable_recipients/1`/
+  `preflight/1`) instead of issuing one query per user. Empty map if
+  CRM isn't installed or the list is empty; a user uuid with no linked
+  contact is simply absent from the map (mirrors `get_contact_by_user_uuid/1`
+  returning `nil` for the same case).
+  """
+  @spec get_contacts_by_user_uuids([String.t()]) :: %{String.t() => struct()}
+  def get_contacts_by_user_uuids([]), do: %{}
+
+  def get_contacts_by_user_uuids(user_uuids) when is_list(user_uuids) do
+    if available?() do
+      contact = contact_schema()
+
+      from(c in contact, where: c.user_uuid in ^user_uuids)
+      |> repo().all()
+      |> Map.new(&{&1.user_uuid, &1})
+    else
+      %{}
+    end
+  end
+
+  @doc """
   The membership (any status) currently holding `email` in the CRM list —
   used to resolve a delivery's `recipient_email` back to a `contact_uuid`
   for the unsubscribe token, and to detect an already-unsubscribed click
