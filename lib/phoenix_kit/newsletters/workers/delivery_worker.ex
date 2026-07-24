@@ -33,6 +33,8 @@ defmodule PhoenixKit.Newsletters.Workers.DeliveryWorker do
   alias PhoenixKit.Email.ProviderOptions
   alias PhoenixKit.Email.SendProfile
   alias PhoenixKit.Email.SendProfiles
+  alias PhoenixKit.Modules.Storage
+  alias PhoenixKit.Modules.Storage.Manager, as: StorageManager
   alias PhoenixKit.Newsletters
   alias PhoenixKit.Newsletters.Broadcast
   alias PhoenixKit.Newsletters.CRMSource
@@ -50,6 +52,11 @@ defmodule PhoenixKit.Newsletters.Workers.DeliveryWorker do
     with {:ok, delivery} <- get_delivery(delivery_uuid),
          {:ok, delivery} <- guard_unsent(delivery),
          {:ok, broadcast} <- get_broadcast(broadcast_uuid),
+         # Resolved once per job (not once per send-path branch below) —
+         # both the profile-routed and legacy send paths share this same
+         # list. See resolve_attachments/1's doc for the per-file skip
+         # behavior.
+         attachments = resolve_attachments(broadcast),
          {:ok, recipient} <- get_recipient(delivery),
          {unsubscribe_url, list_unsubscribe_url} = build_unsubscribe_url(recipient, broadcast),
          preferences_url = build_preferences_url(recipient, broadcast),
@@ -62,7 +69,8 @@ defmodule PhoenixKit.Newsletters.Workers.DeliveryWorker do
              html_body,
              text_body,
              unsubscribe_url,
-             list_unsubscribe_url
+             list_unsubscribe_url,
+             attachments
            ) do
       message_id = extract_message_id(result)
 
@@ -383,7 +391,8 @@ defmodule PhoenixKit.Newsletters.Workers.DeliveryWorker do
          html_body,
          text_body,
          unsubscribe_url,
-         list_unsubscribe_url
+         list_unsubscribe_url,
+         attachments
        ) do
     case resolve_send_profile(broadcast) do
       nil ->
@@ -393,7 +402,8 @@ defmodule PhoenixKit.Newsletters.Workers.DeliveryWorker do
           html_body,
           text_body,
           unsubscribe_url,
-          list_unsubscribe_url
+          list_unsubscribe_url,
+          attachments
         )
 
       profile ->
@@ -404,9 +414,96 @@ defmodule PhoenixKit.Newsletters.Workers.DeliveryWorker do
           html_body,
           text_body,
           unsubscribe_url,
-          list_unsubscribe_url
+          list_unsubscribe_url,
+          attachments
         )
     end
+  end
+
+  @doc false
+  # Resolves every attachment file uuid on the broadcast to a
+  # `%Swoosh.Attachment{}`, once per delivery job — both send paths
+  # (profile-routed and legacy) share this single result instead of each
+  # independently re-resolving. A file that can't be read (deleted row,
+  # missing "original" variant, object unreachable on every configured
+  # bucket) is logged and dropped rather than failing the whole send: a
+  # broadcast with 9 good attachments and 1 broken one must still reach
+  # every recipient with the 9. Not `defp` so the skip behavior is
+  # unit-testable directly — same rationale as `resolve_send_profile/1`.
+  def resolve_attachments(%Broadcast{attachments: uuids}) when is_list(uuids) and uuids != [] do
+    uuids
+    |> Enum.map(&build_attachment/1)
+    |> Enum.flat_map(fn
+      {:ok, attachment} ->
+        [attachment]
+
+      {:error, reason, file_uuid} ->
+        Logger.warning(
+          "DeliveryWorker: skipping unreadable attachment #{file_uuid}: #{inspect(reason)}"
+        )
+
+        []
+    end)
+  end
+
+  def resolve_attachments(%Broadcast{}), do: []
+
+  @doc false
+  # Downloads the file's "original" variant to a temp path (transparently
+  # local-disk or a remote bucket — StorageManager.retrieve_file/2 hides
+  # that distinction) and reads it into memory as a
+  # `%Swoosh.Attachment{data: binary}`, not a `path:` reference — the temp
+  # file is removed immediately after, so nothing downstream holds a
+  # dangling path. Not `defp` — same rationale as `resolve_send_profile/1`.
+  def build_attachment(file_uuid) do
+    case Storage.get_file(file_uuid) do
+      nil -> {:error, :file_not_found, file_uuid}
+      file -> build_attachment(file, file_uuid)
+    end
+  end
+
+  defp build_attachment(file, file_uuid) do
+    case Storage.get_file_instance_by_name(file_uuid, "original") do
+      nil -> {:error, :instance_not_found, file_uuid}
+      instance -> download_and_read_attachment(file, instance, file_uuid)
+    end
+  end
+
+  defp download_and_read_attachment(file, instance, file_uuid) do
+    temp_path = attachment_temp_path(instance.uuid)
+
+    result =
+      with {:ok, _} <- StorageManager.retrieve_file(instance.file_name, destination_path: temp_path),
+           {:ok, data} <- File.read(temp_path) do
+        {:ok,
+         Swoosh.Attachment.new({:data, data},
+           filename: file.original_file_name,
+           content_type: instance.mime_type,
+           type: :attachment
+         )}
+      else
+        {:error, reason} -> {:error, reason, file_uuid}
+      end
+
+    # Best-effort cleanup regardless of which branch above ran — a failed
+    # File.read after a successful retrieve would otherwise leak the temp
+    # file; a failed retrieve never created one, so this is a harmless no-op.
+    File.rm(temp_path)
+
+    result
+  end
+
+  defp attachment_temp_path(instance_uuid) do
+    Path.join(
+      System.tmp_dir!(),
+      "phoenix_kit_newsletters_attach_#{instance_uuid}_#{:rand.uniform(1_000_000)}"
+    )
+  end
+
+  defp maybe_put_attachments(email, []), do: email
+
+  defp maybe_put_attachments(email, attachments) do
+    Enum.reduce(attachments, email, &Swoosh.Email.attachment(&2, &1))
   end
 
   @doc false
@@ -443,7 +540,8 @@ defmodule PhoenixKit.Newsletters.Workers.DeliveryWorker do
          html_body,
          text_body,
          _unsubscribe_url,
-         list_unsubscribe_url
+         list_unsubscribe_url,
+         attachments
        ) do
     from_email = PhoenixKit.Settings.get_setting("from_email", "noreply@example.com")
     from_name = PhoenixKit.Settings.get_setting("from_name", "Newsletter")
@@ -455,6 +553,7 @@ defmodule PhoenixKit.Newsletters.Workers.DeliveryWorker do
     |> Swoosh.Email.html_body(html_body)
     |> Swoosh.Email.text_body(text_body)
     |> maybe_put_list_unsubscribe_headers(broadcast, list_unsubscribe_url)
+    |> maybe_put_attachments(attachments)
     |> PhoenixKit.Mailer.deliver_email()
   end
 
@@ -465,11 +564,13 @@ defmodule PhoenixKit.Newsletters.Workers.DeliveryWorker do
          html_body,
          text_body,
          _unsubscribe_url,
-         list_unsubscribe_url
+         list_unsubscribe_url,
+         attachments
        ) do
     profile
     |> build_profile_email(broadcast, recipient, html_body, text_body)
     |> maybe_put_list_unsubscribe_headers(broadcast, list_unsubscribe_url)
+    |> maybe_put_attachments(attachments)
     |> PhoenixKit.Mailer.deliver_via_integration(profile.integration_uuid)
   end
 
