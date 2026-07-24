@@ -13,12 +13,14 @@ defmodule PhoenixKit.Newsletters.Web.BroadcastDetails do
 
   import PhoenixKit.Newsletters.Web.Timezone, only: [format_datetime: 2]
 
+  alias PhoenixKit.Modules.Storage
   alias PhoenixKit.Newsletters
   alias PhoenixKit.Newsletters.Broadcast
   alias PhoenixKit.Newsletters.CRMSource
   alias PhoenixKit.Newsletters.UserGroupSource
   alias PhoenixKit.Newsletters.Web.Timezone
   alias PhoenixKit.Settings
+  alias PhoenixKit.Utils.Format
   alias PhoenixKit.Utils.Routes
 
   # Optional soft dependency — use module atom to avoid compile-time warnings
@@ -44,6 +46,7 @@ defmodule PhoenixKit.Newsletters.Web.BroadcastDetails do
         |> assign(:crm_list, nil)
         |> assign(:crm_preflight, nil)
         |> assign(:user_group_preflight, nil)
+        |> assign(:attachment_files, [])
         |> assign(:loading, true)
         |> assign(:show_confirm_modal, false)
         |> assign(:confirm_action, nil)
@@ -150,6 +153,7 @@ defmodule PhoenixKit.Newsletters.Web.BroadcastDetails do
       |> assign(:crm_list, CRMSource.get_list(broadcast.crm_list_uuid))
       |> assign(:crm_preflight, crm_preflight(broadcast))
       |> assign(:user_group_preflight, user_group_preflight(broadcast))
+      |> assign(:attachment_files, load_attachment_files(broadcast.attachments))
       |> assign(:loading, false)
       |> assign(:page_title, broadcast.subject)
     rescue
@@ -233,6 +237,15 @@ defmodule PhoenixKit.Newsletters.Web.BroadcastDetails do
   def recipient_display(%{user: %{email: email}}), do: email
   def recipient_display(%{recipient_email: email}) when is_binary(email), do: email
   def recipient_display(%{user_uuid: user_uuid}), do: user_uuid
+
+  # `Broadcast.attachments` is a plain uuid list — resolved here to
+  # `%Storage.File{}` structs for the read-only chip list's filename/size,
+  # in the same order the broadcast will send them in. Mirrors
+  # BroadcastEditor.load_attachment_files/1.
+  defp load_attachment_files([]), do: []
+  defp load_attachment_files(uuids), do: Storage.get_files(uuids)
+
+  defp format_file_size(bytes), do: Format.bytes(bytes, decimals: 1, unknown: "0 B")
 
   defp stat_value(stats, key) do
     Map.get(stats, key, 0)
