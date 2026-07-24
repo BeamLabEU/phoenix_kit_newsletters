@@ -45,6 +45,7 @@ defmodule PhoenixKit.Newsletters.Web.BroadcastEditor do
         |> assign(:role_uuids, [])
         |> assign(:preflight, nil)
         |> assign(:crm_list_archived?, false)
+        |> assign(:stranded_crm_list, nil)
         |> assign(:template_uuid, "")
         |> assign(:markdown_content, "")
         |> assign(:preview_html, "")
@@ -289,6 +290,7 @@ defmodule PhoenixKit.Newsletters.Web.BroadcastEditor do
     socket
     |> assign(:preflight, CRMSource.preflight(crm_list_uuid))
     |> assign(:crm_list_archived?, crm_list_archived?(crm_list_uuid))
+    |> assign(:stranded_crm_list, stranded_crm_list(crm_list_uuid, socket.assigns.crm_lists))
   end
 
   defp assign_preflight(%{assigns: %{source_type: "user_group", role_uuids: role_uuids}} = socket)
@@ -296,18 +298,33 @@ defmodule PhoenixKit.Newsletters.Web.BroadcastEditor do
     socket
     |> assign(:preflight, UserGroupSource.preflight(role_uuids))
     |> assign(:crm_list_archived?, false)
+    |> assign(:stranded_crm_list, nil)
   end
 
   defp assign_preflight(socket) do
     socket
     |> assign(:preflight, nil)
     |> assign(:crm_list_archived?, false)
+    |> assign(:stranded_crm_list, nil)
   end
 
   defp crm_list_archived?(crm_list_uuid) do
     case CRMSource.get_list(crm_list_uuid) do
       %{status: status} -> status != "active"
       nil -> false
+    end
+  end
+
+  # The currently selected list when it is absent from the picker's
+  # options (archived, or subscribable turned off after this broadcast
+  # picked it). Rendered as a disabled <option selected> — without that
+  # the browser falls back to the placeholder and the next save silently
+  # resets crm_list_uuid.
+  defp stranded_crm_list(crm_list_uuid, crm_lists) do
+    if Enum.any?(crm_lists, &(&1.uuid == crm_list_uuid)) do
+      nil
+    else
+      CRMSource.get_list(crm_list_uuid)
     end
   end
 

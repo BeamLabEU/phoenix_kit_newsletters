@@ -18,6 +18,8 @@ defmodule PhoenixKit.Newsletters.Web.BroadcastEditorTest do
       subject: "",
       source_type: "crm_list",
       crm_list_uuid: "",
+      crm_lists: [],
+      stranded_crm_list: nil,
       template_uuid: "",
       scheduled_at: "",
       markdown_content: "",

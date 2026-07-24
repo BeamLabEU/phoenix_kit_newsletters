@@ -62,6 +62,20 @@
           <label class="select w-full">
             <select name="crm_list_uuid">
               <option value="">{gettext("Select a list...")}</option>
+              <%!-- A current selection that fell out of the picker's options
+                   (archived, or no longer subscribable) must stay visible as
+                   a disabled option: without it the browser falls back to the
+                   placeholder and the next save silently resets
+                   crm_list_uuid — the operator never learns the broadcast
+                   lost its audience. --%>
+              <option
+                :if={@stranded_crm_list}
+                value={@stranded_crm_list.uuid}
+                selected
+                disabled
+              >
+                {gettext("%{name} (no longer selectable)", name: @stranded_crm_list.name)}
+              </option>
               <option
                 :for={list <- @crm_lists}
                 value={list.uuid}
