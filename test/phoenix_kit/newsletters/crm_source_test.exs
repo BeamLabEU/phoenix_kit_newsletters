@@ -373,4 +373,36 @@ defmodule PhoenixKit.Newsletters.CRMSourceTest do
              ) == 1
     end
   end
+
+  describe "list_lists/0 — picker offers only subscribable lists" do
+    test "a subscribable list appears, a non-subscribable one does not" do
+      {:ok, sub} =
+        Lists.create_list(%{
+          name: "Mailing #{System.unique_integer([:positive])}",
+          subscribable: true
+        })
+
+      {:ok, ops} =
+        Lists.create_list(%{
+          name: "Suppliers #{System.unique_integer([:positive])}",
+          subscribable: false
+        })
+
+      uuids = CRMSource.list_lists() |> Enum.map(& &1.uuid)
+
+      assert sub.uuid in uuids
+      refute ops.uuid in uuids
+    end
+
+    test "a non-subscribable list still resolves via get_list/1 (existing broadcasts keep working)" do
+      {:ok, ops} =
+        Lists.create_list(%{
+          name: "Ops list #{System.unique_integer([:positive])}",
+          subscribable: false
+        })
+
+      assert %{uuid: uuid} = CRMSource.get_list(ops.uuid)
+      assert uuid == ops.uuid
+    end
+  end
 end
