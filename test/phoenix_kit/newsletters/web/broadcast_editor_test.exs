@@ -28,6 +28,7 @@ defmodule PhoenixKit.Newsletters.Web.BroadcastEditorTest do
       crm_list_archived?: false,
       broadcast: nil,
       saving: false,
+      attachments: [],
       tz_offset: "0",
       tz_label: "UTC+0",
       flash: %{},

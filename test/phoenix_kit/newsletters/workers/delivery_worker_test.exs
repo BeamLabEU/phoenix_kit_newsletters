@@ -22,6 +22,8 @@ defmodule PhoenixKit.Newsletters.Workers.DeliveryWorkerTest do
 
   alias PhoenixKit.Email.SendProfiles
   alias PhoenixKit.Integrations
+  alias PhoenixKit.Modules.Storage
+  alias PhoenixKit.Modules.Storage.Manager, as: StorageManager
   alias PhoenixKit.Newsletters
   alias PhoenixKit.Newsletters.Broadcast
   alias PhoenixKit.Newsletters.Delivery
@@ -77,6 +79,91 @@ defmodule PhoenixKit.Newsletters.Workers.DeliveryWorkerTest do
       |> Repo.insert()
 
     delivery
+  end
+
+  # A real, readable file: a local-provider bucket backed by a temp dir,
+  # actual bytes written through Manager.store_file/2, and matching
+  # File/FileInstance rows — StorageManager.retrieve_file/2 (what
+  # DeliveryWorker.build_attachment/1 calls) genuinely finds and copies
+  # these bytes, no mocking. Manager.retrieve_file/2 tries every enabled
+  # bucket by priority, not one tied to a specific file, so a single
+  # enabled local bucket is enough regardless of which fixture created it.
+  defp create_local_bucket! do
+    {:ok, bucket} =
+      Storage.create_bucket(%{
+        name: "Test bucket #{System.unique_integer([:positive])}",
+        provider: "local",
+        endpoint:
+          Path.join(System.tmp_dir!(), "nl_attach_bucket_#{System.unique_integer([:positive])}"),
+        enabled: true,
+        priority: 0
+      })
+
+    # StorageManager.get_enabled_buckets/0 (private) caches the enabled-bucket
+    # list in :persistent_term for 5 minutes — a genuine process-global cache,
+    # not scoped to the Ecto sandbox transaction. Without erasing it here, a
+    # bucket created by an EARLIER test (already rolled back) can still be
+    # "seen" by a later test's retrieve_file/2 call, or this test's own
+    # brand-new bucket can be invisible until the cache expires. Test-only
+    # workaround — doesn't touch core, doesn't affect production behavior.
+    :persistent_term.erase(:phoenix_kit_buckets_cache)
+
+    bucket
+  end
+
+  defp create_attachment_file!(opts) do
+    bytes = Keyword.get(opts, :bytes, "hello attachment")
+    filename = Keyword.get(opts, :filename, "report.txt")
+    bucket = create_local_bucket!()
+
+    source_path =
+      Path.join(System.tmp_dir!(), "nl_attach_src_#{System.unique_integer([:positive])}.txt")
+
+    File.write!(source_path, bytes)
+
+    path_prefix = "test/attachments/#{Ecto.UUID.generate()}.txt"
+
+    # Forces this exact fixture's bucket rather than letting store_file/2
+    # auto-select among every currently-enabled priority-0 bucket (which,
+    # if any other bucket happens to be enabled — e.g. a real default
+    # bucket seeded outside this test's own transaction — could otherwise
+    # write to a DIFFERENT bucket than the one this test's retrieve calls
+    # will look in, and could land bytes under the repo's own priv/media/
+    # instead of the intended temp dir).
+    {:ok, %{destination_path: stored_path}} =
+      StorageManager.store_file(source_path,
+        path_prefix: path_prefix,
+        priority_buckets: [bucket.uuid]
+      )
+
+    File.rm(source_path)
+
+    {:ok, file} =
+      Storage.create_file(%{
+        original_file_name: filename,
+        file_name: filename,
+        mime_type: "text/plain",
+        file_type: "document",
+        ext: "txt",
+        file_checksum: "sha256:test-#{System.unique_integer([:positive])}",
+        user_file_checksum: "user-sha256:test-#{System.unique_integer([:positive])}",
+        size: byte_size(bytes),
+        status: "active",
+        user_uuid: create_user().uuid
+      })
+
+    {:ok, _instance} =
+      Storage.create_file_instance(%{
+        file_uuid: file.uuid,
+        variant_name: "original",
+        file_name: stored_path,
+        mime_type: "text/plain",
+        ext: "txt",
+        checksum: "sha256:test-instance-#{System.unique_integer([:positive])}",
+        size: byte_size(bytes)
+      })
+
+    file
   end
 
   describe "resolve_send_profile/1" do
@@ -187,6 +274,116 @@ defmodule PhoenixKit.Newsletters.Workers.DeliveryWorkerTest do
         to: user.email,
         subject: "Legacy send"
       )
+    end
+  end
+
+  describe "build_attachment/1" do
+    test "reads a real stored file into a Swoosh.Attachment" do
+      file = create_attachment_file!(bytes: "the actual file bytes", filename: "invoice.txt")
+
+      assert {:ok, attachment} = DeliveryWorker.build_attachment(file.uuid)
+      assert %Swoosh.Attachment{} = attachment
+      assert attachment.filename == "invoice.txt"
+      assert attachment.content_type == "text/plain"
+      assert attachment.data == "the actual file bytes"
+      assert attachment.type == :attachment
+    end
+
+    test "returns an error tuple (not a crash) for a uuid that doesn't resolve to a file" do
+      missing_uuid = Ecto.UUID.generate()
+
+      assert {:error, :file_not_found, ^missing_uuid} =
+               DeliveryWorker.build_attachment(missing_uuid)
+    end
+  end
+
+  describe "resolve_attachments/1" do
+    test "is [] for a broadcast with no attachments" do
+      assert DeliveryWorker.resolve_attachments(%Broadcast{attachments: []}) == []
+    end
+
+    test "resolves every good uuid and silently drops an unreadable one" do
+      good = create_attachment_file!(filename: "good.txt")
+      missing_uuid = Ecto.UUID.generate()
+
+      broadcast = %Broadcast{attachments: [good.uuid, missing_uuid]}
+      resolved = DeliveryWorker.resolve_attachments(broadcast)
+
+      assert [%Swoosh.Attachment{filename: "good.txt"}] = resolved
+    end
+  end
+
+  describe "perform/1 — attachments" do
+    setup :set_swoosh_global
+
+    test "attachments reach the sent email" do
+      file = create_attachment_file!(bytes: "attached bytes", filename: "flyer.txt")
+      user = create_user()
+
+      broadcast =
+        create_broadcast(%{
+          subject: "With attachment",
+          html_body: "<p>Hi</p>",
+          text_body: "Hi",
+          attachments: [file.uuid]
+        })
+
+      delivery = create_delivery(broadcast, user)
+
+      job = %Oban.Job{
+        args: %{"delivery_uuid" => delivery.uuid, "broadcast_uuid" => broadcast.uuid}
+      }
+
+      assert :ok = DeliveryWorker.perform(job)
+      assert Repo.get(Delivery, delivery.uuid).status == "sent"
+
+      assert_email_sent(fn email ->
+        assert [%Swoosh.Attachment{filename: "flyer.txt", data: "attached bytes"}] =
+                 email.attachments
+      end)
+    end
+
+    test "an unreadable attachment is skipped — the send still succeeds with the rest" do
+      good = create_attachment_file!(filename: "good.txt")
+      missing_uuid = Ecto.UUID.generate()
+      user = create_user()
+
+      broadcast =
+        create_broadcast(%{
+          subject: "Partial attachments",
+          html_body: "<p>Hi</p>",
+          text_body: "Hi",
+          attachments: [good.uuid, missing_uuid]
+        })
+
+      delivery = create_delivery(broadcast, user)
+
+      job = %Oban.Job{
+        args: %{"delivery_uuid" => delivery.uuid, "broadcast_uuid" => broadcast.uuid}
+      }
+
+      assert :ok = DeliveryWorker.perform(job)
+      assert Repo.get(Delivery, delivery.uuid).status == "sent"
+
+      assert_email_sent(fn email ->
+        assert [%Swoosh.Attachment{filename: "good.txt"}] = email.attachments
+      end)
+    end
+
+    test "no attachments on the broadcast — the email has none" do
+      user = create_user()
+
+      broadcast =
+        create_broadcast(%{subject: "No attachments", html_body: "<p>Hi</p>", text_body: "Hi"})
+
+      delivery = create_delivery(broadcast, user)
+
+      job = %Oban.Job{
+        args: %{"delivery_uuid" => delivery.uuid, "broadcast_uuid" => broadcast.uuid}
+      }
+
+      assert :ok = DeliveryWorker.perform(job)
+      assert_email_sent(fn email -> assert email.attachments == [] end)
     end
   end
 

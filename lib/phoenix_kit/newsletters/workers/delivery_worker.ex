@@ -473,7 +473,8 @@ defmodule PhoenixKit.Newsletters.Workers.DeliveryWorker do
     temp_path = attachment_temp_path(instance.uuid)
 
     result =
-      with {:ok, _} <- StorageManager.retrieve_file(instance.file_name, destination_path: temp_path),
+      with {:ok, _} <-
+             StorageManager.retrieve_file(instance.file_name, destination_path: temp_path),
            {:ok, data} <- File.read(temp_path) do
         {:ok,
          Swoosh.Attachment.new({:data, data},
