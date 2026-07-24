@@ -28,7 +28,7 @@ defmodule PhoenixKit.Newsletters.Web.BroadcastDetailsTest do
   # set. See BroadcastEditor's assign_tz/1 for the same pattern.
   test "handle_params resolves tz_offset from the viewer's profile timezone" do
     user = %User{user_timezone: "3"}
-    broadcast = create_user_group_broadcast(["some-uuid"], ["Marketing"])
+    broadcast = create_user_group_broadcast([Ecto.UUID.generate()], ["Marketing"])
 
     {:noreply, updated} =
       BroadcastDetails.handle_params(%{"id" => broadcast.uuid}, "/", socket_with_user(user))
@@ -39,7 +39,7 @@ defmodule PhoenixKit.Newsletters.Web.BroadcastDetailsTest do
   test "handle_params falls back to the system time_zone setting when no personal timezone is set" do
     Settings.update_setting("time_zone", "-5")
     user = %User{user_timezone: nil}
-    broadcast = create_user_group_broadcast(["some-uuid"], ["Marketing"])
+    broadcast = create_user_group_broadcast([Ecto.UUID.generate()], ["Marketing"])
 
     {:noreply, updated} =
       BroadcastDetails.handle_params(%{"id" => broadcast.uuid}, "/", socket_with_user(user))
@@ -48,7 +48,7 @@ defmodule PhoenixKit.Newsletters.Web.BroadcastDetailsTest do
   end
 
   test "handle_params falls back to UTC when there's no viewer at all" do
-    broadcast = create_user_group_broadcast(["some-uuid"], ["Marketing"])
+    broadcast = create_user_group_broadcast([Ecto.UUID.generate()], ["Marketing"])
 
     {:noreply, updated} =
       BroadcastDetails.handle_params(%{"id" => broadcast.uuid}, "/", socket())
@@ -104,7 +104,7 @@ defmodule PhoenixKit.Newsletters.Web.BroadcastDetailsTest do
 
   describe "role_names_snapshot/1" do
     test "delegates to Broadcast.role_names_snapshot/1" do
-      broadcast = create_user_group_broadcast(["some-uuid"], ["Marketing", "Sales"])
+      broadcast = create_user_group_broadcast([Ecto.UUID.generate()], ["Marketing", "Sales"])
       assert BroadcastDetails.role_names_snapshot(broadcast) == ["Marketing", "Sales"]
     end
   end

@@ -64,7 +64,7 @@ defmodule PhoenixKit.Newsletters.Workers.DeliveryWorker do
              unsubscribe_url,
              list_unsubscribe_url
            ) do
-      message_id = Map.get(result, :id)
+      message_id = extract_message_id(result)
 
       update_delivery_result(
         delivery,
@@ -183,12 +183,28 @@ defmodule PhoenixKit.Newsletters.Workers.DeliveryWorker do
 
   defp render_email(broadcast, recipient, unsubscribe_url, preferences_url) do
     variables = build_variables(recipient, unsubscribe_url, preferences_url)
-    html = substitute_variables(broadcast.html_body || "", variables)
+
+    html = compose_html(broadcast.html_body || "", template_html(broadcast), variables)
     text = substitute_variables(broadcast.text_body || "", variables)
 
-    html = maybe_apply_template(html, broadcast)
-
     {:ok, html, text}
+  end
+
+  @doc false
+  # Template first, variables second — the {{content}} wrapper template
+  # carries its own variables (an {{unsubscribe_url}} footer link being
+  # the load-bearing one), and substituting before wrapping left every
+  # template-side tag as a literal in the sent email. The body's own tags
+  # still resolve identically: they're part of the wrapped whole. Pure and
+  # public (@doc false) so the ordering is unit-testable without the
+  # optional Emails.Template dependency being loadable in this package's
+  # own test env — same rationale as `extract_message_id/1` below.
+  def compose_html(body_html, nil, variables), do: substitute_variables(body_html, variables)
+
+  def compose_html(body_html, wrapper_html, variables) when is_binary(wrapper_html) do
+    wrapper_html
+    |> String.replace("{{content}}", body_html)
+    |> substitute_variables(variables)
   end
 
   defp build_variables(recipient, unsubscribe_url, preferences_url) do
@@ -297,27 +313,48 @@ defmodule PhoenixKit.Newsletters.Workers.DeliveryWorker do
     end)
   end
 
-  defp maybe_apply_template(content, %{template_uuid: nil}), do: content
+  # The broadcast's wrapper template html, or nil when there is no
+  # template, the row is gone, or the optional Emails.Template dependency
+  # isn't loaded. Fetch only — wrapping happens in compose_html/3.
+  defp template_html(%{template_uuid: nil}), do: nil
 
-  defp maybe_apply_template(content, %{template_uuid: template_uuid}) do
-    # Guard: Emails.Template is an optional dependency
+  defp template_html(%{template_uuid: template_uuid}) do
     if Code.ensure_loaded?(PhoenixKit.Modules.Emails.Template) do
-      apply_email_template(content, template_uuid)
+      case repo().get(@email_template_mod, template_uuid) do
+        nil -> nil
+        tmpl -> soft_call(@email_template_mod, :get_translation, [tmpl.html_body, "en"])
+      end
     else
-      content
+      nil
     end
   end
 
-  defp apply_email_template(content, template_uuid) do
-    case repo().get(@email_template_mod, template_uuid) do
-      nil ->
-        content
+  @doc false
+  # What `{:ok, result}` looks like depends on the Swoosh adapter behind
+  # the resolved integration: the API adapters (AmazonSES, Brevo) return a
+  # map with `:id`, but `Swoosh.Adapters.SMTP` returns the raw server
+  # receipt STRING — e.g. `"2.0.0 OK: queued as <abc@host>\r\n"`. This used
+  # to be `Map.get(result, :id)`, which raised `BadMapError` on that string
+  # AFTER the SMTP server had already accepted the message — so Oban
+  # retried the whole job and the recipient got the same email up to
+  # max_attempts times, while the delivery row stayed `pending` forever
+  # (and with no message_id captured, provider status events could never
+  # be matched back). This function must NEVER raise: a send that reached
+  # the provider is a success, and the worst acceptable outcome for an
+  # unrecognized receipt shape is a nil message_id (status tracking
+  # degrades; re-sending does not happen).
+  # Not `defp` so the receipt shapes can be unit-tested directly — same
+  # rationale as `resolve_send_profile/1` above.
+  def extract_message_id(result) when is_map(result), do: Map.get(result, :id)
 
-      tmpl ->
-        html = soft_call(@email_template_mod, :get_translation, [tmpl.html_body, "en"])
-        String.replace(html, "{{content}}", content)
+  def extract_message_id(result) when is_binary(result) do
+    case Regex.run(~r/queued as\s+<?([^>\s\r\n]+)>?/i, result) do
+      [_, id] -> id
+      _ -> nil
     end
   end
+
+  def extract_message_id(_result), do: nil
 
   defp send_email(
          broadcast,

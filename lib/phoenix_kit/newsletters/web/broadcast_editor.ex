@@ -135,6 +135,24 @@ defmodule PhoenixKit.Newsletters.Web.BroadcastEditor do
      |> assign_preflight()}
   end
 
+  # Single submit entry point, branched on the submitter button's
+  # name="action" value (LiveView includes the submitter's name/value in
+  # phx-submit params). All three actions used to be separate events, with
+  # Send now / Schedule as `type="button"` + phx-click — but a phx-click
+  # event carries NO form data, so `update_assigns_from_params/2` saw an
+  # empty map and `resolve_role_uuids/2` (deliberately params-authoritative
+  # for checkbox semantics) wiped the selected roles to `[]`, failing every
+  # user_group send with "select at least one role". Routing all three
+  # through form submit means every action gets the full serialized form.
+  @impl true
+  def handle_event("submit", params, socket) do
+    case params["action"] do
+      "send_now" -> handle_event("send_now", params, socket)
+      "schedule" -> handle_event("schedule", params, socket)
+      _ -> handle_event("save_draft", params, socket)
+    end
+  end
+
   @impl true
   def handle_event("save_draft", params, socket) do
     socket = update_assigns_from_params(socket, params)

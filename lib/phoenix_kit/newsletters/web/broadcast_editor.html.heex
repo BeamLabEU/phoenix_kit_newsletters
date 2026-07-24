@@ -9,7 +9,7 @@
   project_title={@project_title}
 >
 <div class="container flex-col mx-auto px-4 py-6">
-  <form id="broadcast-form" phx-change="validate" phx-submit="save_draft">
+  <form id="broadcast-form" phx-change="validate" phx-submit="submit">
     <div class="grid grid-cols-1 xl:grid-cols-2 gap-6">
       <%!-- Left: Editor --%>
       <div class="space-y-4">
@@ -168,16 +168,27 @@
           <.pk_link navigate="/admin/newsletters/broadcasts" class="btn btn-ghost btn-sm">
             {gettext("Cancel")}
           </.pk_link>
-          <button type="submit" class="btn btn-outline btn-sm" disabled={@saving}>
+          <button
+            type="submit"
+            name="action"
+            value="save_draft"
+            class="btn btn-outline btn-sm"
+            disabled={@saving}
+          >
             <%= if @saving do %>
               <span class="loading loading-spinner loading-xs"></span>
             <% end %>
             {gettext("Save draft")}
           </button>
 
+          <%!-- Submit (not phx-click) buttons, branched by name="action":
+               a phx-click event carries no form data, which used to wipe
+               the role checkboxes on send/schedule — see the "submit"
+               handler's comment. --%>
           <button
-            type="button"
-            phx-click="send_now"
+            type="submit"
+            name="action"
+            value="send_now"
             class="btn btn-primary btn-sm"
             disabled={@saving or @subject == "" or recipient_source_missing?(assigns)}
           >
@@ -193,8 +204,9 @@
                 class="input input-sm"
               />
               <button
-                type="button"
-                phx-click="schedule"
+                type="submit"
+                name="action"
+                value="schedule"
                 class="btn btn-secondary btn-sm"
                 disabled={
                   @saving or @scheduled_at == "" or @subject == "" or

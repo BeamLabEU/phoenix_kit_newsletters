@@ -190,6 +190,29 @@ defmodule PhoenixKit.Newsletters.Workers.DeliveryWorkerTest do
     end
   end
 
+  describe "compose_html/3 — {{content}} wrapper ordering" do
+    test "body lands inside the wrapper and template-side variables resolve" do
+      wrapper =
+        ~s(<div class="wrap">{{content}}<footer><a href="{{unsubscribe_url}}">Unsubscribe</a></footer></div>)
+
+      vars = %{"name" => "Ada", "unsubscribe_url" => "https://x/unsub?t=1"}
+
+      html = DeliveryWorker.compose_html("<p>Hello {{name}}</p>", wrapper, vars)
+
+      # The regression this pins: substitution used to run BEFORE the
+      # wrap, leaving every template-side tag a literal in the sent mail.
+      assert html =~ ~s(<div class="wrap"><p>Hello Ada</p>)
+      assert html =~ ~s(href="https://x/unsub?t=1")
+      refute html =~ "{{content}}"
+      refute html =~ "{{unsubscribe_url}}"
+      refute html =~ "{{name}}"
+    end
+
+    test "no wrapper (nil) — body variables still resolve" do
+      assert DeliveryWorker.compose_html("Hi {{name}}", nil, %{"name" => "Ada"}) == "Hi Ada"
+    end
+  end
+
   describe "perform/1 — recipient_email path (Stage 4, CRM-sourced delivery)" do
     setup :set_swoosh_global
 
@@ -676,6 +699,32 @@ defmodule PhoenixKit.Newsletters.Workers.DeliveryWorkerTest do
 
       assert updated_delivery.status == "sent"
       assert updated_broadcast.sent_count == 1
+    end
+  end
+
+  describe "extract_message_id/1 — per-adapter {:ok, result} shapes" do
+    test "API-adapter map (AmazonSES/Brevo) yields its :id" do
+      assert DeliveryWorker.extract_message_id(%{id: "abc-123"}) == "abc-123"
+    end
+
+    test "SMTP receipt string with angle brackets yields the enclosed id" do
+      receipt = "2.0.0 OK: queued as <f6c3a644@e75f4d56dc25>\r\n"
+      assert DeliveryWorker.extract_message_id(receipt) == "f6c3a644@e75f4d56dc25"
+    end
+
+    test "SMTP receipt string without angle brackets still yields the id" do
+      assert DeliveryWorker.extract_message_id("250 2.0.0 Ok: queued as ABC123XYZ") ==
+               "ABC123XYZ"
+    end
+
+    test "an unrecognized string is nil, never a crash" do
+      assert DeliveryWorker.extract_message_id("250 OK") == nil
+    end
+
+    test "a map without :id and non-map/non-binary shapes are nil" do
+      assert DeliveryWorker.extract_message_id(%{"MessageId" => "x"}) == nil
+      assert DeliveryWorker.extract_message_id(:ok) == nil
+      assert DeliveryWorker.extract_message_id(nil) == nil
     end
   end
 end

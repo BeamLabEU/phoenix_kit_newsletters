@@ -213,4 +213,58 @@ defmodule PhoenixKit.Newsletters.Web.BroadcastEditorTest do
       assert updated.assigns.tz_label =~ "UTC+5"
     end
   end
+
+  describe "submit routing — submitter buttons carry the full form" do
+    # The regression this pins: Send now / Schedule used to be phx-click
+    # buttons whose events carry NO form data, so the params-authoritative
+    # role_uuids resolution wiped the selected roles to [] and every
+    # user_group send failed changeset validation. As submit buttons the
+    # full serialized form (role checkboxes included) reaches the handler.
+    test "submit with action=save_draft keeps role_uuids from the form params" do
+      role_uuid = Ecto.UUID.generate()
+
+      socket =
+        socket(%{
+          source_type: "user_group",
+          role_uuids: [],
+          subject: "wipe check",
+          markdown_content: "hi",
+          saving: false,
+          broadcast: nil,
+          tz_offset: "0",
+          available_roles: []
+        })
+
+      params = %{
+        "action" => "save_draft",
+        "subject" => "wipe check",
+        "source_type" => "user_group",
+        "role_uuids" => [role_uuid]
+      }
+
+      {:noreply, updated} = BroadcastEditor.handle_event("submit", params, socket)
+
+      # save_broadcast runs and fails downstream (no template etc.) or
+      # succeeds — either way the assigns must carry the submitted roles,
+      # not a wiped [].
+      assert updated.assigns.role_uuids == [role_uuid]
+    end
+
+    test "submit with an unknown/missing action falls back to save_draft" do
+      socket =
+        socket(%{
+          source_type: "crm_list",
+          crm_list_uuid: "",
+          role_uuids: [],
+          subject: "",
+          markdown_content: "",
+          saving: false,
+          broadcast: nil,
+          tz_offset: "0",
+          available_roles: []
+        })
+
+      assert {:noreply, _} = BroadcastEditor.handle_event("submit", %{}, socket)
+    end
+  end
 end
