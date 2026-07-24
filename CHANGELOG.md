@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.1.10 - 2026-07-24
+
+### Fixed
+- "Send now" and "Schedule" in the broadcast editor were `phx-click` buttons carrying no form data, so the params-authoritative role checkbox resolution wiped `role_uuids` to `[]` on every click — failing every `user_group` send with "select at least one role". Both are now `type="submit"` buttons routed through a single `phx-submit`, so the full form (role checkboxes included) always reaches the handler.
+- `DeliveryWorker` crashed with `BadMapError` extracting the provider message id when the resolved send profile routed through `Swoosh.Adapters.SMTP`, which returns the server's raw receipt as a string rather than a map — after the SMTP server had already accepted the message. Oban then retried the whole job, resending the same email up to `max_attempts` times. Message-id extraction now handles both the map shape (API adapters) and the SMTP receipt string, and never raises.
+- The broadcast's `{{content}}` wrapper email template had its own variables (notably the `{{unsubscribe_url}}` footer link) substituted before the body was wrapped into it, so template-side tags shipped as literal text in the sent email. Variable substitution now runs once, after the body is merged into the wrapper.
+
 ## 0.1.9 - 2026-07-22
 
 ### Removed
