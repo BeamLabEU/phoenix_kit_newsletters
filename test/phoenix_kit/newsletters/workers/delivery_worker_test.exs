@@ -190,6 +190,29 @@ defmodule PhoenixKit.Newsletters.Workers.DeliveryWorkerTest do
     end
   end
 
+  describe "compose_html/3 — {{content}} wrapper ordering" do
+    test "body lands inside the wrapper and template-side variables resolve" do
+      wrapper =
+        ~s(<div class="wrap">{{content}}<footer><a href="{{unsubscribe_url}}">Unsubscribe</a></footer></div>)
+
+      vars = %{"name" => "Ada", "unsubscribe_url" => "https://x/unsub?t=1"}
+
+      html = DeliveryWorker.compose_html("<p>Hello {{name}}</p>", wrapper, vars)
+
+      # The regression this pins: substitution used to run BEFORE the
+      # wrap, leaving every template-side tag a literal in the sent mail.
+      assert html =~ ~s(<div class="wrap"><p>Hello Ada</p>)
+      assert html =~ ~s(href="https://x/unsub?t=1")
+      refute html =~ "{{content}}"
+      refute html =~ "{{unsubscribe_url}}"
+      refute html =~ "{{name}}"
+    end
+
+    test "no wrapper (nil) — body variables still resolve" do
+      assert DeliveryWorker.compose_html("Hi {{name}}", nil, %{"name" => "Ada"}) == "Hi Ada"
+    end
+  end
+
   describe "perform/1 — recipient_email path (Stage 4, CRM-sourced delivery)" do
     setup :set_swoosh_global
 

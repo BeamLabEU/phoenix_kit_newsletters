@@ -183,12 +183,28 @@ defmodule PhoenixKit.Newsletters.Workers.DeliveryWorker do
 
   defp render_email(broadcast, recipient, unsubscribe_url, preferences_url) do
     variables = build_variables(recipient, unsubscribe_url, preferences_url)
-    html = substitute_variables(broadcast.html_body || "", variables)
+
+    html = compose_html(broadcast.html_body || "", template_html(broadcast), variables)
     text = substitute_variables(broadcast.text_body || "", variables)
 
-    html = maybe_apply_template(html, broadcast)
-
     {:ok, html, text}
+  end
+
+  @doc false
+  # Template first, variables second — the {{content}} wrapper template
+  # carries its own variables (an {{unsubscribe_url}} footer link being
+  # the load-bearing one), and substituting before wrapping left every
+  # template-side tag as a literal in the sent email. The body's own tags
+  # still resolve identically: they're part of the wrapped whole. Pure and
+  # public (@doc false) so the ordering is unit-testable without the
+  # optional Emails.Template dependency being loadable in this package's
+  # own test env — same rationale as `extract_message_id/1` below.
+  def compose_html(body_html, nil, variables), do: substitute_variables(body_html, variables)
+
+  def compose_html(body_html, wrapper_html, variables) when is_binary(wrapper_html) do
+    wrapper_html
+    |> String.replace("{{content}}", body_html)
+    |> substitute_variables(variables)
   end
 
   defp build_variables(recipient, unsubscribe_url, preferences_url) do
@@ -297,25 +313,19 @@ defmodule PhoenixKit.Newsletters.Workers.DeliveryWorker do
     end)
   end
 
-  defp maybe_apply_template(content, %{template_uuid: nil}), do: content
+  # The broadcast's wrapper template html, or nil when there is no
+  # template, the row is gone, or the optional Emails.Template dependency
+  # isn't loaded. Fetch only — wrapping happens in compose_html/3.
+  defp template_html(%{template_uuid: nil}), do: nil
 
-  defp maybe_apply_template(content, %{template_uuid: template_uuid}) do
-    # Guard: Emails.Template is an optional dependency
+  defp template_html(%{template_uuid: template_uuid}) do
     if Code.ensure_loaded?(PhoenixKit.Modules.Emails.Template) do
-      apply_email_template(content, template_uuid)
+      case repo().get(@email_template_mod, template_uuid) do
+        nil -> nil
+        tmpl -> soft_call(@email_template_mod, :get_translation, [tmpl.html_body, "en"])
+      end
     else
-      content
-    end
-  end
-
-  defp apply_email_template(content, template_uuid) do
-    case repo().get(@email_template_mod, template_uuid) do
-      nil ->
-        content
-
-      tmpl ->
-        html = soft_call(@email_template_mod, :get_translation, [tmpl.html_body, "en"])
-        String.replace(html, "{{content}}", content)
+      nil
     end
   end
 
