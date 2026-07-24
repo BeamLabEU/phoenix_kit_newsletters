@@ -14,12 +14,21 @@ defmodule PhoenixKit.Newsletters.Web.BroadcastEditor do
   @email_templates_mod PhoenixKit.Modules.Emails.Templates
   @email_template_mod PhoenixKit.Modules.Emails.Template
 
+  alias PhoenixKit.Modules.Storage
   alias PhoenixKit.Newsletters
   alias PhoenixKit.Newsletters.{Broadcast, Broadcaster, Content, CRMSource, UserGroupSource}
   alias PhoenixKit.Newsletters.Web.Timezone
   alias PhoenixKit.Settings
   alias PhoenixKit.Utils.Date, as: DateUtils
+  alias PhoenixKit.Utils.Format
   alias PhoenixKit.Utils.Routes
+  alias PhoenixKitWeb.Live.Components.MediaSelectorModal
+
+  # Non-blocking warning threshold for the combined size of a broadcast's
+  # attachments — most inbox providers cap total message size well above
+  # this, but large attachments slow delivery and hit the base64-encoding
+  # inflation (~33%) DeliveryWorker applies. Doesn't block send/schedule.
+  @attachments_size_warning_bytes 7 * 1024 * 1024
 
   @impl true
   def mount(_params, _session, socket) do
@@ -51,6 +60,9 @@ defmodule PhoenixKit.Newsletters.Web.BroadcastEditor do
         |> assign(:preview_html, "")
         |> assign(:scheduled_at, "")
         |> assign(:saving, false)
+        |> assign(:attachments, [])
+        |> assign(:attachment_files, [])
+        |> assign(:show_media_selector, false)
 
       {:ok, socket}
     else
@@ -89,6 +101,8 @@ defmodule PhoenixKit.Newsletters.Web.BroadcastEditor do
        :scheduled_at,
        DateUtils.format_datetime_local(broadcast.scheduled_at, socket.assigns.tz_offset)
      )
+     |> assign(:attachments, broadcast.attachments || [])
+     |> load_attachment_files()
      |> assign_preflight()}
   rescue
     Ecto.NoResultsError ->
@@ -209,6 +223,19 @@ defmodule PhoenixKit.Newsletters.Web.BroadcastEditor do
   end
 
   @impl true
+  def handle_event("open_attachments_picker", _params, socket) do
+    {:noreply, assign(socket, :show_media_selector, true)}
+  end
+
+  @impl true
+  def handle_event("remove_attachment", %{"uuid" => uuid}, socket) do
+    {:noreply,
+     socket
+     |> assign(:attachments, Enum.reject(socket.assigns.attachments, &(&1 == uuid)))
+     |> load_attachment_files()}
+  end
+
+  @impl true
   def handle_info({:editor_content_changed, %{content: content}}, socket) do
     preview_html = render_preview(content, socket.assigns.template_uuid, socket.assigns.templates)
 
@@ -216,6 +243,25 @@ defmodule PhoenixKit.Newsletters.Web.BroadcastEditor do
      socket
      |> assign(:markdown_content, content)
      |> assign(:preview_html, preview_html)}
+  end
+
+  # MediaSelectorModal reports back the FULL current selection (not a
+  # delta) — see its moduledoc. Attachments are LiveView-owned state,
+  # deliberately not threaded through form params like role_uuids/
+  # crm_list_uuid: there's no form field to wipe on an unrelated submit,
+  # so the role_uuids-wipe bug (nl#26) doesn't apply here.
+  @impl true
+  def handle_info({:media_selected, file_uuids}, socket) do
+    {:noreply,
+     socket
+     |> assign(:attachments, file_uuids)
+     |> assign(:show_media_selector, false)
+     |> load_attachment_files()}
+  end
+
+  @impl true
+  def handle_info({:media_selector_closed}, socket) do
+    {:noreply, assign(socket, :show_media_selector, false)}
   end
 
   @impl true
@@ -308,6 +354,28 @@ defmodule PhoenixKit.Newsletters.Web.BroadcastEditor do
     |> assign(:stranded_crm_list, nil)
   end
 
+  # Resolves `:attachments` (a plain uuid list — see Broadcast.attachments'
+  # moduledoc note) to `:attachment_files` (`%Storage.File{}` structs, for
+  # the chip list's filename/size) via a single batch query, in the same
+  # order the uuids were picked/saved in.
+  defp load_attachment_files(socket) do
+    files =
+      case socket.assigns.attachments do
+        [] -> []
+        uuids -> Storage.get_files(uuids)
+      end
+
+    assign(socket, :attachment_files, files)
+  end
+
+  defp attachments_total_bytes(files), do: Enum.reduce(files, 0, &(&1.size + &2))
+
+  defp attachments_size_warning?(files) do
+    attachments_total_bytes(files) > @attachments_size_warning_bytes
+  end
+
+  defp format_file_size(bytes), do: Format.bytes(bytes, decimals: 1, unknown: "0 B")
+
   defp crm_list_archived?(crm_list_uuid) do
     case CRMSource.get_list(crm_list_uuid) do
       %{status: status} -> status != "active"
@@ -341,6 +409,7 @@ defmodule PhoenixKit.Newsletters.Web.BroadcastEditor do
           template_uuid:
             if(socket.assigns.template_uuid == "", do: nil, else: socket.assigns.template_uuid),
           markdown_body: socket.assigns.markdown_content,
+          attachments: socket.assigns.attachments,
           status: status
         },
         extra_attrs
@@ -431,6 +500,7 @@ defmodule PhoenixKit.Newsletters.Web.BroadcastEditor do
       template_uuid:
         if(socket.assigns.template_uuid == "", do: nil, else: socket.assigns.template_uuid),
       markdown_body: socket.assigns.markdown_content,
+      attachments: socket.assigns.attachments,
       status: "draft"
     }
 
