@@ -64,7 +64,7 @@ defmodule PhoenixKit.Newsletters.Workers.DeliveryWorker do
              unsubscribe_url,
              list_unsubscribe_url
            ) do
-      message_id = Map.get(result, :id)
+      message_id = extract_message_id(result)
 
       update_delivery_result(
         delivery,
@@ -318,6 +318,33 @@ defmodule PhoenixKit.Newsletters.Workers.DeliveryWorker do
         String.replace(html, "{{content}}", content)
     end
   end
+
+  @doc false
+  # What `{:ok, result}` looks like depends on the Swoosh adapter behind
+  # the resolved integration: the API adapters (AmazonSES, Brevo) return a
+  # map with `:id`, but `Swoosh.Adapters.SMTP` returns the raw server
+  # receipt STRING — e.g. `"2.0.0 OK: queued as <abc@host>\r\n"`. This used
+  # to be `Map.get(result, :id)`, which raised `BadMapError` on that string
+  # AFTER the SMTP server had already accepted the message — so Oban
+  # retried the whole job and the recipient got the same email up to
+  # max_attempts times, while the delivery row stayed `pending` forever
+  # (and with no message_id captured, provider status events could never
+  # be matched back). This function must NEVER raise: a send that reached
+  # the provider is a success, and the worst acceptable outcome for an
+  # unrecognized receipt shape is a nil message_id (status tracking
+  # degrades; re-sending does not happen).
+  # Not `defp` so the receipt shapes can be unit-tested directly — same
+  # rationale as `resolve_send_profile/1` above.
+  def extract_message_id(result) when is_map(result), do: Map.get(result, :id)
+
+  def extract_message_id(result) when is_binary(result) do
+    case Regex.run(~r/queued as\s+<?([^>\s\r\n]+)>?/i, result) do
+      [_, id] -> id
+      _ -> nil
+    end
+  end
+
+  def extract_message_id(_result), do: nil
 
   defp send_email(
          broadcast,
