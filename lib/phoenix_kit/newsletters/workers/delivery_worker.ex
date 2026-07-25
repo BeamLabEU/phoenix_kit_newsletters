@@ -579,9 +579,15 @@ defmodule PhoenixKit.Newsletters.Workers.DeliveryWorker do
   end
 
   defp attachment_temp_path(instance_uuid) do
+    # Matches core StorageManager's own generate_temp_path/0 collision
+    # avoidance (crypto-random bytes, not :rand.uniform/1's small integer
+    # range) — two jobs racing to build the same instance_uuid's temp path
+    # at the same moment must not collide.
+    random_suffix = :crypto.strong_rand_bytes(8) |> Base.encode16(case: :lower)
+
     Path.join(
       System.tmp_dir!(),
-      "phoenix_kit_newsletters_attach_#{instance_uuid}_#{:rand.uniform(1_000_000)}"
+      "phoenix_kit_newsletters_attach_#{instance_uuid}_#{random_suffix}"
     )
   end
 
