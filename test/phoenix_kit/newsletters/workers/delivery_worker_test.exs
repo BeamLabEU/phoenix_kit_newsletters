@@ -316,6 +316,65 @@ defmodule PhoenixKit.Newsletters.Workers.DeliveryWorkerTest do
     end
   end
 
+  describe "cross-job attachment cache" do
+    # A counting wrapper around the real fetch, injected as `fetch_fun` —
+    # proves the cache short-circuits a second lookup without needing two
+    # genuinely separate (and non-deterministic-to-assert-on) Storage
+    # round trips.
+    defp counting_fetcher do
+      counter = :counters.new(1, [])
+
+      fetch_fun = fn file_uuid ->
+        :counters.add(counter, 1, 1)
+        DeliveryWorker.fetch_and_build_attachment(file_uuid)
+      end
+
+      {fetch_fun, counter}
+    end
+
+    test "build_attachment/2: two calls for the same uuid — one real fetch" do
+      file = create_attachment_file!(filename: "cached.txt")
+      {fetch_fun, counter} = counting_fetcher()
+
+      assert {:ok, %Swoosh.Attachment{filename: "cached.txt"}} =
+               DeliveryWorker.build_attachment(file.uuid, fetch_fun)
+
+      assert {:ok, %Swoosh.Attachment{filename: "cached.txt"}} =
+               DeliveryWorker.build_attachment(file.uuid, fetch_fun)
+
+      assert :counters.get(counter, 1) == 1
+    end
+
+    test "resolve_attachments/2: two broadcasts sharing a file uuid — one real fetch" do
+      file = create_attachment_file!(filename: "shared.txt")
+      {fetch_fun, counter} = counting_fetcher()
+
+      broadcast_a = %Broadcast{attachments: [file.uuid]}
+      broadcast_b = %Broadcast{attachments: [file.uuid]}
+
+      assert [%Swoosh.Attachment{filename: "shared.txt"}] =
+               DeliveryWorker.resolve_attachments(broadcast_a, fetch_fun)
+
+      assert [%Swoosh.Attachment{filename: "shared.txt"}] =
+               DeliveryWorker.resolve_attachments(broadcast_b, fetch_fun)
+
+      assert :counters.get(counter, 1) == 1
+    end
+
+    test "a cache miss is not cached — an unreadable uuid is retried every call" do
+      missing_uuid = Ecto.UUID.generate()
+      {fetch_fun, counter} = counting_fetcher()
+
+      assert {:error, :file_not_found, ^missing_uuid} =
+               DeliveryWorker.build_attachment(missing_uuid, fetch_fun)
+
+      assert {:error, :file_not_found, ^missing_uuid} =
+               DeliveryWorker.build_attachment(missing_uuid, fetch_fun)
+
+      assert :counters.get(counter, 1) == 2
+    end
+  end
+
   describe "perform/1 — attachments" do
     @describetag :requires_v158
     setup :set_swoosh_global
