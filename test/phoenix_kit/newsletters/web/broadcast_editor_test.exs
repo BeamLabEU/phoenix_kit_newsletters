@@ -179,6 +179,47 @@ defmodule PhoenixKit.Newsletters.Web.BroadcastEditorTest do
     end
   end
 
+  describe "attachments — a uuid that no longer resolves to a file" do
+    # Storage.get_files/1 silently drops any uuid with no matching row —
+    # load_attachment_files/1 must NOT let that silently shrink the chip
+    # list (a deleted-from-Storage file becoming invisible, with no way to
+    # specifically remove it): the missing uuid still appears, paired with
+    # `nil` instead of a file.
+    @tag :requires_v158
+    test "shows up as a {uuid, nil} pair, not silently dropped" do
+      missing_uuid = Ecto.UUID.generate()
+
+      {:ok, broadcast} =
+        Newsletters.create_broadcast(%{
+          subject: "Hello",
+          source_type: "crm_list",
+          crm_list_uuid: Ecto.UUID.generate(),
+          attachments: [missing_uuid]
+        })
+
+      socket =
+        %Phoenix.LiveView.Socket{
+          assigns: %{
+            phoenix_kit_current_user: nil,
+            crm_lists: [],
+            templates: [],
+            page_title: "",
+            __changed__: %{}
+          }
+        }
+
+      {:noreply, updated} =
+        BroadcastEditor.handle_params(
+          %{"id" => broadcast.uuid},
+          "/admin/newsletters/broadcasts/#{broadcast.uuid}/edit",
+          %{socket | assigns: Map.put(socket.assigns, :live_action, :edit)}
+        )
+
+      assert updated.assigns.attachments == [missing_uuid]
+      assert updated.assigns.attachment_files == [{missing_uuid, nil}]
+    end
+  end
+
   describe "schedule_preview/3" do
     test "shows the local time typed, its label, and the resolved UTC time" do
       preview = BroadcastEditor.schedule_preview("2026-07-20T21:58", "3", "UTC+3")

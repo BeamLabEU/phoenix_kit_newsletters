@@ -238,12 +238,17 @@ defmodule PhoenixKit.Newsletters.Web.BroadcastDetails do
   def recipient_display(%{recipient_email: email}) when is_binary(email), do: email
   def recipient_display(%{user_uuid: user_uuid}), do: user_uuid
 
-  # `Broadcast.attachments` is a plain uuid list — resolved here to
-  # `%Storage.File{}` structs for the read-only chip list's filename/size,
-  # in the same order the broadcast will send them in. Mirrors
-  # BroadcastEditor.load_attachment_files/1.
+  # `Broadcast.attachments` is a plain uuid list — resolved here to a list
+  # of `{uuid, file_or_nil}` pairs (one per uuid, `nil` when it no longer
+  # resolves to a file — e.g. deleted from Storage after the broadcast was
+  # saved) for the read-only chip list's filename/size, in the same order
+  # the broadcast sent them in. Mirrors BroadcastEditor.load_attachment_files/1.
   defp load_attachment_files([]), do: []
-  defp load_attachment_files(uuids), do: Storage.get_files(uuids)
+
+  defp load_attachment_files(uuids) do
+    files_by_uuid = uuids |> Storage.get_files() |> Map.new(&{&1.uuid, &1})
+    Enum.map(uuids, &{&1, Map.get(files_by_uuid, &1)})
+  end
 
   defp format_file_size(bytes), do: Format.bytes(bytes, decimals: 1, unknown: "0 B")
 

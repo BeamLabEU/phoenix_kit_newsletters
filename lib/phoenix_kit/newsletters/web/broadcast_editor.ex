@@ -355,23 +355,42 @@ defmodule PhoenixKit.Newsletters.Web.BroadcastEditor do
   end
 
   # Resolves `:attachments` (a plain uuid list — see Broadcast.attachments'
-  # moduledoc note) to `:attachment_files` (`%Storage.File{}` structs, for
-  # the chip list's filename/size) via a single batch query, in the same
-  # order the uuids were picked/saved in.
+  # moduledoc note) to `:attachment_files`, a list of `{uuid, file_or_nil}`
+  # pairs — ONE per uuid, in the same order they were picked/saved in —
+  # for the chip list. `Storage.get_files/1` silently drops any uuid with
+  # no matching row, which would otherwise make a stale/deleted attachment
+  # invisible in the picker with no way to remove it specifically; zipping
+  # back against the full uuid list keeps every entry, `nil` file marking
+  # the ones that didn't resolve ("missing file" chip in the template).
+  # The saved `:attachments` list itself is never derived from this
+  # resolution (save_broadcast/3 reads socket.assigns.attachments
+  # directly) — a transient Storage hiccup here can make a chip render as
+  # missing, but can never silently drop a real uuid from what gets saved.
   defp load_attachment_files(socket) do
-    files =
-      case socket.assigns.attachments do
-        [] -> []
-        uuids -> Storage.get_files(uuids)
+    uuids = socket.assigns.attachments
+
+    entries =
+      case uuids do
+        [] ->
+          []
+
+        uuids ->
+          files_by_uuid = uuids |> Storage.get_files() |> Map.new(&{&1.uuid, &1})
+          Enum.map(uuids, &{&1, Map.get(files_by_uuid, &1)})
       end
 
-    assign(socket, :attachment_files, files)
+    assign(socket, :attachment_files, entries)
   end
 
-  defp attachments_total_bytes(files), do: Enum.reduce(files, 0, &(&1.size + &2))
+  defp attachments_total_bytes(entries) do
+    Enum.reduce(entries, 0, fn
+      {_uuid, %Storage.File{size: size}}, acc -> size + acc
+      {_uuid, nil}, acc -> acc
+    end)
+  end
 
-  defp attachments_size_warning?(files) do
-    attachments_total_bytes(files) > @attachments_size_warning_bytes
+  defp attachments_size_warning?(entries) do
+    attachments_total_bytes(entries) > @attachments_size_warning_bytes
   end
 
   defp format_file_size(bytes), do: Format.bytes(bytes, decimals: 1, unknown: "0 B")
