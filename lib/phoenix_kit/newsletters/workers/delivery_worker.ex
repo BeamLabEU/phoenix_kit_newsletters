@@ -307,9 +307,19 @@ defmodule PhoenixKit.Newsletters.Workers.DeliveryWorker do
 
   defp preferences_page_url(token), do: Routes.url("/newsletters/preferences?token=#{token}")
 
+  # Single pass over the whole string, replacing each {{key}} from the
+  # map in place. The old per-key Enum.reduce re-scanned the entire
+  # string after every replacement, so a VALUE containing a literal
+  # "{{other_key}}" (a mischievous username, say) got substituted by a
+  # later pass — with the operator-authored wrapper template now sharing
+  # this pass (compose_html/3), that re-substitution class is closed
+  # structurally. An unknown {{tag}} stays literal, as before.
   defp substitute_variables(content, variables) do
-    Enum.reduce(variables, content, fn {key, value}, acc ->
-      String.replace(acc, "{{#{key}}}", to_string(value))
+    Regex.replace(~r/\{\{(\w+)\}\}/, content, fn whole, key ->
+      case Map.fetch(variables, key) do
+        {:ok, value} -> to_string(value)
+        :error -> whole
+      end
     end)
   end
 
@@ -347,14 +357,25 @@ defmodule PhoenixKit.Newsletters.Workers.DeliveryWorker do
   # rationale as `resolve_send_profile/1` above.
   def extract_message_id(result) when is_map(result), do: Map.get(result, :id)
 
+  # Receipt formats by MTA: Postfix-family "250 2.0.0 Ok: queued as <id>",
+  # Exim "250 OK id=<id>", Amazon SES over SMTP "250 Ok <MessageID>".
+  # Tried in that order; anything else degrades to nil.
   def extract_message_id(result) when is_binary(result) do
-    case Regex.run(~r/queued as\s+<?([^>\s\r\n]+)>?/i, result) do
-      [_, id] -> id
-      _ -> nil
+    with nil <- run_receipt(~r/queued as\s+<?([^>\s\r\n]+)>?/i, result),
+         nil <- run_receipt(~r/\bid=<?([^>\s\r\n]+)>?/i, result),
+         nil <- run_receipt(~r/^250[- ][\d.]*\s*Ok:?\s+<?([^>\s\r\n]+)>?\s*$/im, result) do
+      nil
     end
   end
 
   def extract_message_id(_result), do: nil
+
+  defp run_receipt(regex, receipt) do
+    case Regex.run(regex, receipt) do
+      [_, id] -> id
+      _ -> nil
+    end
+  end
 
   defp send_email(
          broadcast,

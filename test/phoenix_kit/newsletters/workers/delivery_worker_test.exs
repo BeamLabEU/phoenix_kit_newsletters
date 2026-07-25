@@ -208,6 +208,19 @@ defmodule PhoenixKit.Newsletters.Workers.DeliveryWorkerTest do
       refute html =~ "{{name}}"
     end
 
+    test "a variable VALUE containing another {{tag}} is not re-substituted" do
+      vars = %{"name" => "{{unsubscribe_url}}", "unsubscribe_url" => "https://x/u"}
+
+      html = DeliveryWorker.compose_html("<p>{{name}}</p>", nil, vars)
+
+      # Single-pass substitution: the mischievous value lands verbatim.
+      assert html == "<p>{{unsubscribe_url}}</p>"
+    end
+
+    test "an unknown {{tag}} stays literal" do
+      assert DeliveryWorker.compose_html("Hi {{nope}}", nil, %{"name" => "Ada"}) == "Hi {{nope}}"
+    end
+
     test "no wrapper (nil) — body variables still resolve" do
       assert DeliveryWorker.compose_html("Hi {{name}}", nil, %{"name" => "Ada"}) == "Hi Ada"
     end
@@ -715,6 +728,15 @@ defmodule PhoenixKit.Newsletters.Workers.DeliveryWorkerTest do
     test "SMTP receipt string without angle brackets still yields the id" do
       assert DeliveryWorker.extract_message_id("250 2.0.0 Ok: queued as ABC123XYZ") ==
                "ABC123XYZ"
+    end
+
+    test "Exim receipt (id=<id>) yields the id" do
+      assert DeliveryWorker.extract_message_id("250 OK id=1a2b3c-000abc-XY") == "1a2b3c-000abc-XY"
+    end
+
+    test "Amazon SES SMTP receipt (250 Ok <MessageID>) yields the id" do
+      assert DeliveryWorker.extract_message_id("250 Ok 01000191abcdef-1234-5678") ==
+               "01000191abcdef-1234-5678"
     end
 
     test "an unrecognized string is nil, never a crash" do

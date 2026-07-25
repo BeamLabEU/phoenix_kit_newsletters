@@ -40,11 +40,20 @@ defmodule PhoenixKit.Newsletters.CRMSource do
   @spec available?() :: boolean()
   def available?, do: Code.ensure_loaded?(@lists_mod)
 
-  @doc "Active (non-archived) CRM lists, for the broadcast editor's source picker."
+  @doc """
+  Active (non-archived) **subscribable** CRM lists, for the broadcast
+  editor's source picker.
+
+  `subscribable: false` lists are operational CRM segments (suppliers,
+  imports, internal groupings) — not mailing audiences — so they are not
+  offered as broadcast targets. The flag only gates NEW selection here:
+  an existing broadcast already pointing at such a list still resolves
+  through `get_list/1` for display and sending.
+  """
   @spec list_lists() :: [struct()]
   def list_lists do
     if available?() do
-      soft_call(@lists_mod, :list_lists, [[status: "active"]])
+      soft_call(@lists_mod, :list_lists, [[status: "active", subscribable: true]])
     else
       []
     end
