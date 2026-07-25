@@ -67,7 +67,7 @@ defmodule PhoenixKitNewsletters.MixProject do
       # with V158 (path override, since reverted here) — see the PR body
       # for how the two test runs differ. Bump the floor below to the exact
       # hex version once core cuts a release containing V158.
-      {:phoenix_kit, "~> 1.7 and >= 1.7.207"},
+      {:phoenix_kit, "~> 1.7 and >= 1.7.211"},
       {:phoenix_live_view, "~> 1.1"},
       {:gettext, "~> 1.0"},
       {:oban, "~> 2.20"},
