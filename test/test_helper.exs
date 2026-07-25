@@ -38,6 +38,43 @@ repo_available =
       false
   end
 
-exclude = if repo_available, do: [], else: [:integration]
+# Broadcast.attachments (core V158, PR#661) isn't in a hex phoenix_kit
+# release yet — only a small minority of :integration tests actually need
+# the column (the rest touch unrelated tables), so this is its own
+# exclusion tag rather than folding into :integration wholesale, which
+# would exclude far more than necessary. Checked via a real query, not a
+# version-string comparison, so it stays correct if the reader IS running
+# against a local V158 core (path/git override) with a hex version string
+# that predates it.
+v158_available =
+  if repo_available do
+    Ecto.Adapters.SQL.Sandbox.checkout(PhoenixKitNewsletters.Test.Repo)
+
+    result =
+      case PhoenixKitNewsletters.Test.Repo.query(
+             "SELECT 1 FROM information_schema.columns WHERE table_name = 'phoenix_kit_newsletters_broadcasts' AND column_name = 'attachments'"
+           ) do
+        {:ok, %{rows: [_ | _]}} -> true
+        _ -> false
+      end
+
+    Ecto.Adapters.SQL.Sandbox.checkin(PhoenixKitNewsletters.Test.Repo)
+    result
+  else
+    false
+  end
+
+unless v158_available do
+  IO.puts("""
+  \n⚠  core V158 (phoenix_kit_newsletters_broadcasts.attachments column) not
+     present in this test DB — tests tagged :requires_v158 are excluded.
+     Not yet in a hex phoenix_kit release; run against a local V158 core
+     build (path/git override) to exercise them for real.
+  """)
+end
+
+exclude =
+  if(repo_available, do: [], else: [:integration]) ++
+    if v158_available, do: [], else: [:requires_v158]
 
 ExUnit.start(exclude: exclude)

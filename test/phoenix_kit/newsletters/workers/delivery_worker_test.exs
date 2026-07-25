@@ -244,6 +244,9 @@ defmodule PhoenixKit.Newsletters.Workers.DeliveryWorkerTest do
   end
 
   describe "perform/1 — no profile resolves" do
+    # create_broadcast/1 does a real Broadcast INSERT — needs core V158's
+    # attachments column; see test_helper.exs's :requires_v158 exclusion.
+    @describetag :requires_v158
     setup :set_swoosh_global
 
     test "sends identically to the pre-Stage-D behavior" do
@@ -314,6 +317,7 @@ defmodule PhoenixKit.Newsletters.Workers.DeliveryWorkerTest do
   end
 
   describe "perform/1 — attachments" do
+    @describetag :requires_v158
     setup :set_swoosh_global
 
     test "attachments reach the sent email" do
@@ -424,6 +428,7 @@ defmodule PhoenixKit.Newsletters.Workers.DeliveryWorkerTest do
   end
 
   describe "perform/1 — recipient_email path (Stage 4, CRM-sourced delivery)" do
+    @describetag :requires_v158
     setup :set_swoosh_global
 
     test "sends using recipient_email when the delivery has no user_uuid at all" do
@@ -505,6 +510,7 @@ defmodule PhoenixKit.Newsletters.Workers.DeliveryWorkerTest do
   end
 
   describe "{{preferences_url}} — unresolved cases leave the placeholder unsubstituted" do
+    @describetag :requires_v158
     setup :set_swoosh_global
 
     test "no matching CRM member: the literal placeholder survives, not an empty-string link" do
@@ -600,6 +606,7 @@ defmodule PhoenixKit.Newsletters.Workers.DeliveryWorkerTest do
   end
 
   describe "perform/1 — List-Unsubscribe headers on the sent email" do
+    @describetag :requires_v158
     setup :set_swoosh_global
 
     test "a crm_list send with no resolvable link adds no headers and doesn't crash; a user_group send is unaffected" do
@@ -714,6 +721,7 @@ defmodule PhoenixKit.Newsletters.Workers.DeliveryWorkerTest do
   end
 
   describe "perform/1 — idempotency and bounce-counter correctness under retry" do
+    @describetag :requires_v158
     setup do
       PhoenixKit.Settings.update_setting("from_name", "My Newsletter")
       PhoenixKit.Settings.update_setting("from_email", "news@example.com")
@@ -840,6 +848,7 @@ defmodule PhoenixKit.Newsletters.Workers.DeliveryWorkerTest do
   end
 
   describe "update_delivery_result/5 — delivery status and broadcast counter commit atomically" do
+    @describetag :requires_v158
     test "a failed status write (unique_constraint violation) leaves the counter unbumped" do
       broadcast = create_broadcast(%{subject: "Atomicity", html_body: "<p>Hi</p>"})
 

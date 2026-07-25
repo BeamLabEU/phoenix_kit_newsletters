@@ -63,6 +63,9 @@ defmodule PhoenixKit.Newsletters.Web.BroadcastEditorTest do
   end
 
   describe "handle_event(\"schedule\", ...) — local time is interpreted in the viewer's timezone" do
+    # Reaches save_broadcast/3 (a real Broadcast INSERT) — needs core V158's
+    # attachments column; see test_helper.exs's :requires_v158 exclusion.
+    @tag :requires_v158
     test "positive offset (UTC+3): local evening converts to UTC same day" do
       socket =
         socket(%{
@@ -78,6 +81,7 @@ defmodule PhoenixKit.Newsletters.Web.BroadcastEditorTest do
       assert updated.assigns.broadcast.scheduled_at == ~U[2026-07-20 18:58:00Z]
     end
 
+    @tag :requires_v158
     test "negative offset (UTC-5): local late night rolls over to the next UTC day" do
       socket =
         socket(%{
@@ -93,6 +97,7 @@ defmodule PhoenixKit.Newsletters.Web.BroadcastEditorTest do
       assert updated.assigns.broadcast.scheduled_at == ~U[2026-07-21 04:30:00Z]
     end
 
+    @tag :requires_v158
     test "positive offset near midnight rolls back to the previous UTC day" do
       socket =
         socket(%{
@@ -108,6 +113,7 @@ defmodule PhoenixKit.Newsletters.Web.BroadcastEditorTest do
       assert updated.assigns.broadcast.scheduled_at == ~U[2026-07-19 21:30:00Z]
     end
 
+    @tag :requires_v158
     test "zero offset (no personal/system timezone configured) preserves the old UTC-as-typed behavior" do
       socket =
         socket(%{
@@ -140,6 +146,7 @@ defmodule PhoenixKit.Newsletters.Web.BroadcastEditorTest do
   end
 
   describe "handle_params(:edit) — restores the schedule field in the viewer's local time" do
+    @tag :requires_v158
     test "a UTC scheduled_at is displayed shifted into the viewer's timezone" do
       {:ok, broadcast} =
         Newsletters.create_broadcast(%{
@@ -223,6 +230,7 @@ defmodule PhoenixKit.Newsletters.Web.BroadcastEditorTest do
     # role_uuids resolution wiped the selected roles to [] and every
     # user_group send failed changeset validation. As submit buttons the
     # full serialized form (role checkboxes included) reaches the handler.
+    @tag :requires_v158
     test "submit with action=save_draft keeps role_uuids from the form params" do
       role_uuid = Ecto.UUID.generate()
 
