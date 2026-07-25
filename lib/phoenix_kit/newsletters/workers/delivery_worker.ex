@@ -357,15 +357,20 @@ defmodule PhoenixKit.Newsletters.Workers.DeliveryWorker do
   # rationale as `resolve_send_profile/1` above.
   def extract_message_id(result) when is_map(result), do: Map.get(result, :id)
 
-  # Receipt formats by MTA: Postfix-family "250 2.0.0 Ok: queued as <id>",
-  # Exim "250 OK id=<id>", Amazon SES over SMTP "250 Ok <MessageID>".
+  # Receipt formats by MTA — AFTER gen_smtp's own stripping: the client
+  # removes the leading "250 " before returning the receipt
+  # (gen_smtp_client: `{ok, <<"250 ", Receipt/binary>>} -> Receipt`), so
+  # what reaches this function is e.g. Postfix "2.0.0 Ok: queued as <id>",
+  # Exim "OK id=<id>", Amazon SES "Ok <MessageID>\r\n" — never a leading
+  # "250 ". The previous SES pattern was anchored on ^250 and therefore
+  # never matched a real receipt (SES-over-SMTP ids were silently lost).
   # Tried in that order; anything else degrades to nil.
   def extract_message_id(result) when is_binary(result) do
     Enum.find_value(
       [
         ~r/queued as\s+<?([^>\s\r\n]+)>?/i,
         ~r/\bid=<?([^>\s\r\n]+)>?/i,
-        ~r/^250[- ][\d.]*\s*Ok:?\s+<?([^>\s\r\n]+)>?\s*$/im
+        ~r/^(?:[\d.]+\s+)?Ok:?\s+<?([^>\s\r\n]+)>?\s*$/im
       ],
       &run_receipt(&1, result)
     )
