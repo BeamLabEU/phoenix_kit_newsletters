@@ -12,6 +12,7 @@ defmodule PhoenixKit.Newsletters.Web.BroadcastEditorTest do
 
   alias PhoenixKit.Newsletters
   alias PhoenixKit.Newsletters.Web.BroadcastEditor
+  alias PhoenixKitCRM.Lists
 
   defp socket(assigns) do
     base = %{
@@ -267,6 +268,86 @@ defmodule PhoenixKit.Newsletters.Web.BroadcastEditorTest do
         })
 
       assert {:noreply, _} = BroadcastEditor.handle_event("submit", %{}, socket)
+    end
+  end
+
+  describe "stranded CRM selection — a pick that fell out of the picker's options" do
+    test "a selection missing from the options is kept as the stranded list" do
+      {:ok, ops} =
+        Lists.create_list(%{
+          name: "Suppliers #{System.unique_integer([:positive])}",
+          subscribable: false
+        })
+
+      # @crm_lists holds only subscribable lists, so this selection is absent
+      # from the options — it must survive as the disabled <option selected>,
+      # or the next save silently resets crm_list_uuid to "".
+      socket = socket(%{source_type: "crm_list", crm_lists: []})
+
+      {:noreply, updated} =
+        BroadcastEditor.handle_event(
+          "validate",
+          %{"source_type" => "crm_list", "crm_list_uuid" => ops.uuid},
+          socket
+        )
+
+      assert updated.assigns.stranded_crm_list.uuid == ops.uuid
+      refute updated.assigns.crm_list_archived?
+    end
+
+    test "a selection present in the options is not stranded" do
+      {:ok, sub} =
+        Lists.create_list(%{
+          name: "Mailing #{System.unique_integer([:positive])}",
+          subscribable: true
+        })
+
+      socket = socket(%{source_type: "crm_list", crm_lists: [sub]})
+
+      {:noreply, updated} =
+        BroadcastEditor.handle_event(
+          "validate",
+          %{"source_type" => "crm_list", "crm_list_uuid" => sub.uuid},
+          socket
+        )
+
+      assert updated.assigns.stranded_crm_list == nil
+    end
+
+    test "an archived selection is both stranded and flagged archived" do
+      {:ok, list} =
+        Lists.create_list(%{
+          name: "Old campaign #{System.unique_integer([:positive])}",
+          subscribable: true
+        })
+
+      {:ok, archived} = Lists.archive_list(list)
+
+      socket = socket(%{source_type: "crm_list", crm_lists: []})
+
+      {:noreply, updated} =
+        BroadcastEditor.handle_event(
+          "validate",
+          %{"source_type" => "crm_list", "crm_list_uuid" => archived.uuid},
+          socket
+        )
+
+      assert updated.assigns.stranded_crm_list.uuid == archived.uuid
+      assert updated.assigns.crm_list_archived?
+    end
+
+    test "a uuid that resolves to nothing strands nothing and is not archived" do
+      socket = socket(%{source_type: "crm_list", crm_lists: []})
+
+      {:noreply, updated} =
+        BroadcastEditor.handle_event(
+          "validate",
+          %{"source_type" => "crm_list", "crm_list_uuid" => Ecto.UUID.generate()},
+          socket
+        )
+
+      assert updated.assigns.stranded_crm_list == nil
+      refute updated.assigns.crm_list_archived?
     end
   end
 end

@@ -287,10 +287,16 @@ defmodule PhoenixKit.Newsletters.Web.BroadcastEditor do
          %{assigns: %{source_type: "crm_list", crm_list_uuid: crm_list_uuid}} = socket
        )
        when is_binary(crm_list_uuid) and crm_list_uuid != "" do
+    # One fetch feeds both the archived warning and the stranded-option
+    # fallback. This whole function re-runs on every phx-change (i.e. every
+    # keystroke in the subject field), so resolving the list twice — once
+    # per consumer — doubled the round trips for no gain.
+    list = CRMSource.get_list(crm_list_uuid)
+
     socket
     |> assign(:preflight, CRMSource.preflight(crm_list_uuid))
-    |> assign(:crm_list_archived?, crm_list_archived?(crm_list_uuid))
-    |> assign(:stranded_crm_list, stranded_crm_list(crm_list_uuid, socket.assigns.crm_lists))
+    |> assign(:crm_list_archived?, archived?(list))
+    |> assign(:stranded_crm_list, stranded_crm_list(list, socket.assigns.crm_lists))
   end
 
   defp assign_preflight(%{assigns: %{source_type: "user_group", role_uuids: role_uuids}} = socket)
@@ -308,24 +314,21 @@ defmodule PhoenixKit.Newsletters.Web.BroadcastEditor do
     |> assign(:stranded_crm_list, nil)
   end
 
-  defp crm_list_archived?(crm_list_uuid) do
-    case CRMSource.get_list(crm_list_uuid) do
-      %{status: status} -> status != "active"
-      nil -> false
-    end
-  end
+  # A uuid that no longer resolves to a list at all counts as not archived
+  # — recipient_source_missing?/1 doesn't need to gate on it, since
+  # Broadcaster.send/1 refuses a missing list on its own.
+  defp archived?(%{status: status}), do: status != "active"
+  defp archived?(nil), do: false
 
   # The currently selected list when it is absent from the picker's
   # options (archived, or subscribable turned off after this broadcast
   # picked it). Rendered as a disabled <option selected> — without that
   # the browser falls back to the placeholder and the next save silently
   # resets crm_list_uuid.
-  defp stranded_crm_list(crm_list_uuid, crm_lists) do
-    if Enum.any?(crm_lists, &(&1.uuid == crm_list_uuid)) do
-      nil
-    else
-      CRMSource.get_list(crm_list_uuid)
-    end
+  defp stranded_crm_list(nil, _crm_lists), do: nil
+
+  defp stranded_crm_list(list, crm_lists) do
+    if Enum.any?(crm_lists, &(&1.uuid == list.uuid)), do: nil, else: list
   end
 
   defp save_broadcast(socket, status, extra_attrs \\ %{}) do

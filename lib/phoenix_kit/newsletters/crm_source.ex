@@ -49,15 +49,14 @@ defmodule PhoenixKit.Newsletters.CRMSource do
   offered as broadcast targets. The flag only gates NEW selection here:
   an existing broadcast already pointing at such a list still resolves
   through `get_list/1` for display and sending.
+
+  Delegates to `list_subscribable_lists/0` rather than repeating its
+  query — the broadcast picker and the preference center ask for exactly
+  the same set, and two copies of the filter would be free to drift apart
+  the next time either changes.
   """
   @spec list_lists() :: [struct()]
-  def list_lists do
-    if available?() do
-      soft_call(@lists_mod, :list_lists, [[status: "active", subscribable: true]])
-    else
-      []
-    end
-  end
+  def list_lists, do: list_subscribable_lists()
 
   @doc "Fetches a CRM list by uuid. Returns nil if not found, invalid, or CRM isn't installed."
   @spec get_list(String.t() | nil) :: struct() | nil

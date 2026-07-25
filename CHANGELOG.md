@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.1.11 - 2026-07-25
+
+### Changed
+- The broadcast editor's CRM list picker now offers only `subscribable` lists. Operational CRM segments (suppliers, imports, internal groupings) are no longer selectable as broadcast targets. The flag gates new selection only — a broadcast already pointing at such a list still resolves it for display and sending.
+
+### Fixed
+- A CRM list that fell out of the picker's options (archived, or `subscribable` turned off after the broadcast picked it) left the browser selecting the placeholder, so the next save silently reset `crm_list_uuid` and the broadcast lost its audience with no warning. The current selection now stays visible as a disabled "(no longer selectable)" option.
+- `DeliveryWorker` message-id extraction now recognises Exim (`250 OK id=<id>`) and Amazon SES over SMTP (`250 Ok <MessageID>`) receipts alongside the Postfix-family `queued as` form; an unrecognised receipt still degrades to a `nil` message id rather than raising.
+- Variable substitution in delivered emails is now a single pass over the whole body. Previously each `{{key}}` was replaced in its own pass, so a variable *value* containing a literal `{{other_key}}` — a crafted username, say — was itself expanded by a later pass. An unknown `{{tag}}` still renders literally.
+- The broadcast editor issued two identical CRM `get_list` queries on every keystroke in the editor form (the archived-list warning and the stranded-selection fallback each resolved the same uuid independently); both now share one fetch.
+- `CRMSource.list_lists/0` and `list_subscribable_lists/0` had become byte-identical duplicate queries with different callers; `list_lists/0` now delegates, so the filter can't drift between the broadcast picker and the preference center.
+
 ## 0.1.10 - 2026-07-24
 
 ### Fixed
