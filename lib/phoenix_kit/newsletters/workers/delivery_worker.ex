@@ -370,11 +370,14 @@ defmodule PhoenixKit.Newsletters.Workers.DeliveryWorker do
   # Exim "250 OK id=<id>", Amazon SES over SMTP "250 Ok <MessageID>".
   # Tried in that order; anything else degrades to nil.
   def extract_message_id(result) when is_binary(result) do
-    with nil <- run_receipt(~r/queued as\s+<?([^>\s\r\n]+)>?/i, result),
-         nil <- run_receipt(~r/\bid=<?([^>\s\r\n]+)>?/i, result),
-         nil <- run_receipt(~r/^250[- ][\d.]*\s*Ok:?\s+<?([^>\s\r\n]+)>?\s*$/im, result) do
-      nil
-    end
+    Enum.find_value(
+      [
+        ~r/queued as\s+<?([^>\s\r\n]+)>?/i,
+        ~r/\bid=<?([^>\s\r\n]+)>?/i,
+        ~r/^250[- ][\d.]*\s*Ok:?\s+<?([^>\s\r\n]+)>?\s*$/im
+      ],
+      &run_receipt(&1, result)
+    )
   end
 
   def extract_message_id(_result), do: nil
