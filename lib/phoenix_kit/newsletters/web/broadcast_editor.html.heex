@@ -326,8 +326,9 @@
     id="broadcast-attachments-picker"
     show={@show_media_selector}
     mode={:multiple}
+    max_select={Broadcast.max_attachments()}
     selected_uuids={@attachments}
-    phoenix_kit_current_user={assigns[:phoenix_kit_current_user]}
+    phoenix_kit_current_user={@phoenix_kit_current_user}
   />
 </div>
 </PhoenixKitWeb.Components.LayoutWrapper.app_layout>

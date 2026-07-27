@@ -167,6 +167,19 @@ defmodule PhoenixKit.Newsletters.BroadcastTest do
       assert Ecto.Changeset.get_change(changeset, :attachments) == [uuid_a, uuid_b]
     end
 
+    # The editor's media picker is capped with this same number
+    # (`max_select` on MediaSelectorModal) so a user can't confirm a
+    # selection the changeset will then reject at save time.
+    test "max_attachments/0 is the cap the changeset actually enforces" do
+      assert Broadcast.max_attachments() == 10
+
+      over_cap = for _ <- 1..(Broadcast.max_attachments() + 1), do: Ecto.UUID.generate()
+      refute Broadcast.changeset(%Broadcast{}, base_attrs(over_cap)).valid?
+
+      at_cap = Enum.take(over_cap, Broadcast.max_attachments())
+      assert Broadcast.changeset(%Broadcast{}, base_attrs(at_cap)).valid?
+    end
+
     test "rejects more than 10 attachments" do
       uuids = for _ <- 1..11, do: Ecto.UUID.generate()
       changeset = Broadcast.changeset(%Broadcast{}, base_attrs(uuids))

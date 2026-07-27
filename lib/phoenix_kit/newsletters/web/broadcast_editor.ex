@@ -63,6 +63,13 @@ defmodule PhoenixKit.Newsletters.Web.BroadcastEditor do
         |> assign(:attachments, [])
         |> assign(:attachment_files, [])
         |> assign(:show_media_selector, false)
+        # Normally supplied by PhoenixKit's admin on_mount hook. Defaulted
+        # here so the template can reference it as `@phoenix_kit_current_user`
+        # rather than `assigns[:phoenix_kit_current_user]` — the `assigns[...]`
+        # form is untracked, which re-renders the media picker (and re-runs
+        # the enabled-buckets query in its `update/2`) on every keystroke in
+        # this form.
+        |> assign_new(:phoenix_kit_current_user, fn -> nil end)
 
       {:ok, socket}
     else

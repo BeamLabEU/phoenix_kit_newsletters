@@ -36,6 +36,7 @@ defmodule PhoenixKit.Newsletters.Workers.DeliveryWorker do
   alias PhoenixKit.Modules.Storage
   alias PhoenixKit.Modules.Storage.Manager, as: StorageManager
   alias PhoenixKit.Newsletters
+  alias PhoenixKit.Newsletters.AttachmentCache
   alias PhoenixKit.Newsletters.Broadcast
   alias PhoenixKit.Newsletters.CRMSource
   alias PhoenixKit.Newsletters.Delivery
@@ -429,55 +430,6 @@ defmodule PhoenixKit.Newsletters.Workers.DeliveryWorker do
     end
   end
 
-  # Cross-job attachment cache: the same file uuid is downloaded once and
-  # reused by every delivery job for the rest of a broadcast's send (and by
-  # any OTHER broadcast reusing the same file within the TTL) — keyed on
-  # file_uuid, not broadcast_uuid, on purpose. A named, public ETS table
-  # rather than a supervised GenServer: this package ships no process of
-  # its own to own it, and a plain lookup table needs no serialization
-  # point — concurrent Oban workers reading/writing different keys never
-  # contend. TTL is short (attachments rarely change mid-broadcast, but a
-  # re-upload replacing the same uuid's content should eventually be
-  # picked up) with lazy eviction on read — no reaper process needed for a
-  # cache this size.
-  @attachment_cache_table :phoenix_kit_newsletters_attachment_cache
-  @attachment_cache_ttl_ms 120_000
-
-  # Idempotent: `:ets.new/2` with `:named_table` raises `ArgumentError` if
-  # the table already exists, which is the expected/common case here (every
-  # call after the first, across every Oban worker process) — caught and
-  # ignored rather than guarded with a whereis/exists check first, which
-  # would itself race under concurrent first-callers.
-  defp ensure_attachment_cache_table! do
-    :ets.new(@attachment_cache_table, [:set, :public, :named_table, read_concurrency: true])
-  rescue
-    ArgumentError -> :ok
-  end
-
-  defp cached_attachment(file_uuid) do
-    ensure_attachment_cache_table!()
-
-    case :ets.lookup(@attachment_cache_table, file_uuid) do
-      [{^file_uuid, attachment, expires_at}] ->
-        if System.monotonic_time(:millisecond) < expires_at do
-          {:ok, attachment}
-        else
-          :ets.delete(@attachment_cache_table, file_uuid)
-          :miss
-        end
-
-      [] ->
-        :miss
-    end
-  end
-
-  defp cache_attachment(file_uuid, attachment) do
-    ensure_attachment_cache_table!()
-    expires_at = System.monotonic_time(:millisecond) + @attachment_cache_ttl_ms
-    :ets.insert(@attachment_cache_table, {file_uuid, attachment, expires_at})
-    attachment
-  end
-
   @doc false
   # Resolves every attachment file uuid on the broadcast to a
   # `%Swoosh.Attachment{}` — both send paths (profile-routed and legacy)
@@ -488,11 +440,10 @@ defmodule PhoenixKit.Newsletters.Workers.DeliveryWorker do
   # attachments and 1 broken one must still reach every recipient with
   # the 9. `fetch_fun` is the actual-download seam (see
   # `build_attachment/2`) — overridable so a test can prove the
-  # cross-job cache (`cached_attachment/1`/`cache_attachment/2` above)
-  # actually prevents a second real fetch, without needing two genuinely
-  # separate Storage round trips to assert on. Not `defp` so the skip
-  # behavior is unit-testable directly — same rationale as
-  # `resolve_send_profile/1`.
+  # cross-job `AttachmentCache` actually prevents a second real fetch,
+  # without needing two genuinely separate Storage round trips to assert
+  # on. Not `defp` so the skip behavior is unit-testable directly — same
+  # rationale as `resolve_send_profile/1`.
   def resolve_attachments(broadcast, fetch_fun \\ &fetch_and_build_attachment/1)
 
   def resolve_attachments(%Broadcast{attachments: uuids}, fetch_fun)
@@ -516,16 +467,19 @@ defmodule PhoenixKit.Newsletters.Workers.DeliveryWorker do
 
   @doc false
   # Cache-first lookup for a single attachment; `fetch_fun` runs only on a
-  # cache miss and its result is cached before returning. Not `defp` —
-  # same testability rationale as `resolve_attachments/2`.
+  # cache miss and its result is cached before returning. An unreadable
+  # file is deliberately NOT cached — the negative result is cheap to
+  # re-derive and a file re-uploaded mid-broadcast should start working
+  # again immediately. Not `defp` — same testability rationale as
+  # `resolve_attachments/2`.
   def build_attachment(file_uuid, fetch_fun \\ &fetch_and_build_attachment/1) do
-    case cached_attachment(file_uuid) do
+    case AttachmentCache.fetch(file_uuid) do
       {:ok, attachment} ->
         {:ok, attachment}
 
       :miss ->
         case fetch_fun.(file_uuid) do
-          {:ok, attachment} -> {:ok, cache_attachment(file_uuid, attachment)}
+          {:ok, attachment} -> {:ok, AttachmentCache.put(file_uuid, attachment)}
           error -> error
         end
     end

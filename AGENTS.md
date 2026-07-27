@@ -26,6 +26,8 @@ mix quality.ci              # format --check-formatted + credo --strict + dialyz
 
 This is a **library** (not a standalone Phoenix app) that provides newsletters as a PhoenixKit plugin module. It implements the `PhoenixKit.Module` behaviour and depends on the host PhoenixKit app for Repo, Mailer, Endpoint, Users, and Settings.
 
+It does start one process of its own: `PhoenixKit.Newsletters.Application` (the `:mod` in `mix.exs`) supervises `PhoenixKit.Newsletters.AttachmentCache`, which exists to own the attachment cache's ETS table — an ETS table dies with its owner, and Oban job processes are too short-lived to own a cache meant to be shared across them. Nothing else belongs in that supervision tree; background work still goes through Oban workers.
+
 ### Core Schemas (all use UUIDv7 primary keys)
 
 - **List** — newsletter mailing list with name, slug, status

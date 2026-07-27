@@ -153,7 +153,7 @@ defmodule PhoenixKit.Newsletters.Web.BroadcastDetails do
       |> assign(:crm_list, CRMSource.get_list(broadcast.crm_list_uuid))
       |> assign(:crm_preflight, crm_preflight(broadcast))
       |> assign(:user_group_preflight, user_group_preflight(broadcast))
-      |> assign(:attachment_files, load_attachment_files(broadcast.attachments))
+      |> assign(:attachment_files, load_attachment_files(broadcast.attachments || []))
       |> assign(:loading, false)
       |> assign(:page_title, broadcast.subject)
     rescue

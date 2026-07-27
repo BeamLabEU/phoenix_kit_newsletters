@@ -1,7 +1,7 @@
 defmodule PhoenixKitNewsletters.MixProject do
   use Mix.Project
 
-  @version "0.1.11"
+  @version "0.1.12"
   @source_url "https://github.com/BeamLabEU/phoenix_kit_newsletters"
 
   def project do
@@ -29,7 +29,12 @@ defmodule PhoenixKitNewsletters.MixProject do
   end
 
   def application do
-    [extra_applications: [:logger, :gettext]]
+    [
+      extra_applications: [:logger, :gettext],
+      # The only process this package owns is the attachment cache's ETS
+      # table owner — see PhoenixKit.Newsletters.Application.
+      mod: {PhoenixKit.Newsletters.Application, []}
+    ]
   end
 
   defp elixirc_paths(:test), do: ["lib", "test/support"]
@@ -54,19 +59,13 @@ defmodule PhoenixKitNewsletters.MixProject do
   defp deps do
     [
       # Core
-      # SendProfile/ProviderOptions and the send-profile context moved to
-      # `PhoenixKit.Email` in core migration V151 (unreleased as of
-      # 2026-07-15) — this package now calls those core modules directly
-      # instead of owning its own copies. Bump the floor below to the exact
-      # hex version once core cuts a release containing V151; until then,
-      # a core built from `feature/email-send-profiles-core` (or later) is
-      # required, wired in via a path/git dependency during this rollout.
-      # NOTE: broadcast attachments (core V158, PR#661) is not yet in a hex
-      # release as of this PR — hex is currently 1.7.210, V158 isn't in it.
-      # This PR was developed and fully tested against a local core build
-      # with V158 (path override, since reverted here) — see the PR body
-      # for how the two test runs differ. Bump the floor below to the exact
-      # hex version once core cuts a release containing V158.
+      # The floor is a migration floor, not a feature-parity one: this
+      # package calls `PhoenixKit.Email`'s send-profile context (core V151)
+      # and reads/writes `phoenix_kit_newsletters_broadcasts.attachments`
+      # (core V158). 1.7.211 is the first hex release carrying both, so an
+      # older core would compile and then fail at runtime on a missing
+      # column. Raise it only when a new core migration is likewise
+      # required — no path/git override is needed any more.
       {:phoenix_kit, "~> 1.7 and >= 1.7.211"},
       {:phoenix_live_view, "~> 1.1"},
       {:gettext, "~> 1.0"},

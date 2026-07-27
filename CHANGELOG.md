@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.1.12 - 2026-07-27
+
+### Added
+- Broadcasts can now carry file attachments. The editor gets a media picker (core Storage), removable chips showing each file's name and size, a non-blocking warning once the attachments total more than 7 MB, and a visible "missing file" chip for a file deleted from Storage after it was attached — so a stale reference can still be removed rather than silently riding along. Up to 10 distinct files per broadcast, attached in the order they were picked; the broadcast details page shows the same list read-only. Requires core `>= 1.7.211` (V158).
+- `DeliveryWorker` attaches those files to every delivery, on both the send-profile and legacy paths. A file that can't be read (deleted row, missing `original` variant, object unreachable in every bucket) is logged and skipped rather than failing the send — a broadcast with nine good attachments and one broken one still reaches every recipient with the nine.
+
+### Fixed
+- Attachment downloads are now genuinely shared across a broadcast's delivery jobs. The cache backing them was an ETS table created inside `perform/1`, so it was owned by whichever Oban job touched it first and was destroyed the moment that job finished — every recipient re-downloaded every attachment, and a job whose `:ets.lookup` landed just after the owner exited crashed with `ArgumentError`. The table is now owned by a supervised process (`PhoenixKit.Newsletters.AttachmentCache`, started by the package's new application module) for the lifetime of the node.
+- Cached attachments are swept on a timer instead of only when something reads them again. Nothing re-reads a finished broadcast's attachments, so their bytes previously stayed resident for the life of the node; memory is now bounded by what was actually sent in the last two minutes.
+- The editor's media picker now enforces the same 10-file cap the changeset does (`Broadcast.max_attachments/0`), instead of letting a larger selection through to fail as a validation error at save time.
+- `DeliveryWorker` message-id extraction now matches Amazon SES over SMTP receipts. The pattern added in 0.1.11 was anchored on a literal `250 `, which `gen_smtp` strips before returning the receipt (`{ok, <<"250 ", Receipt/binary>>} -> Receipt`), so it never matched a real send and SES message ids were silently dropped. Receipts that do still carry the status code keep working.
+
 ## 0.1.11 - 2026-07-25
 
 ### Changed

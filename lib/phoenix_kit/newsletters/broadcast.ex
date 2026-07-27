@@ -123,6 +123,17 @@ defmodule PhoenixKit.Newsletters.Broadcast do
 
   @max_attachments 10
 
+  @doc """
+  How many distinct files a single broadcast may attach.
+
+  Public so the editor's media picker can cap the selection at the same
+  number the changeset enforces — a picker that lets the user confirm more
+  than this turns into a validation error only at save time, after the
+  files have already been chosen.
+  """
+  @spec max_attachments() :: pos_integer()
+  def max_attachments, do: @max_attachments
+
   # Dedups first (keeping the first occurrence — order is what the
   # sender will attach them in, so a duplicate uuid must not shift
   # anything after it) so the 10-cap counts distinct files, then checks
