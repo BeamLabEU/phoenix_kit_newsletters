@@ -61,7 +61,13 @@ defmodule PhoenixKitNewsletters.MixProject do
       # hex version once core cuts a release containing V151; until then,
       # a core built from `feature/email-send-profiles-core` (or later) is
       # required, wired in via a path/git dependency during this rollout.
-      {:phoenix_kit, "~> 1.7 and >= 1.7.207"},
+      # NOTE: broadcast attachments (core V158, PR#661) is not yet in a hex
+      # release as of this PR — hex is currently 1.7.210, V158 isn't in it.
+      # This PR was developed and fully tested against a local core build
+      # with V158 (path override, since reverted here) — see the PR body
+      # for how the two test runs differ. Bump the floor below to the exact
+      # hex version once core cuts a release containing V158.
+      {:phoenix_kit, "~> 1.7 and >= 1.7.211"},
       {:phoenix_live_view, "~> 1.1"},
       {:gettext, "~> 1.0"},
       {:oban, "~> 2.20"},

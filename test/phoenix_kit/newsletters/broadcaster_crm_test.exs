@@ -11,6 +11,13 @@ defmodule PhoenixKit.Newsletters.BroadcasterCRMTest do
 
   use PhoenixKitNewsletters.DataCase, async: false
 
+  # Every test here creates a real Broadcast row, and Broadcast.attachments
+  # (core V158) is an unconditional schema field now — against a hex
+  # phoenix_kit that doesn't ship V158 yet, that INSERT fails with
+  # undefined_column. test_helper.exs excludes this tag (with an explicit
+  # warning) when the column isn't present.
+  @moduletag :requires_v158
+
   alias PhoenixKit.Newsletters
   alias PhoenixKit.Newsletters.Broadcaster
   alias PhoenixKitCRM.Contacts

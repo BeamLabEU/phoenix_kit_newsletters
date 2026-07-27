@@ -162,6 +162,56 @@
           </fieldset>
         <% end %>
 
+        <%!-- Attachments --%>
+        <fieldset class="fieldset">
+          <label class="label">{gettext("Attachments")}</label>
+          <div class="flex flex-wrap gap-2">
+            <div
+              :for={{uuid, file} <- @attachment_files}
+              class={[
+                "badge gap-1 py-3 pl-3 pr-1",
+                if(file, do: "badge-outline", else: "badge-outline badge-error opacity-70")
+              ]}
+            >
+              <.icon
+                name={if file, do: "hero-paper-clip", else: "hero-exclamation-triangle"}
+                class="w-3 h-3"
+              />
+              <%= if file do %>
+                <span class="max-w-40 truncate" title={file.original_file_name}>
+                  {file.original_file_name}
+                </span>
+                <span class="text-base-content/50">({format_file_size(file.size)})</span>
+              <% else %>
+                <span class="italic" title={uuid}>{gettext("missing file")}</span>
+              <% end %>
+              <button
+                type="button"
+                phx-click="remove_attachment"
+                phx-value-uuid={uuid}
+                class="btn btn-circle btn-ghost btn-xs"
+                aria-label={gettext("Remove attachment")}
+              >
+                <.icon name="hero-x-mark" class="w-3 h-3" />
+              </button>
+            </div>
+            <button
+              type="button"
+              phx-click="open_attachments_picker"
+              class="btn btn-outline btn-sm"
+            >
+              <.icon name="hero-plus" class="w-4 h-4" /> {gettext("Add files")}
+            </button>
+          </div>
+          <p :if={attachments_size_warning?(@attachment_files)} class="text-xs text-warning mt-1">
+            <.icon name="hero-exclamation-triangle" class="w-3 h-3 inline" />
+            {gettext(
+              "Attachments total %{size} — large attachments can slow delivery.",
+              size: format_file_size(attachments_total_bytes(@attachment_files))
+            )}
+          </p>
+        </fieldset>
+
         <%!-- Markdown Editor --%>
         <fieldset class="fieldset">
           <label class="label">{gettext("Content (Markdown)")}</label>
@@ -266,5 +316,18 @@
       </div>
     </div>
   </form>
+
+  <%!-- Kept OUTSIDE the form: the modal's internal search filter renders a
+       bare type="submit" button (media_selector_modal.html.heex) for its
+       own inner form — nesting it inside our phx-submit="submit" form
+       would let that button bubble up and submit the whole broadcast. --%>
+  <.live_component
+    module={MediaSelectorModal}
+    id="broadcast-attachments-picker"
+    show={@show_media_selector}
+    mode={:multiple}
+    selected_uuids={@attachments}
+    phoenix_kit_current_user={assigns[:phoenix_kit_current_user]}
+  />
 </div>
 </PhoenixKitWeb.Components.LayoutWrapper.app_layout>

@@ -56,6 +56,13 @@ defmodule PhoenixKit.Newsletters.Broadcast do
     field(:source_type, :string, default: "crm_list")
     field(:crm_list_uuid, UUIDv7)
     field(:source_params, :map, default: %{})
+    # File uuids from core's Storage module, in send order (core V158) —
+    # a soft-reference list, same reasoning as crm_list_uuid: newsletters
+    # doesn't hard-depend on which files exist, only on their uuids at
+    # send time (DeliveryWorker resolves the actual file/binary then, not
+    # here). validate_attachments/1 caps this at 10 and drops duplicates
+    # (keeping the first occurrence, so order is otherwise untouched).
+    field(:attachments, {:array, :string}, default: [])
 
     # belongs_to :template removed — Emails module is an optional soft dependency.
     # template_uuid field kept for DB compatibility.
@@ -103,14 +110,52 @@ defmodule PhoenixKit.Newsletters.Broadcast do
       :send_profile_uuid,
       :source_type,
       :crm_list_uuid,
-      :source_params
+      :source_params,
+      :attachments
     ])
     |> validate_required([:subject])
     |> validate_length(:subject, min: 1, max: 998)
     |> validate_inclusion(:status, @valid_statuses)
     |> validate_inclusion(:source_type, @valid_source_types)
     |> validate_source_reference()
+    |> validate_attachments()
   end
+
+  @max_attachments 10
+
+  # Dedups first (keeping the first occurrence — order is what the
+  # sender will attach them in, so a duplicate uuid must not shift
+  # anything after it) so the 10-cap counts distinct files, then checks
+  # every remaining entry is a real uuid — a malformed one can't be
+  # resolved to a file at send time regardless of the cap.
+  defp validate_attachments(changeset) do
+    case get_change(changeset, :attachments) do
+      nil ->
+        changeset
+
+      attachments ->
+        deduped = Enum.uniq(attachments)
+
+        changeset
+        |> put_change(:attachments, deduped)
+        |> validate_length(:attachments, max: @max_attachments)
+        |> validate_attachment_uuids(deduped)
+    end
+  end
+
+  defp validate_attachment_uuids(changeset, attachments) do
+    if Enum.all?(attachments, &valid_uuid?/1) do
+      changeset
+    else
+      add_error(changeset, :attachments, "must be a list of valid file uuids")
+    end
+  end
+
+  defp valid_uuid?(value) when is_binary(value) do
+    match?({:ok, _}, Ecto.UUID.cast(value))
+  end
+
+  defp valid_uuid?(_), do: false
 
   # The source-specific reference is required only for the matching
   # source_type: crm_list needs crm_list_uuid, user_group needs at least

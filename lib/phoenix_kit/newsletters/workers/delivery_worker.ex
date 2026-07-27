@@ -33,6 +33,8 @@ defmodule PhoenixKit.Newsletters.Workers.DeliveryWorker do
   alias PhoenixKit.Email.ProviderOptions
   alias PhoenixKit.Email.SendProfile
   alias PhoenixKit.Email.SendProfiles
+  alias PhoenixKit.Modules.Storage
+  alias PhoenixKit.Modules.Storage.Manager, as: StorageManager
   alias PhoenixKit.Newsletters
   alias PhoenixKit.Newsletters.Broadcast
   alias PhoenixKit.Newsletters.CRMSource
@@ -55,6 +57,12 @@ defmodule PhoenixKit.Newsletters.Workers.DeliveryWorker do
          preferences_url = build_preferences_url(recipient, broadcast),
          {:ok, html_body, text_body} <-
            render_email(broadcast, recipient, unsubscribe_url, preferences_url),
+         # Resolved as late as possible — right before the email is actually
+         # built and sent, not earlier in the chain — so a job that fails an
+         # earlier step (delivery/broadcast/recipient lookup, rendering)
+         # never pays for a download it won't use. See resolve_attachments/1's
+         # doc for the per-file skip behavior and the cross-job cache.
+         attachments = resolve_attachments(broadcast),
          {:ok, result} <-
            send_email(
              broadcast,
@@ -62,7 +70,8 @@ defmodule PhoenixKit.Newsletters.Workers.DeliveryWorker do
              html_body,
              text_body,
              unsubscribe_url,
-             list_unsubscribe_url
+             list_unsubscribe_url,
+             attachments
            ) do
       message_id = extract_message_id(result)
 
@@ -386,7 +395,8 @@ defmodule PhoenixKit.Newsletters.Workers.DeliveryWorker do
          html_body,
          text_body,
          unsubscribe_url,
-         list_unsubscribe_url
+         list_unsubscribe_url,
+         attachments
        ) do
     case resolve_send_profile(broadcast) do
       nil ->
@@ -396,7 +406,8 @@ defmodule PhoenixKit.Newsletters.Workers.DeliveryWorker do
           html_body,
           text_body,
           unsubscribe_url,
-          list_unsubscribe_url
+          list_unsubscribe_url,
+          attachments
         )
 
       profile ->
@@ -407,9 +418,186 @@ defmodule PhoenixKit.Newsletters.Workers.DeliveryWorker do
           html_body,
           text_body,
           unsubscribe_url,
-          list_unsubscribe_url
+          list_unsubscribe_url,
+          attachments
         )
     end
+  end
+
+  # Cross-job attachment cache: the same file uuid is downloaded once and
+  # reused by every delivery job for the rest of a broadcast's send (and by
+  # any OTHER broadcast reusing the same file within the TTL) — keyed on
+  # file_uuid, not broadcast_uuid, on purpose. A named, public ETS table
+  # rather than a supervised GenServer: this package ships no process of
+  # its own to own it, and a plain lookup table needs no serialization
+  # point — concurrent Oban workers reading/writing different keys never
+  # contend. TTL is short (attachments rarely change mid-broadcast, but a
+  # re-upload replacing the same uuid's content should eventually be
+  # picked up) with lazy eviction on read — no reaper process needed for a
+  # cache this size.
+  @attachment_cache_table :phoenix_kit_newsletters_attachment_cache
+  @attachment_cache_ttl_ms 120_000
+
+  # Idempotent: `:ets.new/2` with `:named_table` raises `ArgumentError` if
+  # the table already exists, which is the expected/common case here (every
+  # call after the first, across every Oban worker process) — caught and
+  # ignored rather than guarded with a whereis/exists check first, which
+  # would itself race under concurrent first-callers.
+  defp ensure_attachment_cache_table! do
+    :ets.new(@attachment_cache_table, [:set, :public, :named_table, read_concurrency: true])
+  rescue
+    ArgumentError -> :ok
+  end
+
+  defp cached_attachment(file_uuid) do
+    ensure_attachment_cache_table!()
+
+    case :ets.lookup(@attachment_cache_table, file_uuid) do
+      [{^file_uuid, attachment, expires_at}] ->
+        if System.monotonic_time(:millisecond) < expires_at do
+          {:ok, attachment}
+        else
+          :ets.delete(@attachment_cache_table, file_uuid)
+          :miss
+        end
+
+      [] ->
+        :miss
+    end
+  end
+
+  defp cache_attachment(file_uuid, attachment) do
+    ensure_attachment_cache_table!()
+    expires_at = System.monotonic_time(:millisecond) + @attachment_cache_ttl_ms
+    :ets.insert(@attachment_cache_table, {file_uuid, attachment, expires_at})
+    attachment
+  end
+
+  @doc false
+  # Resolves every attachment file uuid on the broadcast to a
+  # `%Swoosh.Attachment{}` — both send paths (profile-routed and legacy)
+  # share this single result instead of each independently re-resolving.
+  # A file that can't be read (deleted row, missing "original" variant,
+  # object unreachable on every configured bucket) is logged and dropped
+  # rather than failing the whole send: a broadcast with 9 good
+  # attachments and 1 broken one must still reach every recipient with
+  # the 9. `fetch_fun` is the actual-download seam (see
+  # `build_attachment/2`) — overridable so a test can prove the
+  # cross-job cache (`cached_attachment/1`/`cache_attachment/2` above)
+  # actually prevents a second real fetch, without needing two genuinely
+  # separate Storage round trips to assert on. Not `defp` so the skip
+  # behavior is unit-testable directly — same rationale as
+  # `resolve_send_profile/1`.
+  def resolve_attachments(broadcast, fetch_fun \\ &fetch_and_build_attachment/1)
+
+  def resolve_attachments(%Broadcast{attachments: uuids}, fetch_fun)
+      when is_list(uuids) and uuids != [] do
+    uuids
+    |> Enum.map(&build_attachment(&1, fetch_fun))
+    |> Enum.flat_map(fn
+      {:ok, attachment} ->
+        [attachment]
+
+      {:error, reason, file_uuid} ->
+        Logger.warning(
+          "DeliveryWorker: skipping unreadable attachment #{file_uuid}: #{inspect(reason)}"
+        )
+
+        []
+    end)
+  end
+
+  def resolve_attachments(%Broadcast{}, _fetch_fun), do: []
+
+  @doc false
+  # Cache-first lookup for a single attachment; `fetch_fun` runs only on a
+  # cache miss and its result is cached before returning. Not `defp` —
+  # same testability rationale as `resolve_attachments/2`.
+  def build_attachment(file_uuid, fetch_fun \\ &fetch_and_build_attachment/1) do
+    case cached_attachment(file_uuid) do
+      {:ok, attachment} ->
+        {:ok, attachment}
+
+      :miss ->
+        case fetch_fun.(file_uuid) do
+          {:ok, attachment} -> {:ok, cache_attachment(file_uuid, attachment)}
+          error -> error
+        end
+    end
+  end
+
+  @doc false
+  # The actual, uncached download: file/instance lookup, a temp-path
+  # download via StorageManager.retrieve_file/2 (transparently local-disk
+  # or a remote bucket), and read into memory as a `%Swoosh.Attachment{
+  # data: binary}` — not a `path:` reference. Kept as `data:` rather than
+  # switching to `path:` + deferred cleanup: all three adapters this
+  # package sends through (SMTP, AmazonSES, Brevo) read attachment bytes
+  # synchronously before their own network call returns, so `path:` would
+  # be safe for a SINGLE send — but a cached entry here is read by MANY
+  # later jobs over its TTL, including concurrently, and a shared temp
+  # file would need its own reference-counted or reaper-based cleanup to
+  # avoid either leaking or deleting out from under a concurrent reader.
+  # An immutable in-memory binary sidesteps that entirely. Not `defp` —
+  # it's the default `fetch_fun` for `resolve_attachments/2` and
+  # `build_attachment/2`, and tests inject a counting wrapper around it
+  # to prove the cache actually short-circuits a second call.
+  def fetch_and_build_attachment(file_uuid) do
+    case Storage.get_file(file_uuid) do
+      nil -> {:error, :file_not_found, file_uuid}
+      file -> fetch_and_build_attachment(file, file_uuid)
+    end
+  end
+
+  defp fetch_and_build_attachment(file, file_uuid) do
+    case Storage.get_file_instance_by_name(file_uuid, "original") do
+      nil -> {:error, :instance_not_found, file_uuid}
+      instance -> download_and_read_attachment(file, instance, file_uuid)
+    end
+  end
+
+  defp download_and_read_attachment(file, instance, file_uuid) do
+    temp_path = attachment_temp_path(instance.uuid)
+
+    result =
+      with {:ok, _} <-
+             StorageManager.retrieve_file(instance.file_name, destination_path: temp_path),
+           {:ok, data} <- File.read(temp_path) do
+        {:ok,
+         Swoosh.Attachment.new({:data, data},
+           filename: file.original_file_name,
+           content_type: instance.mime_type,
+           type: :attachment
+         )}
+      else
+        {:error, reason} -> {:error, reason, file_uuid}
+      end
+
+    # Best-effort cleanup regardless of which branch above ran — a failed
+    # File.read after a successful retrieve would otherwise leak the temp
+    # file; a failed retrieve never created one, so this is a harmless no-op.
+    File.rm(temp_path)
+
+    result
+  end
+
+  defp attachment_temp_path(instance_uuid) do
+    # Matches core StorageManager's own generate_temp_path/0 collision
+    # avoidance (crypto-random bytes, not :rand.uniform/1's small integer
+    # range) — two jobs racing to build the same instance_uuid's temp path
+    # at the same moment must not collide.
+    random_suffix = :crypto.strong_rand_bytes(8) |> Base.encode16(case: :lower)
+
+    Path.join(
+      System.tmp_dir!(),
+      "phoenix_kit_newsletters_attach_#{instance_uuid}_#{random_suffix}"
+    )
+  end
+
+  defp maybe_put_attachments(email, []), do: email
+
+  defp maybe_put_attachments(email, attachments) do
+    Enum.reduce(attachments, email, &Swoosh.Email.attachment(&2, &1))
   end
 
   @doc false
@@ -446,7 +634,8 @@ defmodule PhoenixKit.Newsletters.Workers.DeliveryWorker do
          html_body,
          text_body,
          _unsubscribe_url,
-         list_unsubscribe_url
+         list_unsubscribe_url,
+         attachments
        ) do
     from_email = PhoenixKit.Settings.get_setting("from_email", "noreply@example.com")
     from_name = PhoenixKit.Settings.get_setting("from_name", "Newsletter")
@@ -458,6 +647,7 @@ defmodule PhoenixKit.Newsletters.Workers.DeliveryWorker do
     |> Swoosh.Email.html_body(html_body)
     |> Swoosh.Email.text_body(text_body)
     |> maybe_put_list_unsubscribe_headers(broadcast, list_unsubscribe_url)
+    |> maybe_put_attachments(attachments)
     |> PhoenixKit.Mailer.deliver_email()
   end
 
@@ -468,11 +658,13 @@ defmodule PhoenixKit.Newsletters.Workers.DeliveryWorker do
          html_body,
          text_body,
          _unsubscribe_url,
-         list_unsubscribe_url
+         list_unsubscribe_url,
+         attachments
        ) do
     profile
     |> build_profile_email(broadcast, recipient, html_body, text_body)
     |> maybe_put_list_unsubscribe_headers(broadcast, list_unsubscribe_url)
+    |> maybe_put_attachments(attachments)
     |> PhoenixKit.Mailer.deliver_via_integration(profile.integration_uuid)
   end
 

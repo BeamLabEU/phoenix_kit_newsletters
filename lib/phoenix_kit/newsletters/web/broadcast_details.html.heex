@@ -108,6 +108,34 @@
               <p class="font-medium">{format_datetime(@broadcast.sent_at, @tz_offset)}</p>
             </div>
           </div>
+
+          <div :if={@attachment_files != []} class="mt-4">
+            <p class="text-base-content/60 text-xs font-medium uppercase mb-1">
+              {gettext("Attachments")}
+            </p>
+            <div class="flex flex-wrap gap-2">
+              <div
+                :for={{uuid, file} <- @attachment_files}
+                class={[
+                  "badge gap-1 py-3 pl-3 pr-2",
+                  if(file, do: "badge-outline", else: "badge-outline badge-error opacity-70")
+                ]}
+              >
+                <.icon
+                  name={if file, do: "hero-paper-clip", else: "hero-exclamation-triangle"}
+                  class="w-3 h-3"
+                />
+                <%= if file do %>
+                  <span class="max-w-40 truncate" title={file.original_file_name}>
+                    {file.original_file_name}
+                  </span>
+                  <span class="text-base-content/50">({format_file_size(file.size)})</span>
+                <% else %>
+                  <span class="italic" title={uuid}>{gettext("missing file")}</span>
+                <% end %>
+              </div>
+            </div>
+          </div>
         </div>
       </div>
 

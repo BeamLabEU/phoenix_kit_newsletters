@@ -121,6 +121,69 @@ defmodule PhoenixKit.Newsletters.BroadcastTest do
     assert Broadcast.valid_source_types() == ["crm_list", "user_group"]
   end
 
+  describe "changeset/2 — attachments" do
+    defp base_attrs(attachments) do
+      %{
+        subject: "Hi",
+        source_type: "crm_list",
+        crm_list_uuid: Ecto.UUID.generate(),
+        attachments: attachments
+      }
+    end
+
+    test "defaults to an empty list when omitted" do
+      changeset =
+        Broadcast.changeset(%Broadcast{}, %{
+          subject: "Hi",
+          source_type: "user_group",
+          source_params: %{"role_uuids" => [Ecto.UUID.generate()]}
+        })
+
+      assert changeset.valid?
+      assert Ecto.Changeset.get_field(changeset, :attachments) == []
+    end
+
+    test "accepts a list of valid file uuids" do
+      uuids = [Ecto.UUID.generate(), Ecto.UUID.generate()]
+      changeset = Broadcast.changeset(%Broadcast{}, base_attrs(uuids))
+
+      assert changeset.valid?
+      assert Ecto.Changeset.get_change(changeset, :attachments) == uuids
+    end
+
+    test "rejects a non-uuid entry" do
+      changeset = Broadcast.changeset(%Broadcast{}, base_attrs(["not-a-uuid"]))
+
+      refute changeset.valid?
+      assert %{attachments: ["must be a list of valid file uuids"]} = errors_on(changeset)
+    end
+
+    test "dedups, keeping the first occurrence and its position" do
+      uuid_a = Ecto.UUID.generate()
+      uuid_b = Ecto.UUID.generate()
+      changeset = Broadcast.changeset(%Broadcast{}, base_attrs([uuid_a, uuid_b, uuid_a]))
+
+      assert changeset.valid?
+      assert Ecto.Changeset.get_change(changeset, :attachments) == [uuid_a, uuid_b]
+    end
+
+    test "rejects more than 10 attachments" do
+      uuids = for _ <- 1..11, do: Ecto.UUID.generate()
+      changeset = Broadcast.changeset(%Broadcast{}, base_attrs(uuids))
+
+      refute changeset.valid?
+      assert %{attachments: [message]} = errors_on(changeset)
+      assert message =~ "should have at most 10 item"
+    end
+
+    test "exactly 10 attachments is valid" do
+      uuids = for _ <- 1..10, do: Ecto.UUID.generate()
+      changeset = Broadcast.changeset(%Broadcast{}, base_attrs(uuids))
+
+      assert changeset.valid?
+    end
+  end
+
   defp errors_on(changeset) do
     Ecto.Changeset.traverse_errors(changeset, fn {message, opts} ->
       Regex.replace(~r"%{(\w+)}", message, fn _, key ->
