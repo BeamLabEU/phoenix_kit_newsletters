@@ -999,8 +999,17 @@ defmodule PhoenixKit.Newsletters.Workers.DeliveryWorkerTest do
       assert DeliveryWorker.extract_message_id("250 OK id=1a2b3c-000abc-XY") == "1a2b3c-000abc-XY"
     end
 
-    test "Amazon SES SMTP receipt (250 Ok <MessageID>) yields the id" do
-      assert DeliveryWorker.extract_message_id("250 Ok 01000191abcdef-1234-5678") ==
+    test "Amazon SES SMTP receipt — as gen_smtp actually returns it, '250 ' stripped" do
+      assert DeliveryWorker.extract_message_id("Ok 01000191abcdef-1234-5678\r\n") ==
+               "01000191abcdef-1234-5678"
+    end
+
+    test "SES receipt with angle brackets and status-code prefix variant" do
+      assert DeliveryWorker.extract_message_id("Ok <01000191abcdef-1234-5678>\r\n") ==
+               "01000191abcdef-1234-5678"
+
+      # Some relays keep an enhanced status code before Ok.
+      assert DeliveryWorker.extract_message_id("2.0.0 Ok 01000191abcdef-1234-5678") ==
                "01000191abcdef-1234-5678"
     end
 
