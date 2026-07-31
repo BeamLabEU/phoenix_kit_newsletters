@@ -147,12 +147,7 @@ defmodule PhoenixKit.Newsletters.Web.BroadcastDetails do
              |> load_broadcast_data()}
 
           {:error, reason} ->
-            {:noreply,
-             put_flash(
-               socket,
-               :error,
-               gettext("Failed to send: %{reason}", reason: inspect(reason))
-             )}
+            {:noreply, put_flash(socket, :error, send_error_message(reason))}
         end
 
       _ ->
@@ -169,6 +164,22 @@ defmodule PhoenixKit.Newsletters.Web.BroadcastDetails do
   end
 
   # --- Private ---
+
+  # Broadcaster.send/1's reasons are structured tuples; render the ones an
+  # operator can act on as sentences instead of leaking the raw term into
+  # the flash. The catch-all keeps inspect/1 so an unmapped reason is still
+  # diagnosable rather than silently generic.
+  defp send_error_message({:crm_list_not_active, status}) do
+    gettext("Cannot send: the CRM list is %{status}, not active.", status: status)
+  end
+
+  defp send_error_message({:invalid_status, status}) do
+    gettext("Cannot send a broadcast with status %{status}.", status: status)
+  end
+
+  defp send_error_message(reason) do
+    gettext("Failed to send: %{reason}", reason: inspect(reason))
+  end
 
   defp load_broadcast_data(socket) do
     id = socket.assigns.broadcast_id
