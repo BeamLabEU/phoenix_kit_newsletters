@@ -16,6 +16,7 @@ defmodule PhoenixKit.Newsletters.Web.BroadcastDetails do
   alias PhoenixKit.Modules.Storage
   alias PhoenixKit.Newsletters
   alias PhoenixKit.Newsletters.Broadcast
+  alias PhoenixKit.Newsletters.Broadcaster
   alias PhoenixKit.Newsletters.CRMSource
   alias PhoenixKit.Newsletters.UserGroupSource
   alias PhoenixKit.Newsletters.Web.Timezone
@@ -99,6 +100,19 @@ defmodule PhoenixKit.Newsletters.Web.BroadcastDetails do
   end
 
   @impl true
+  def handle_event("show_confirm", %{"action" => "retry_send"}, socket) do
+    {:noreply,
+     socket
+     |> assign(:show_confirm_modal, true)
+     |> assign(:confirm_action, :retry_send)
+     |> assign(:confirm_title, gettext("Retry send"))
+     |> assign(
+       :confirm_message,
+       gettext("This will retry sending the broadcast from the beginning.")
+     )}
+  end
+
+  @impl true
   def handle_event("hide_confirm", _params, socket) do
     {:noreply,
      socket
@@ -123,6 +137,19 @@ defmodule PhoenixKit.Newsletters.Web.BroadcastDetails do
             {:noreply, put_flash(socket, :error, gettext("Failed to cancel broadcast"))}
         end
 
+      :retry_send ->
+        case Broadcaster.send(socket.assigns.broadcast) do
+          {:ok, broadcast} ->
+            {:noreply,
+             socket
+             |> assign(:broadcast, broadcast)
+             |> put_flash(:info, gettext("Broadcast is being sent"))
+             |> load_broadcast_data()}
+
+          {:error, reason} ->
+            {:noreply, put_flash(socket, :error, send_error_message(reason))}
+        end
+
       _ ->
         {:noreply, socket}
     end
@@ -137,6 +164,22 @@ defmodule PhoenixKit.Newsletters.Web.BroadcastDetails do
   end
 
   # --- Private ---
+
+  # Broadcaster.send/1's reasons are structured tuples; render the ones an
+  # operator can act on as sentences instead of leaking the raw term into
+  # the flash. The catch-all keeps inspect/1 so an unmapped reason is still
+  # diagnosable rather than silently generic.
+  defp send_error_message({:crm_list_not_active, status}) do
+    gettext("Cannot send: the CRM list is %{status}, not active.", status: status)
+  end
+
+  defp send_error_message({:invalid_status, status}) do
+    gettext("Cannot send a broadcast with status %{status}.", status: status)
+  end
+
+  defp send_error_message(reason) do
+    gettext("Failed to send: %{reason}", reason: inspect(reason))
+  end
 
   defp load_broadcast_data(socket) do
     id = socket.assigns.broadcast_id

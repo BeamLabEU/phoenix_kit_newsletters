@@ -111,5 +111,41 @@ defmodule PhoenixKit.Newsletters.BroadcasterCRMTest do
       assert reloaded.total_recipients == 0
       assert Newsletters.list_deliveries(broadcast.uuid) == []
     end
+
+    test "a failed broadcast can be retried once the cause (archived list) is fixed",
+         %{list: list, sendable: sendable} do
+      broadcast = create_crm_sourced_broadcast(list.uuid)
+      {:ok, broadcast} = Newsletters.update_broadcast(broadcast, %{status: "failed"})
+
+      {:ok, _list} = Lists.unarchive_list(list)
+
+      assert {:ok, sent} = Broadcaster.send(broadcast)
+      assert sent.status == "sending"
+      assert sent.total_recipients == length(sendable)
+
+      # The point of the retry is that it re-enqueues, so assert the rows
+      # exist — and that there is exactly one per sendable member, not a set
+      # doubled by the attempt that failed.
+      deliveries = Newsletters.list_deliveries(sent.uuid)
+      assert length(deliveries) == length(sendable)
+      assert Enum.all?(deliveries, &(&1.status == "pending"))
+
+      expected_emails = sendable |> Enum.map(& &1.email) |> MapSet.new()
+      actual_emails = deliveries |> Enum.map(& &1.recipient_email) |> MapSet.new()
+      assert actual_emails == expected_emails
+    end
+
+    test "a failed broadcast stays failed when retried while the list is still archived",
+         %{list: list} do
+      broadcast = create_crm_sourced_broadcast(list.uuid)
+      {:ok, broadcast} = Newsletters.update_broadcast(broadcast, %{status: "failed"})
+
+      {:ok, _list} = Lists.archive_list(list)
+
+      assert {:error, {:crm_list_not_active, "archived"}} = Broadcaster.send(broadcast)
+
+      reloaded = Newsletters.get_broadcast!(broadcast.uuid)
+      assert reloaded.status == "failed"
+    end
   end
 end

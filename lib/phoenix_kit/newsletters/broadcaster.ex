@@ -36,12 +36,23 @@ defmodule PhoenixKit.Newsletters.Broadcaster do
   @doc """
   Starts sending a broadcast. Transitions status to `sending`,
   creates delivery records, and enqueues Oban jobs.
+
+  Accepts `"failed"` alongside `"draft"`/`"scheduled"` — a broadcast that
+  failed terminally (see `Newsletters.process_scheduled_broadcasts/0`,
+  e.g. because its CRM list was archived) is retryable once the cause is
+  fixed. `validate_recipient_source/1` runs again here unchanged, so a
+  retry against a still-broken cause (list still archived) fails the same
+  way and the broadcast stays `"failed"` — no separate retry-specific path.
   """
   def send(%Broadcast{status: "draft"} = broadcast) do
     send_if_valid(broadcast)
   end
 
   def send(%Broadcast{status: "scheduled"} = broadcast) do
+    send_if_valid(broadcast)
+  end
+
+  def send(%Broadcast{status: "failed"} = broadcast) do
     send_if_valid(broadcast)
   end
 
