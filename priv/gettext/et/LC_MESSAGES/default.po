@@ -214,10 +214,20 @@ msgstr "Saadetist ei leitud"
 msgid "Broadcast is being sent"
 msgstr "Saadetist saadetakse"
 
-#: lib/phoenix_kit/newsletters/web/broadcast_editor.ex:195
+#: lib/phoenix_kit/newsletters/web/send_error.ex:29
 #, elixir-autogen
 msgid "Failed to send: %{reason}"
 msgstr "Saatmine ebaõnnestus: %{reason}"
+
+#: lib/phoenix_kit/newsletters/web/send_error.ex:21
+#, elixir-autogen
+msgid "Cannot send: the CRM list is %{status}, not active."
+msgstr "Ei saa saata: CRM-i nimekirja olek on %{status}, mitte aktiivne."
+
+#: lib/phoenix_kit/newsletters/web/send_error.ex:25
+#, elixir-autogen
+msgid "Cannot send a broadcast with status %{status}."
+msgstr "Ei saa saata saadetist olekus %{status}."
 
 #: lib/phoenix_kit/newsletters/web/broadcast_editor.ex:201
 #, elixir-autogen
@@ -310,6 +320,17 @@ msgstr "Tühista saadetis"
 #, elixir-autogen
 msgid "This will stop any remaining deliveries for this broadcast."
 msgstr "See peatab kõik ülejäänud kohaletoimetamised."
+
+#: lib/phoenix_kit/newsletters/web/broadcast_details.ex:109
+#: lib/phoenix_kit/newsletters/web/broadcast_details.html.heex:62
+#, elixir-autogen
+msgid "Retry send"
+msgstr "Proovi saatmist uuesti"
+
+#: lib/phoenix_kit/newsletters/web/broadcast_details.ex:112
+#, elixir-autogen
+msgid "This will retry sending the broadcast from the beginning."
+msgstr "Saadetise saatmist alustatakse uuesti algusest."
 
 #: lib/phoenix_kit/newsletters/web/broadcast_details.ex:120
 #, elixir-autogen

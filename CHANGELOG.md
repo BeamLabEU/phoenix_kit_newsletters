@@ -1,6 +1,14 @@
 # Changelog
 
-## 0.1.12 - 2026-07-27
+## 0.1.13 - 2026-07-31
+
+### Added
+- A broadcast that failed terminally — the only cause today is a scheduled send whose CRM list was archived — can be sent again from its details page once the cause is fixed. `Broadcaster.send/1` accepts `"failed"` alongside `"draft"`/`"scheduled"` and re-runs the same recipient-source validation, so a retry against a still-archived list fails the same way and the broadcast stays `"failed"`.
+
+### Fixed
+- The retry re-reads the broadcast before sending. It previously sent the copy the page loaded, so a click from a tab left open since the broadcast was retried elsewhere passed a stale `"failed"` status through `Broadcaster.send/1`'s guard — dragging an already-sending (or already-sent) broadcast back into `"sending"`, overwriting `sent_at`, and mailing anyone added to the audience in the meantime. A refusal now also refreshes the page, so the operator ends up looking at the broadcast's real status.
+- "Send now" in the broadcast editor renders `Broadcaster.send/1`'s refusals as sentences instead of raw Elixir tuples, matching the details page. Both now share `Web.SendError.message/1`, so the two surfaces can't drift.
+- The retry button, its confirmation, and the send-error messages are translated. They shipped as untranslated `gettext` calls missing from every catalogue, so Estonian and Russian operators saw raw English with nothing to flag it; `"Edit send profile"` was likewise blank in the `en` catalogue. The i18n test now fails on any msgid that is in `default.pot` but missing — or untranslated — in a locale.
 
 ### Added
 - Broadcasts can now carry file attachments. The editor gets a media picker (core Storage), removable chips showing each file's name and size, a non-blocking warning once the attachments total more than 7 MB, and a visible "missing file" chip for a file deleted from Storage after it was attached — so a stale reference can still be removed rather than silently riding along. Up to 10 distinct files per broadcast, attached in the order they were picked; the broadcast details page shows the same list read-only. Requires core `>= 1.7.211` (V158).

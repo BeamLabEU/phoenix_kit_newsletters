@@ -215,10 +215,20 @@ msgstr "Выпуск не найден"
 msgid "Broadcast is being sent"
 msgstr "Выпуск отправляется"
 
-#: lib/phoenix_kit/newsletters/web/broadcast_editor.ex:195
+#: lib/phoenix_kit/newsletters/web/send_error.ex:29
 #, elixir-autogen
 msgid "Failed to send: %{reason}"
 msgstr "Ошибка отправки: %{reason}"
+
+#: lib/phoenix_kit/newsletters/web/send_error.ex:21
+#, elixir-autogen
+msgid "Cannot send: the CRM list is %{status}, not active."
+msgstr "Невозможно отправить: список CRM имеет статус %{status}, а не «активен»."
+
+#: lib/phoenix_kit/newsletters/web/send_error.ex:25
+#, elixir-autogen
+msgid "Cannot send a broadcast with status %{status}."
+msgstr "Невозможно отправить выпуск со статусом %{status}."
 
 #: lib/phoenix_kit/newsletters/web/broadcast_editor.ex:201
 #, elixir-autogen
@@ -311,6 +321,17 @@ msgstr "Отменить выпуск"
 #, elixir-autogen
 msgid "This will stop any remaining deliveries for this broadcast."
 msgstr "Это остановит оставшиеся доставки этого выпуска."
+
+#: lib/phoenix_kit/newsletters/web/broadcast_details.ex:109
+#: lib/phoenix_kit/newsletters/web/broadcast_details.html.heex:62
+#, elixir-autogen
+msgid "Retry send"
+msgstr "Повторить отправку"
+
+#: lib/phoenix_kit/newsletters/web/broadcast_details.ex:112
+#, elixir-autogen
+msgid "This will retry sending the broadcast from the beginning."
+msgstr "Отправка выпуска начнётся заново."
 
 #: lib/phoenix_kit/newsletters/web/broadcast_details.ex:120
 #, elixir-autogen

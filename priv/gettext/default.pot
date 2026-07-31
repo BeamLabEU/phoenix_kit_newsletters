@@ -214,9 +214,19 @@ msgstr ""
 msgid "Broadcast is being sent"
 msgstr ""
 
-#: lib/phoenix_kit/newsletters/web/broadcast_editor.ex:195
+#: lib/phoenix_kit/newsletters/web/send_error.ex:29
 #, elixir-autogen
 msgid "Failed to send: %{reason}"
+msgstr ""
+
+#: lib/phoenix_kit/newsletters/web/send_error.ex:21
+#, elixir-autogen
+msgid "Cannot send: the CRM list is %{status}, not active."
+msgstr ""
+
+#: lib/phoenix_kit/newsletters/web/send_error.ex:25
+#, elixir-autogen
+msgid "Cannot send a broadcast with status %{status}."
 msgstr ""
 
 #: lib/phoenix_kit/newsletters/web/broadcast_editor.ex:201
@@ -309,6 +319,17 @@ msgstr ""
 #: lib/phoenix_kit/newsletters/web/broadcast_details.ex:97
 #, elixir-autogen
 msgid "This will stop any remaining deliveries for this broadcast."
+msgstr ""
+
+#: lib/phoenix_kit/newsletters/web/broadcast_details.ex:109
+#: lib/phoenix_kit/newsletters/web/broadcast_details.html.heex:62
+#, elixir-autogen
+msgid "Retry send"
+msgstr ""
+
+#: lib/phoenix_kit/newsletters/web/broadcast_details.ex:112
+#, elixir-autogen
+msgid "This will retry sending the broadcast from the beginning."
 msgstr ""
 
 #: lib/phoenix_kit/newsletters/web/broadcast_details.ex:120

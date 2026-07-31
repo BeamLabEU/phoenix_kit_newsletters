@@ -19,6 +19,7 @@ defmodule PhoenixKit.Newsletters.Web.BroadcastDetails do
   alias PhoenixKit.Newsletters.Broadcaster
   alias PhoenixKit.Newsletters.CRMSource
   alias PhoenixKit.Newsletters.UserGroupSource
+  alias PhoenixKit.Newsletters.Web.SendError
   alias PhoenixKit.Newsletters.Web.Timezone
   alias PhoenixKit.Settings
   alias PhoenixKit.Utils.Format
@@ -138,17 +139,7 @@ defmodule PhoenixKit.Newsletters.Web.BroadcastDetails do
         end
 
       :retry_send ->
-        case Broadcaster.send(socket.assigns.broadcast) do
-          {:ok, broadcast} ->
-            {:noreply,
-             socket
-             |> assign(:broadcast, broadcast)
-             |> put_flash(:info, gettext("Broadcast is being sent"))
-             |> load_broadcast_data()}
-
-          {:error, reason} ->
-            {:noreply, put_flash(socket, :error, send_error_message(reason))}
-        end
+        retry_send(socket)
 
       _ ->
         {:noreply, socket}
@@ -165,20 +156,37 @@ defmodule PhoenixKit.Newsletters.Web.BroadcastDetails do
 
   # --- Private ---
 
-  # Broadcaster.send/1's reasons are structured tuples; render the ones an
-  # operator can act on as sentences instead of leaking the raw term into
-  # the flash. The catch-all keeps inspect/1 so an unmapped reason is still
-  # diagnosable rather than silently generic.
-  defp send_error_message({:crm_list_not_active, status}) do
-    gettext("Cannot send: the CRM list is %{status}, not active.", status: status)
-  end
+  # Re-reads the row before sending. Both the "failed" gate on the button
+  # and Broadcaster.send/1's own status guard are only as fresh as the last
+  # page load, so a click from a tab left open since the broadcast was
+  # retried elsewhere would hand the guard a stale "failed" struct and drag
+  # an already-sending (or already-sent) broadcast back into "sending" with
+  # a fresh sent_at — and re-enqueue anyone added to the audience since.
+  # Reloading first makes the guard judge the row as it actually is.
+  defp retry_send(socket) do
+    case Broadcaster.send(Newsletters.get_broadcast!(socket.assigns.broadcast_id)) do
+      {:ok, _broadcast} ->
+        {:noreply,
+         socket
+         |> put_flash(:info, gettext("Broadcast is being sent"))
+         |> load_broadcast_data()}
 
-  defp send_error_message({:invalid_status, status}) do
-    gettext("Cannot send a broadcast with status %{status}.", status: status)
-  end
-
-  defp send_error_message(reason) do
-    gettext("Failed to send: %{reason}", reason: inspect(reason))
+      {:error, reason} ->
+        # Reload on refusal too: the usual reason for one is that this
+        # page's copy of the broadcast is out of date, so leave the
+        # operator looking at the current status rather than the "failed"
+        # one they clicked.
+        {:noreply,
+         socket
+         |> put_flash(:error, SendError.message(reason))
+         |> load_broadcast_data()}
+    end
+  rescue
+    Ecto.NoResultsError ->
+      {:noreply,
+       socket
+       |> put_flash(:error, gettext("Broadcast not found"))
+       |> push_navigate(to: Routes.path("/admin/newsletters/broadcasts"))}
   end
 
   defp load_broadcast_data(socket) do

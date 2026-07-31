@@ -17,6 +17,7 @@ defmodule PhoenixKit.Newsletters.Web.BroadcastEditor do
   alias PhoenixKit.Modules.Storage
   alias PhoenixKit.Newsletters
   alias PhoenixKit.Newsletters.{Broadcast, Broadcaster, Content, CRMSource, UserGroupSource}
+  alias PhoenixKit.Newsletters.Web.SendError
   alias PhoenixKit.Newsletters.Web.Timezone
   alias PhoenixKit.Settings
   alias PhoenixKit.Utils.Date, as: DateUtils
@@ -195,12 +196,7 @@ defmodule PhoenixKit.Newsletters.Web.BroadcastEditor do
              |> push_navigate(to: Routes.path("/admin/newsletters/broadcasts/#{broadcast.uuid}"))}
 
           {:error, reason} ->
-            {:noreply,
-             put_flash(
-               socket,
-               :error,
-               gettext("Failed to send: %{reason}", reason: inspect(reason))
-             )}
+            {:noreply, put_flash(socket, :error, SendError.message(reason))}
         end
 
       {:error, reason} ->

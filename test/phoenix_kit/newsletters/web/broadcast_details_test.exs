@@ -155,4 +155,59 @@ defmodule PhoenixKit.Newsletters.Web.BroadcastDetailsTest do
     # the source itself (S4-E part 2) — the crm_list case above still
     # pins the "nil for non-user_group sources" behavior.
   end
+
+  describe "retry send" do
+    defp confirm_socket(broadcast) do
+      %Phoenix.LiveView.Socket{
+        assigns:
+          Map.merge(socket().assigns, %{
+            broadcast_id: broadcast.uuid,
+            broadcast: broadcast,
+            confirm_action: :retry_send,
+            show_confirm_modal: true,
+            flash: %{},
+            __changed__: %{}
+          })
+      }
+    end
+
+    test "show_confirm arms the modal with the retry action" do
+      {:noreply, updated} =
+        BroadcastDetails.handle_event("show_confirm", %{"action" => "retry_send"}, socket())
+
+      assert updated.assigns.confirm_action == :retry_send
+      assert updated.assigns.show_confirm_modal
+      assert updated.assigns.confirm_title == "Retry send"
+    end
+
+    test "a failed broadcast is sent again" do
+      broadcast = create_user_group_broadcast([Ecto.UUID.generate()], ["Marketing"])
+      {:ok, broadcast} = Newsletters.update_broadcast(broadcast, %{status: "failed"})
+
+      {:noreply, updated} =
+        BroadcastDetails.handle_event("confirm_action", %{}, confirm_socket(broadcast))
+
+      refute updated.assigns.show_confirm_modal
+      assert updated.assigns.broadcast.status == "sending"
+      assert Newsletters.get_broadcast!(broadcast.uuid).status == "sending"
+    end
+
+    # The button and Broadcaster.send/1's status guard both judge the copy
+    # of the broadcast the page loaded, so the guard is only as good as the
+    # re-read in front of it: without one, a click from a tab left open
+    # since the broadcast moved on drags it back into "sending".
+    test "a stale page cannot re-send a broadcast that has since moved past failed" do
+      broadcast = create_user_group_broadcast([Ecto.UUID.generate()], ["Marketing"])
+      {:ok, _} = Newsletters.update_broadcast(broadcast, %{status: "sent"})
+      stale = %{broadcast | status: "failed"}
+
+      {:noreply, updated} =
+        BroadcastDetails.handle_event("confirm_action", %{}, confirm_socket(stale))
+
+      assert updated.assigns.flash["error"] == "Cannot send a broadcast with status sent."
+      assert Newsletters.get_broadcast!(broadcast.uuid).status == "sent"
+      # The refusal also refreshes the page off its stale copy.
+      assert updated.assigns.broadcast.status == "sent"
+    end
+  end
 end
