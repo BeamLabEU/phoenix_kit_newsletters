@@ -173,18 +173,28 @@ committing (switching between path and Hex resolution rewrites the lock).
   host that configures `newsletters:` instead never runs a single delivery
   job — the jobs enqueue fine and nothing drains them. The README's Oban
   snippet names the right queue now; keep it that way.
-- `DeliveryWorker.perform/1` halts on a broadcast whose status is
-  `"cancelled"` or `"failed"` (`guard_broadcast_sendable/1`, right after
-  `get_broadcast/1`). The list names what STOPS a send, not what permits
-  one, so a status added later still delivers instead of silently going
-  dark — and `"sending"`, the status a broadcast holds for its whole send,
-  must never join that list. The guard returns plain `:ok` (like the
-  already-sent skip) so the job neither retries nor records a failure, and
-  writes **nothing** to the delivery row: `"pending"` is honest for a send
-  that never happened, and any terminal status would clear the broadcast's
-  last non-terminal delivery — the exact condition
-  `maybe_finalize_broadcast/1` watches — while `"failed"` would also inflate
-  `bounced_count` with an operator's own cancellation.
+- `DeliveryWorker.perform/1` sends only when the broadcast's status is
+  `"sending"` (`@sendable_broadcast_statuses`, checked by
+  `guard_broadcast_sendable/1` right after `get_broadcast/1`). It is an
+  **allow-list on purpose**: `Broadcaster.do_send/1` flips to `"sending"`
+  before it enqueues anything, so that is the only status a real job ever
+  runs under, and a new status added later stalls a send rather than
+  sending under it. For irreversible mass email that asymmetry decides the
+  direction — a stalled send is recoverable and visible, mail already handed
+  to a provider is neither. Never widen this to a deny-list.
+- **The guard is checked twice.** `recheck_broadcast_sendable/1` runs again
+  immediately before `send_email/7`, because recipient lookup, rendering and
+  `resolve_attachments/1` (which downloads files) sit between the first check
+  and the send and can take seconds. It costs one indexed read per delivery
+  and narrows the cancel race to the provider call itself, which nothing in a
+  database can retract. Cancellation therefore means "stops every delivery
+  that has not already been handed to the provider", not "stops everything".
+- Both guards return plain `:ok` (like the already-sent skip) so the job
+  neither retries nor records a failure, and write **nothing** to the
+  delivery row: `"pending"` is honest for a send that never happened, and any
+  terminal status would clear the broadcast's last non-terminal delivery —
+  the exact condition `maybe_finalize_broadcast/1` watches — while `"failed"`
+  would also inflate `bounced_count` with an operator's own cancellation.
 - `insert_all` bypasses `Delivery.changeset/2`. `Broadcaster.process_batch/5`
   re-checks "user_uuid or recipient_email present" by hand and relies on the
   DB CHECK plus the three partial unique indexes
@@ -403,6 +413,26 @@ string must agree or every HexDocs source link 404s.
 - Review files live in `dev_docs/pull_requests/{year}/{pr_number}-{slug}/{AGENT}_REVIEW.md`, one file per reviewing agent, never edited by another agent; `FOLLOW_UP.md` records how each finding was resolved. Severities: `BUG - CRITICAL/HIGH/MEDIUM`, `IMPROVEMENT - HIGH/MEDIUM`, `NITPICK`.
 
 ## TODOs
+
+- **A terminal delivery status for suppressed sends.** Deliveries under a
+  cancelled broadcast stay `"pending"` forever. That is safe (finalization
+  and the repair sweep both match `status == "sending"` only, so nothing
+  sweeps them) and honest, but it means a delivery row and its Oban job
+  disagree — the job completed, the delivery reads non-terminal — so any
+  future report counting pending deliveries, or a resume/retry-pending
+  feature, must join against the broadcast's status or it will mis-read
+  them. The clean model is a terminal `"cancelled"` status excluded from
+  `bounced_count` and from `non_terminal_broadcast_uuids_query/0`.
+  **Trigger:** the first reporting or resume feature that reads delivery
+  status without the broadcast join. Needs a `@valid_statuses` change and a
+  decision on backfilling existing rows; do NOT reuse `"failed"`.
+- **Bulk-cancel the queued Oban jobs on cancel.** Cancelling a
+  50k-recipient broadcast currently wakes all 50k jobs, each doing two
+  reads and an info log, just to skip. `Oban.cancel_all_jobs/1` over the
+  broadcast's jobs would drop that to one statement. The worker guards stay
+  either way — they are what closes the race — so this is a cost fix, not a
+  correctness one. **Trigger:** a real send large enough for the wake-up
+  cost to show.
 
 - `README.md` still describes the retired `List`/`ListMember` model and the
   old unsubscribe token payload (`%{user_uuid, list_uuid}`, a

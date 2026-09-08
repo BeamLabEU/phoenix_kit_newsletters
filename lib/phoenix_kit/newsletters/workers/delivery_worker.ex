@@ -78,6 +78,7 @@ defmodule PhoenixKit.Newsletters.Workers.DeliveryWorker do
          # never pays for a download it won't use. See resolve_attachments/1's
          # doc for the per-file skip behavior and the cross-job cache.
          attachments = resolve_attachments(broadcast),
+         {:ok, _still_sendable} <- recheck_broadcast_sendable(broadcast_uuid),
          {:ok, result} <-
            send_email(
              broadcast,
@@ -153,21 +154,20 @@ defmodule PhoenixKit.Newsletters.Workers.DeliveryWorker do
   defp guard_unsent(%Delivery{status: "sent"} = delivery), do: {:error, {:already_sent, delivery}}
   defp guard_unsent(delivery), do: {:ok, delivery}
 
-  # The two broadcast statuses that halt a queued delivery. Both are
-  # terminal and operator-visible: "cancelled" is written by the details
-  # page's "Cancel broadcast" button, "failed" by
-  # Newsletters.handle_scheduled_send_failure/3. Neither is a state a
-  # broadcast leaves on its own, and Broadcaster.send/1 refuses "cancelled"
-  # outright, so a job matching one of these will never become valid again
-  # by waiting.
+  # The only broadcast status a delivery job may send under. Broadcaster's
+  # do_send/1 flips the broadcast to "sending" BEFORE it enqueues anything,
+  # so "sending" is the only state a real job has ever run under; every
+  # other status ("draft", "scheduled", "sent", "cancelled", "failed") means
+  # either the job predates the send or the send is over.
   #
-  # Everything else proceeds, and the important member of "everything else"
-  # is "sending" — the normal status for the entire life of a send. A guard
-  # that allowed only "sending" would be equivalent today, but would turn
-  # any future status into a silent mail outage; listing what STOPS a send
-  # fails safe (an unrecognised status still delivers) where listing what
-  # permits one fails closed.
-  @halting_broadcast_statuses ["cancelled", "failed"]
+  # This is an allow-list, and the direction matters. A deny-list naming
+  # just "cancelled" and "failed" is equivalent TODAY and fails open: add a
+  # "paused" or "suspended" status later, forget to list it, and the queue
+  # sends anyway. The allow-list fails closed — the same oversight stalls a
+  # send instead. For irreversible mass email that asymmetry decides it: a
+  # stalled send is recoverable and an operator notices it, mail already
+  # handed to a provider is neither.
+  @sendable_broadcast_statuses ["sending"]
 
   # Nothing is written to the delivery row here, on purpose:
   #
@@ -190,11 +190,24 @@ defmodule PhoenixKit.Newsletters.Workers.DeliveryWorker do
   # instead of 50k UPDATEs. The broadcast's own "Cancelled" badge is what
   # tells the operator why those rows stopped.
   defp guard_broadcast_sendable(%Broadcast{status: status} = broadcast)
-       when status in @halting_broadcast_statuses do
+       when status not in @sendable_broadcast_statuses do
     {:error, {:broadcast_not_sendable, broadcast}}
   end
 
   defp guard_broadcast_sendable(%Broadcast{} = broadcast), do: {:ok, broadcast}
+
+  # The SECOND read, and the reason it is worth an extra indexed lookup per
+  # delivery: everything between the first guard and here — recipient lookup,
+  # markdown rendering, and above all resolve_attachments/1, which downloads
+  # files — can take seconds, and a cancel landing inside that window would
+  # otherwise still send. This narrows the race to the provider call itself,
+  # which nothing in a database can retract. Same error shape as the first
+  # guard, so the skip clause in perform/1 handles both.
+  defp recheck_broadcast_sendable(broadcast_uuid) do
+    with {:ok, broadcast} <- get_broadcast(broadcast_uuid) do
+      guard_broadcast_sendable(broadcast)
+    end
+  end
 
   @doc false
   # Blocklisted recipient, or the send profile's integration is deleted /

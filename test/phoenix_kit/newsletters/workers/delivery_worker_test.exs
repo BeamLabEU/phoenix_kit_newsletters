@@ -59,9 +59,16 @@ defmodule PhoenixKit.Newsletters.Workers.DeliveryWorkerTest do
     user
   end
 
+  # Defaults to "sending", not the schema default "draft". Broadcaster's
+  # do_send/1 flips a broadcast to "sending" BEFORE it enqueues a single job,
+  # so "sending" is the only status a DeliveryWorker job has ever run under —
+  # a "draft" broadcast with queued deliveries is not a state the system can
+  # reach. Fixtures that built one were a fixture smell, and the worker's
+  # allow-list guard now (correctly) refuses to send from it.
   defp create_broadcast(attrs) do
     base = %{
       subject: "Hello",
+      status: "sending",
       source_type: "user_group",
       source_params: %{"role_uuids" => [Ecto.UUID.generate()], "role_names_snapshot" => []},
       html_body: "<p>Body</p>",
@@ -962,6 +969,27 @@ defmodule PhoenixKit.Newsletters.Workers.DeliveryWorkerTest do
       broadcast = create_broadcast(%{subject: "Failed broadcast", html_body: "<p>Hi</p>"})
       delivery = create_delivery(broadcast, user)
       {:ok, broadcast} = Newsletters.update_broadcast(broadcast, %{status: "failed"})
+
+      job = %Oban.Job{
+        args: %{"delivery_uuid" => delivery.uuid, "broadcast_uuid" => broadcast.uuid},
+        attempt: 1,
+        max_attempts: 3
+      }
+
+      assert :ok = DeliveryWorker.perform(job)
+
+      refute_email_sent()
+      assert Repo.get(Delivery, delivery.uuid).status == "pending"
+    end
+
+    # The allow-list's real point. A deny-list of ["cancelled", "failed"] would
+    # send here; "draft" is not a status a broadcast with queued jobs can
+    # legitimately be in, and treating an unexpected status as sendable is the
+    # failure mode that matters for mass email.
+    test "a broadcast in an unexpected status does not send" do
+      user = create_user()
+      broadcast = create_broadcast(%{subject: "Draft", status: "draft"})
+      delivery = create_delivery(broadcast, user)
 
       job = %Oban.Job{
         args: %{"delivery_uuid" => delivery.uuid, "broadcast_uuid" => broadcast.uuid},
