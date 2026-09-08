@@ -351,7 +351,7 @@ insert through the changeset uses.
 
 - Test DB `phoenix_kit_newsletters_test` (`MIX_TEST_PARTITION` suffix
   honoured); `PGUSER`, `PGPASSWORD`, `PGHOST` are read with `postgres` /
-  `postgres` / `localhost` defaults. On the Mac use `PGUSER=maxdon`.
+  `postgres` / `localhost` defaults.
 - `test_helper.exs` starts `PhoenixKitNewsletters.Test.Repo`, brings it to
   the current core schema with `PhoenixKit.Migration.ensure_current/2`, sets
   sandbox `:manual`, and starts `PhoenixKit.PubSub.Manager` (role fixtures
