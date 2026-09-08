@@ -78,6 +78,11 @@ committing (switching between path and Hex resolution rewrites the lock).
 
 `mix precommit` also runs `deps.unlock --check-unused` and `mix hex.audit`.
 
+Repo-local aliases:
+
+- `mix quality` — `format` + `credo --strict` + `dialyzer` (applies formatting).
+- `mix quality.ci` — `format --check-formatted` + `credo --strict` + `dialyzer`: it CHECKS formatting rather than applying it, so run `mix format` first.
+
 ## Conventions
 
 - Module key `"newsletters"` is the same string in `module_key/0`,
