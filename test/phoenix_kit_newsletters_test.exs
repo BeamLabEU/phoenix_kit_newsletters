@@ -156,6 +156,10 @@ defmodule PhoenixKitNewslettersTest do
       assert is_binary(version)
       assert version =~ ~r/^\d+\.\d+\.\d+/
     end
+
+    test "is single-sourced from mix.exs" do
+      assert Newsletters.version() == Mix.Project.config()[:version]
+    end
   end
 
   describe "optional callbacks have defaults" do
