@@ -18,14 +18,24 @@ end
 
 ## Oban Setup
 
-PhoenixKit Newsletters uses Oban for background email delivery. Add the newsletters queue to your Oban configuration:
+PhoenixKit Newsletters uses Oban for background email delivery. Add the
+`newsletters_delivery` queue to your Oban configuration:
 
 ```elixir
 # In config/config.exs:
 config :my_app, Oban,
   repo: MyApp.Repo,
-  queues: [newsletters: 10]
+  queues: [newsletters_delivery: 10]
 ```
+
+The queue name must be exactly `newsletters_delivery` — that is the queue
+`PhoenixKit.Newsletters.Workers.DeliveryWorker` enqueues into. A host that
+names it anything else enqueues jobs nothing drains and never sends a single
+email. `mix phoenix_kit.install` adds this queue for you.
+
+Queue concurrency is the delivery-rate ceiling. Per-broadcast pacing is
+configured separately, on the send profile (`rate_per_hour`, `rate_per_day`,
+`pause_seconds`), and applies to one broadcast at a time.
 
 See the [Oban documentation](https://oban.hexdocs.pm) for full configuration options.
 
@@ -99,7 +109,6 @@ All schemas use UUIDv7 primary keys.
 |---|---|---|
 | `newsletters_enabled` | `false` | Enables/disables the module |
 | `newsletters_default_template` | — | Default email template UUID |
-| `newsletters_rate_limit` | `14/sec` | Delivery rate limiting |
 | `from_email` | — | Sender email address (shared with Emails module) |
 | `from_name` | — | Sender display name (shared with Emails module) |
 

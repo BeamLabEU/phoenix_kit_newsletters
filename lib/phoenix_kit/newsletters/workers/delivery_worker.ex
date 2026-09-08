@@ -9,13 +9,19 @@ defmodule PhoenixKit.Newsletters.Workers.DeliveryWorker do
 
   ## Queue Configuration
 
-  Add to your Oban config (concurrency controls rate limiting):
+  Add to your Oban config (core's installer does this for you):
 
       config :my_app, Oban,
         queues: [newsletters_delivery: 10]
 
-  The `newsletters_rate_limit` setting (default: 14 emails/sec) maps to queue concurrency.
-  Parent app should read `Settings.get_setting("newsletters_rate_limit", "10")` and apply to Oban queue config.
+  The queue name is fixed by this worker — a host that configures a queue
+  under any other name runs no delivery jobs at all.
+
+  Queue concurrency is the only ceiling this module leans on. Per-broadcast
+  pacing is separate and lives in `PhoenixKit.Newsletters.Broadcaster`:
+  `send_interval_seconds/1` derives an interval from the send profile's
+  `rate_per_hour` / `rate_per_day` / `pause_seconds` and schedules job N that
+  far out. There is no module-level rate-limit setting.
   """
 
   use Oban.Worker,
@@ -52,7 +58,15 @@ defmodule PhoenixKit.Newsletters.Workers.DeliveryWorker do
       }) do
     with {:ok, delivery} <- get_delivery(delivery_uuid),
          {:ok, delivery} <- guard_unsent(delivery),
+         # Re-read (get_broadcast/1 hits the DB, it does not trust the job
+         # args) and re-check the broadcast's status HERE, inside the job:
+         # the throttle schedules job N minutes or hours out, so "Cancel
+         # broadcast" almost always lands while the queue is still full of
+         # jobs that were enqueued when the broadcast was healthy. The
+         # cancel writes only the broadcast row; this is the one place that
+         # can stop the sends it was meant to stop.
          {:ok, broadcast} <- get_broadcast(broadcast_uuid),
+         {:ok, broadcast} <- guard_broadcast_sendable(broadcast),
          {:ok, recipient} <- get_recipient(delivery),
          {unsubscribe_url, list_unsubscribe_url} = build_unsubscribe_url(recipient, broadcast),
          preferences_url = build_preferences_url(recipient, broadcast),
@@ -98,6 +112,19 @@ defmodule PhoenixKit.Newsletters.Workers.DeliveryWorker do
 
         :ok
 
+      # The operator cancelled (or the broadcast failed) after this job was
+      # enqueued. Deliberately returns plain `:ok`, exactly like the
+      # already-sent skip above: the job must neither retry nor be recorded
+      # as a failure, and there is nothing here for Oban to report. The
+      # delivery row is left untouched at "pending" — see
+      # guard_broadcast_sendable/1 for why nothing is written.
+      {:error, {:broadcast_not_sendable, %Broadcast{uuid: uuid, status: status}}} ->
+        Logger.info(
+          "DeliveryWorker: broadcast #{uuid} is \"#{status}\" — skipping delivery #{delivery_uuid}"
+        )
+
+        :ok
+
       {:error, reason} ->
         if permanent_failure?(reason) do
           # Permanent conditions — a blocklisted recipient, or a profile whose
@@ -125,6 +152,49 @@ defmodule PhoenixKit.Newsletters.Workers.DeliveryWorker do
   # never be re-sent, regardless of why perform/1 got invoked again.
   defp guard_unsent(%Delivery{status: "sent"} = delivery), do: {:error, {:already_sent, delivery}}
   defp guard_unsent(delivery), do: {:ok, delivery}
+
+  # The two broadcast statuses that halt a queued delivery. Both are
+  # terminal and operator-visible: "cancelled" is written by the details
+  # page's "Cancel broadcast" button, "failed" by
+  # Newsletters.handle_scheduled_send_failure/3. Neither is a state a
+  # broadcast leaves on its own, and Broadcaster.send/1 refuses "cancelled"
+  # outright, so a job matching one of these will never become valid again
+  # by waiting.
+  #
+  # Everything else proceeds, and the important member of "everything else"
+  # is "sending" — the normal status for the entire life of a send. A guard
+  # that allowed only "sending" would be equivalent today, but would turn
+  # any future status into a silent mail outage; listing what STOPS a send
+  # fails safe (an unrecognised status still delivers) where listing what
+  # permits one fails closed.
+  @halting_broadcast_statuses ["cancelled", "failed"]
+
+  # Nothing is written to the delivery row here, on purpose:
+  #
+  #   * "pending" is Delivery's only non-terminal status and it is already
+  #     the truth — this delivery was never attempted and now never will
+  #     be. Any terminal status would be a lie about work that did not
+  #     happen.
+  #   * "failed" specifically would bump :bounced_count through
+  #     handle_failure/4 and count an operator's cancellation as a
+  #     deliverability problem, and would clear the broadcast's last
+  #     non-terminal delivery — the exact condition maybe_finalize_broadcast/1
+  #     watches for. A broadcast could then finalize to "sent" while its
+  #     queue is still draining.
+  #   * A cancelled broadcast is not swept: maybe_finalize_broadcast/1 and
+  #     repair_stuck_sending_broadcasts/0 both match `status == "sending"`
+  #     only, so deliveries left "pending" under it sit inert rather than
+  #     dragging it anywhere.
+  #
+  # It is also free: cancelling a 50k-recipient broadcast costs zero writes
+  # instead of 50k UPDATEs. The broadcast's own "Cancelled" badge is what
+  # tells the operator why those rows stopped.
+  defp guard_broadcast_sendable(%Broadcast{status: status} = broadcast)
+       when status in @halting_broadcast_statuses do
+    {:error, {:broadcast_not_sendable, broadcast}}
+  end
+
+  defp guard_broadcast_sendable(%Broadcast{} = broadcast), do: {:ok, broadcast}
 
   @doc false
   # Blocklisted recipient, or the send profile's integration is deleted /

@@ -52,8 +52,11 @@ work goes through Oban workers.
   two concurrent sends through one profile can exceed its caps together.
   Provider-side quotas are the backstop.
 - No activity logging; nothing here writes to core's activity log.
-- Does not stop already-enqueued deliveries on "Cancel broadcast" (see
-  Landmines).
+- Does not dequeue anything on "Cancel broadcast". The cancel writes only the
+  broadcast row; the queued jobs still run, and each one stops itself on the
+  worker's broadcast-status guard (see Send pipeline step 5). Stopping is
+  worker-side by design — it is the only point that closes the race against a
+  job already executing.
 - Does not process provider delivery/open/bounce events itself; it only
   exposes `find_delivery_by_message_id/1` and `update_delivery_status/3` for
   a caller that does.
@@ -168,10 +171,20 @@ committing (switching between path and Hex resolution rewrites the lock).
 
 - Host Oban queue is `newsletters_delivery` (core's installer adds it). A
   host that configures `newsletters:` instead never runs a single delivery
-  job. The README's Oban snippet names the wrong queue.
-- "Cancel broadcast" only writes `status: "cancelled"`; `DeliveryWorker`
-  never checks the broadcast's status, so jobs already in the queue still
-  send. Fix: a worker-side guard on broadcast status before `send_email`.
+  job — the jobs enqueue fine and nothing drains them. The README's Oban
+  snippet names the right queue now; keep it that way.
+- `DeliveryWorker.perform/1` halts on a broadcast whose status is
+  `"cancelled"` or `"failed"` (`guard_broadcast_sendable/1`, right after
+  `get_broadcast/1`). The list names what STOPS a send, not what permits
+  one, so a status added later still delivers instead of silently going
+  dark — and `"sending"`, the status a broadcast holds for its whole send,
+  must never join that list. The guard returns plain `:ok` (like the
+  already-sent skip) so the job neither retries nor records a failure, and
+  writes **nothing** to the delivery row: `"pending"` is honest for a send
+  that never happened, and any terminal status would clear the broadcast's
+  last non-terminal delivery — the exact condition
+  `maybe_finalize_broadcast/1` watches — while `"failed"` would also inflate
+  `bounced_count` with an operator's own cancellation.
 - `insert_all` bypasses `Delivery.changeset/2`. `Broadcaster.process_batch/5`
   re-checks "user_uuid or recipient_email present" by hand and relies on the
   DB CHECK plus the three partial unique indexes
@@ -252,7 +265,11 @@ broadcast that stored names would silently re-target on rename.
    profile's `rate_per_hour`, `rate_per_day`, `pause_seconds`; job N is
    scheduled `N × interval` seconds out, continuous across batches. `0` means
    enqueue everything at once.
-5. `DeliveryWorker.perform/1`: skips a delivery already `sent`; resolves the
+5. `DeliveryWorker.perform/1`: skips a delivery already `sent`; re-reads the
+   broadcast and skips it entirely when its status is `cancelled` or `failed`
+   (this is what makes "Cancel broadcast" stop a send in flight — the button
+   itself only writes the broadcast row, and the throttle means most jobs are
+   still queued minutes or hours out when it is pressed); resolves the
    send profile (broadcast's own if enabled, else the default, else the legacy
    `PhoenixKit.Mailer.deliver_email/1` path with `from_email`/`from_name`
    settings); adds `List-Unsubscribe` + `List-Unsubscribe-Post` headers when a
@@ -294,7 +311,13 @@ PhoenixKitWeb.Endpoint)`, `max_age` 7 days, salts as listed under Landmines.
 | `newsletters_default_template` | editor, when Emails is installed | none |
 | `from_email`, `from_name` | worker, when the profile or legacy path has no sender | `noreply@example.com` / `Newsletter` |
 | `time_zone` | `Web.Timezone` fallback | `"0"` |
-| `newsletters_rate_limit` | nothing in this module; documented for hosts mapping it onto queue concurrency | 14/sec |
+
+There is no `newsletters_rate_limit` setting. It was documented in the README
+and the worker's `@moduledoc` but read by nothing, and both mentions are gone;
+do not re-add it. Rate control is queue concurrency
+(`newsletters_delivery`) plus the send profile's own
+`rate_per_hour`/`rate_per_day`/`pause_seconds`, which
+`Broadcaster.send_interval_seconds/1` turns into per-job scheduling.
 
 Permission: single key `"newsletters"` on every admin tab; no sub-permissions.
 PubSub: none.
@@ -381,10 +404,9 @@ string must agree or every HexDocs source link 404s.
 
 ## TODOs
 
-- Cancel does not stop queued deliveries (Landmines). Unblocked by adding a
-  broadcast-status guard in `DeliveryWorker.perform/1`.
-- `README.md` still describes the retired `List`/`ListMember` model, the old
-  token payload and the wrong Oban queue name; rewrite it from this file when
-  the README is next touched.
-- `newsletters_rate_limit` is documented but read by nothing; either wire it
-  into queue concurrency in the host installer or drop it from the docs.
+- `README.md` still describes the retired `List`/`ListMember` model and the
+  old unsubscribe token payload (`%{user_uuid, list_uuid}`, a
+  `/unsubscribe/:token` path, `list_uuid: :all`) — none of which exist any
+  more; its "Modules" table still lists `Web.Lists` / `Web.ListEditor` /
+  `Web.ListMembers`. Rewrite it from this file when the README is next
+  touched. The Oban queue name and the settings table are current.

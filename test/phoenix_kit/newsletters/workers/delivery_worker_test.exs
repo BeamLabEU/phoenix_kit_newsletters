@@ -906,6 +906,97 @@ defmodule PhoenixKit.Newsletters.Workers.DeliveryWorkerTest do
     end
   end
 
+  describe "perform/1 — a cancelled broadcast stops its already-enqueued deliveries" do
+    @describetag :requires_v158
+    setup do
+      PhoenixKit.Settings.update_setting("from_name", "My Newsletter")
+      PhoenixKit.Settings.update_setting("from_email", "news@example.com")
+      :ok
+    end
+
+    # The defect this covers: "Cancel broadcast" writes status "cancelled" on
+    # the broadcast row and nothing else. Every DeliveryWorker job already in
+    # the queue used to sail straight past it and send, and because the
+    # throttle schedules job N minutes-to-hours out, that queue is exactly
+    # where a mid-send cancellation finds most of its recipients.
+    test "a broadcast cancelled after the job was enqueued sends no email" do
+      user = create_user()
+      broadcast = create_broadcast(%{subject: "Cancelled mid-send", html_body: "<p>Hi</p>"})
+      {:ok, broadcast} = Newsletters.update_broadcast(broadcast, %{status: "sending"})
+      delivery = create_delivery(broadcast, user)
+
+      # The job is built while the broadcast is still healthy — as a real
+      # enqueued job is — and only then does the operator cancel. Nothing
+      # rewrites the job or the delivery row, so the worker's own re-read is
+      # the only thing that can notice.
+      job = %Oban.Job{
+        args: %{"delivery_uuid" => delivery.uuid, "broadcast_uuid" => broadcast.uuid},
+        attempt: 1,
+        max_attempts: 3
+      }
+
+      {:ok, _cancelled} = Newsletters.update_broadcast(broadcast, %{status: "cancelled"})
+
+      # Plain :ok, matching the already-sent skip: Oban must not retry this
+      # job and must not count it as a failure.
+      assert :ok = DeliveryWorker.perform(job)
+
+      refute_email_sent()
+
+      # "pending" is Delivery's only non-terminal status and stays the honest
+      # one — the send never happened. A terminal status here would both lie
+      # and (as "failed") inflate bounced_count.
+      updated_delivery = Repo.get(Delivery, delivery.uuid)
+      assert updated_delivery.status == "pending"
+      assert updated_delivery.sent_at == nil
+      assert updated_delivery.message_id == nil
+
+      updated_broadcast = Repo.get(Broadcast, broadcast.uuid)
+      assert updated_broadcast.status == "cancelled"
+      assert updated_broadcast.sent_count == 0
+      assert updated_broadcast.bounced_count == 0
+    end
+
+    test "a broadcast marked failed also stops its queued deliveries" do
+      user = create_user()
+      broadcast = create_broadcast(%{subject: "Failed broadcast", html_body: "<p>Hi</p>"})
+      delivery = create_delivery(broadcast, user)
+      {:ok, broadcast} = Newsletters.update_broadcast(broadcast, %{status: "failed"})
+
+      job = %Oban.Job{
+        args: %{"delivery_uuid" => delivery.uuid, "broadcast_uuid" => broadcast.uuid},
+        attempt: 1,
+        max_attempts: 3
+      }
+
+      assert :ok = DeliveryWorker.perform(job)
+
+      refute_email_sent()
+      assert Repo.get(Delivery, delivery.uuid).status == "pending"
+    end
+
+    # The other half of the guard, and the one that would turn a fix into an
+    # outage if it were wrong: "sending" is the status a broadcast holds for
+    # the entire duration of a normal send, so it must NOT halt.
+    test "a broadcast still sending delivers normally" do
+      user = create_user()
+      broadcast = create_broadcast(%{subject: "Still sending", html_body: "<p>Hi</p>"})
+      {:ok, broadcast} = Newsletters.update_broadcast(broadcast, %{status: "sending"})
+      delivery = create_delivery(broadcast, user)
+
+      job = %Oban.Job{
+        args: %{"delivery_uuid" => delivery.uuid, "broadcast_uuid" => broadcast.uuid},
+        attempt: 1,
+        max_attempts: 3
+      }
+
+      assert :ok = DeliveryWorker.perform(job)
+
+      assert_email_sent(to: user.email, subject: "Still sending")
+      assert Repo.get(Delivery, delivery.uuid).status == "sent"
+    end
+  end
+
   describe "update_delivery_result/5 — delivery status and broadcast counter commit atomically" do
     @describetag :requires_v158
     test "a failed status write (unique_constraint violation) leaves the counter unbumped" do
