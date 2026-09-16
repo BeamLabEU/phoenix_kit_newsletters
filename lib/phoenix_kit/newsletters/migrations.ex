@@ -15,10 +15,18 @@ defmodule PhoenixKitNewsletters.Migrations do
   ## Ownership situation — read before touching
 
   Both `phoenix_kit_newsletters_broadcasts` and
-  `phoenix_kit_newsletters_deliveries` are core's baseline: core's `V135`
-  created both tables in their original shape, and `V145`, `V152`, `V155`,
-  `V156` and `V158` each layered a further shape change on top (send
-  profiles, CRM-sourced recipients, the recipient CHECK, dropping
+  `phoenix_kit_newsletters_deliveries` are core's baseline. Core's
+  `ExpectedSchema` manifest records both tables' `since: 79` — a REAL
+  pre-squash migration version (the manifest's generator order is
+  `(since, class, id)`, and other entries in this same file document the
+  highest `since` value present as an actual migration number), not an
+  internal manifest counter unrelated to core's migration history. So both
+  tables actually originated in core's migration `V79`, well before the
+  `V135` squash — `V135`'s own literal `CREATE TABLE` text is what a fresh
+  install runs today, but that text is core's squash-time snapshot of `V79`'s
+  shape, not the tables' original creation point. `V145`, `V152`, `V155`,
+  `V156` and `V158` each layered a further shape change on top afterward
+  (send profiles, CRM-sourced recipients, the recipient CHECK, dropping
   `list_uuid`, attachments). On every existing install both tables already
   have their full current shape before this chain ever executes — this is
   an ADOPTION, not a create. Varchar widths are never restated as a second
@@ -31,21 +39,25 @@ defmodule PhoenixKitNewsletters.Migrations do
   correct) and `PhoenixKitManufacturing.Migrations` (whose 3 tables have a
   genuine pre-absorption module-owned history, requiring an `ALTER TABLE
   ... ADD COLUMN IF NOT EXISTS` safety net for hosts still on that old
-  shape), these two tables were created directly by core's `V135` baseline
-  itself — there is no pre-V135 predecessor that could have been squashed
-  incorrectly, and `git log --all -- '*migration*'` in this repo confirms
-  this module never shipped its own migration file before this one. A
-  dedicated research pass (core's migration source across `V135`/`V145`/
-  `V152`/`V155`/`V156`/`V158`, core's structured `ExpectedSchema.objects/1`
-  `revisions` field, and a live, fully-migrated Postgres catalog query)
-  confirmed, at high confidence, that the current live shape matches the
-  literal migration-chain text exactly, column-for-column, with **zero
-  discrepancies**. So V1 here is even more purely a no-op-shape adoption
-  than either sibling case: `CREATE TABLE IF NOT EXISTS` (full final shape)
-  + guarded PK + guarded CHECK(s) + `CREATE INDEX IF NOT EXISTS` + guarded
-  FKs + the version-marker `COMMENT` — **no `ALTER TABLE ... ADD COLUMN IF
-  NOT EXISTS` or `ALTER COLUMN ... DROP NOT NULL` safety-net section
-  anywhere in this file.**
+  shape), this module never shipped its own migration file before this one
+  (`git log --all -- '*migration*'` in this repo confirms it) — so there is
+  no risk of THIS package's own pre-adoption history disagreeing with core's.
+  The `V79`-into-`V135` squash IS exactly the kind of event that produced a
+  real, documented discrepancy for customer_support's `changed_by_uuid`
+  column, so it is not dismissed here as a non-issue by construction — it
+  was checked. A dedicated research pass (core's migration source across
+  `V135`/`V145`/`V152`/`V155`/`V156`/`V158`, core's structured
+  `ExpectedSchema.objects/1` `revisions` field, and a live, fully-migrated
+  Postgres catalog query) confirmed, at high confidence, that the squashed
+  `V135` text, the manifest's structured revisions, and the live catalog all
+  agree on both tables' shape column-for-column, with **zero discrepancies**.
+  So V1 here is a verified no-op-shape adoption: `CREATE TABLE IF NOT
+  EXISTS` (full final shape) + a semantically-guarded PK, CHECK(s), indexes
+  and FKs (existence checked
+  by shape against `pg_constraint`/`pg_index`, not by object name — see
+  "Guards are semantic, not name-based" below) + the version-marker
+  `COMMENT` — **no `ALTER TABLE ... ADD COLUMN IF NOT EXISTS` or `ALTER
+  COLUMN ... DROP NOT NULL` safety-net section anywhere in this file.**
 
   The chain anchors its version marker on `phoenix_kit_newsletters_broadcasts`
   — this module's own hub table (same reasoning
@@ -108,6 +120,73 @@ defmodule PhoenixKitNewsletters.Migrations do
   chain's column-shape test compares against that structured field, not
   the bare migration-source text — so the DDL below must spell it the same
   way to stay byte-for-byte adopted.
+
+  ### Guards are semantic, not name-based — a real host discovery
+
+  A host-level rename migration exists in the wild
+  (`decor_3d_print`'s `20260316_rename_mailing_to_newsletters`) that renamed
+  both tables from `phoenix_kit_mailing_broadcasts`/`_deliveries` to their
+  current `phoenix_kit_newsletters_*` names — but a Postgres `ALTER TABLE
+  ... RENAME TO` does not rename the table's own constraints or indexes.
+  Every V135-era object on that host still carries its ORIGINAL name:
+  `phoenix_kit_mailing_broadcasts_pkey` (not
+  `phoenix_kit_newsletters_broadcasts_pkey`), `fk_mailing_broadcasts_created_by`/
+  `fk_mailing_broadcasts_template`/`fk_mailing_deliveries_broadcast`/
+  `fk_mailing_deliveries_user` (not the `fk_newsletters_*` names), and
+  `idx_mailing_broadcasts_scheduled_at`/`_status`/
+  `idx_mailing_deliveries_broadcast`/`_message_id`/`_status`/`_user` (not
+  `idx_newsletters_*`). Every object introduced at `V152` or later
+  (`idx_newsletters_broadcasts_crm_list`, `idx_newsletters_deliveries_crm_contact`,
+  the three `idx_newsletters_deliveries_uniq_broadcast_*` indexes, both CHECK
+  constraints) DOES carry its core `newsletters`-flavoured name on that same
+  host, because core's own `V152`/`V155`/`V158` source hardcodes those names
+  directly in `ALTER TABLE ... ADD CONSTRAINT`/`CREATE INDEX` text — a name
+  literal in a later migration is unaffected by what an earlier, unrelated
+  rename did to older objects' names.
+
+  A first version of this chain guarded every constraint/index **by name**
+  (`WHERE c.conname = 'phoenix_kit_newsletters_broadcasts_pkey'`), which is
+  exactly the sibling chains' own pattern — but on a host in the state above,
+  that guard's `NOT EXISTS` is TRUE (no constraint has that exact name), so
+  `up/1` tries to `ADD CONSTRAINT phoenix_kit_newsletters_broadcasts_pkey
+  PRIMARY KEY (uuid)` on a table that already has a (differently-named)
+  primary key — Postgres rejects a second one outright
+  (`multiple primary keys for table ... are not allowed`). The FK and index
+  guards have the same defect in a quieter form: they would not error, they
+  would silently ADD A SECOND, DUPLICATE constraint/index under the new
+  name alongside the still-present legacy one — this exact failure mode was
+  already observed on the same host for `phoenix_kit_posts` (3 duplicate
+  UNIQUE indexes left behind by a name-based guard).
+
+  Every guard below is therefore **semantic**: it asks Postgres "does this
+  table already have a primary key" / "does this table already have a
+  foreign key from this column to this target table" / "does this table
+  already have an index on these columns with this uniqueness and this
+  partial predicate" — via `pg_constraint`/`pg_index` joined through
+  `'schema.table'::regclass` (which resolves the table by its CURRENT name
+  regardless of any past rename, since renaming a table never changes its
+  OID) — and only falls back to creating the object under this chain's own
+  canonical name when truly nothing matching exists, by any name. A
+  `CREATE INDEX`/`CREATE UNIQUE INDEX` statement is still wrapped in its own
+  guard (via `EXECUTE` inside the `DO $$ ... $$` block) rather than left as
+  a bare `CREATE INDEX IF NOT EXISTS <name> ...`, because `IF NOT EXISTS`
+  only checks for that literal name — it does nothing to stop a second,
+  differently-named index with an identical definition from being created,
+  which is precisely the `phoenix_kit_posts` duplication above. The two
+  CHECK guards match by name OR by an identical `pg_get_constraintdef`
+  text, as a defense-in-depth measure — no host has actually been observed
+  with a differently-named `newsletters`-owned CHECK constraint (both were
+  introduced by core at `V152`/`V158`, well after the only rename event
+  found in the wild, so they were always created under their current name),
+  but the semantic fallback costs nothing and closes the same class of bug
+  if one is ever discovered.
+
+  A dedicated test (`migrations_renamed_host_test.exs`) reproduces this
+  exact host shape — copies of both tables with every V135-era
+  constraint/index renamed to its `phoenix_kit_mailing_*` equivalent — and
+  runs a real `up/1` through `Ecto.Migration.Runner` against it: no error,
+  no duplicate constraint or index of any kind, and the version marker
+  still lands correctly.
 
   ### Phase 0 — this V1 adopts, and changes NOTHING
 
@@ -395,92 +474,145 @@ defmodule PhoenixKitNewsletters.Migrations do
       """
     ]
 
-    pkeys =
-      for {table, qualified} <- [{@broadcasts, q_broadcasts}, {@deliveries, q_deliveries}] do
-        pkey_guard(table, qualified, prefix)
-      end
+    pkeys = [
+      pkey_guard(@broadcasts, q_broadcasts),
+      pkey_guard(@deliveries, q_deliveries)
+    ]
 
     checks = [
       check_guard(
-        @broadcasts,
         q_broadcasts,
         "phoenix_kit_newsletters_broadcasts_attachments_is_array",
         "jsonb_typeof(attachments) = 'array'",
-        prefix
+        "CHECK ((jsonb_typeof(attachments) = 'array'::text))"
       ),
       check_guard(
-        @deliveries,
         q_deliveries,
         "phoenix_kit_newsletters_deliveries_recipient_check",
         "(user_uuid IS NOT NULL OR recipient_email IS NOT NULL) AND NOT (user_uuid IS NOT NULL AND crm_contact_uuid IS NOT NULL)",
-        prefix
+        "CHECK ((((user_uuid IS NOT NULL) OR (recipient_email IS NOT NULL)) AND (NOT ((user_uuid IS NOT NULL) AND (crm_contact_uuid IS NOT NULL)))))"
       )
     ]
 
-    indexes =
-      [
-        {"", "idx_newsletters_broadcasts_status", q_broadcasts, "btree", "status", nil},
-        {"", "idx_newsletters_broadcasts_scheduled_at", q_broadcasts, "btree", "scheduled_at",
-         "(scheduled_at IS NOT NULL)"},
-        {"", "idx_newsletters_broadcasts_crm_list", q_broadcasts, "btree", "crm_list_uuid",
-         "(crm_list_uuid IS NOT NULL)"},
-        {"", "idx_newsletters_deliveries_broadcast", q_deliveries, "btree", "broadcast_uuid",
-         nil},
-        {"", "idx_newsletters_deliveries_user", q_deliveries, "btree", "user_uuid", nil},
-        {"UNIQUE", "idx_newsletters_deliveries_message_id", q_deliveries, "btree", "message_id",
-         "(message_id IS NOT NULL)"},
-        {"", "idx_newsletters_deliveries_status", q_deliveries, "btree", "status", nil},
-        {"", "idx_newsletters_deliveries_crm_contact", q_deliveries, "btree", "crm_contact_uuid",
-         nil},
-        {"UNIQUE", "idx_newsletters_deliveries_uniq_broadcast_user", q_deliveries, "btree",
-         "broadcast_uuid, user_uuid", "(user_uuid IS NOT NULL)"},
-        {"UNIQUE", "idx_newsletters_deliveries_uniq_broadcast_contact", q_deliveries, "btree",
-         "broadcast_uuid, crm_contact_uuid", "(crm_contact_uuid IS NOT NULL)"},
-        {"UNIQUE", "idx_newsletters_deliveries_uniq_broadcast_email", q_deliveries, "btree",
-         "broadcast_uuid, recipient_email", "(recipient_email IS NOT NULL)"}
-      ]
-      |> Enum.map(fn {unique, name, table, method, columns, predicate} ->
-        where_clause = if predicate, do: " WHERE #{predicate}", else: ""
-
-        "CREATE #{unique_prefix(unique)}INDEX IF NOT EXISTS #{name} ON #{table} USING #{method} (#{columns})#{where_clause}"
-      end)
+    indexes = [
+      index_guard(
+        "idx_newsletters_broadcasts_status",
+        q_broadcasts,
+        false,
+        "btree",
+        ["status"],
+        nil
+      ),
+      index_guard(
+        "idx_newsletters_broadcasts_scheduled_at",
+        q_broadcasts,
+        false,
+        "btree",
+        ["scheduled_at"],
+        "(scheduled_at IS NOT NULL)"
+      ),
+      index_guard(
+        "idx_newsletters_broadcasts_crm_list",
+        q_broadcasts,
+        false,
+        "btree",
+        ["crm_list_uuid"],
+        "(crm_list_uuid IS NOT NULL)"
+      ),
+      index_guard(
+        "idx_newsletters_deliveries_broadcast",
+        q_deliveries,
+        false,
+        "btree",
+        ["broadcast_uuid"],
+        nil
+      ),
+      index_guard(
+        "idx_newsletters_deliveries_user",
+        q_deliveries,
+        false,
+        "btree",
+        ["user_uuid"],
+        nil
+      ),
+      index_guard(
+        "idx_newsletters_deliveries_message_id",
+        q_deliveries,
+        true,
+        "btree",
+        ["message_id"],
+        "(message_id IS NOT NULL)"
+      ),
+      index_guard(
+        "idx_newsletters_deliveries_status",
+        q_deliveries,
+        false,
+        "btree",
+        ["status"],
+        nil
+      ),
+      index_guard(
+        "idx_newsletters_deliveries_crm_contact",
+        q_deliveries,
+        false,
+        "btree",
+        ["crm_contact_uuid"],
+        nil
+      ),
+      index_guard(
+        "idx_newsletters_deliveries_uniq_broadcast_user",
+        q_deliveries,
+        true,
+        "btree",
+        ["broadcast_uuid", "user_uuid"],
+        "(user_uuid IS NOT NULL)"
+      ),
+      index_guard(
+        "idx_newsletters_deliveries_uniq_broadcast_contact",
+        q_deliveries,
+        true,
+        "btree",
+        ["broadcast_uuid", "crm_contact_uuid"],
+        "(crm_contact_uuid IS NOT NULL)"
+      ),
+      index_guard(
+        "idx_newsletters_deliveries_uniq_broadcast_email",
+        q_deliveries,
+        true,
+        "btree",
+        ["broadcast_uuid", "recipient_email"],
+        "(recipient_email IS NOT NULL)"
+      )
+    ]
 
     fks = [
       fk_guard(
-        @broadcasts,
         q_broadcasts,
         "fk_newsletters_broadcasts_created_by",
         "created_by_user_uuid",
         users,
-        "SET NULL",
-        prefix
+        "SET NULL"
       ),
       fk_guard(
-        @broadcasts,
         q_broadcasts,
         "fk_newsletters_broadcasts_template",
         "template_uuid",
         email_templates,
-        "SET NULL",
-        prefix
+        "SET NULL"
       ),
       fk_guard(
-        @deliveries,
         q_deliveries,
         "fk_newsletters_deliveries_broadcast",
         "broadcast_uuid",
         q_broadcasts,
-        "CASCADE",
-        prefix
+        "CASCADE"
       ),
       fk_guard(
-        @deliveries,
         q_deliveries,
         "fk_newsletters_deliveries_user",
         "user_uuid",
         users,
-        "CASCADE",
-        prefix
+        "CASCADE"
       )
     ]
 
@@ -489,21 +621,20 @@ defmodule PhoenixKitNewsletters.Migrations do
     tables ++ pkeys ++ checks ++ indexes ++ fks ++ marker
   end
 
-  defp unique_prefix("UNIQUE"), do: "UNIQUE "
-  defp unique_prefix(""), do: ""
-
-  defp pkey_guard(table, qualified, prefix) do
+  # Semantic: "does this table already have ANY primary key", not "does a
+  # constraint with this exact name exist" — a table whose PK predates a
+  # host-level table rename (renaming a table never renames its own
+  # constraints) still has a real, functioning primary key under its old
+  # name, and adding a second one is a hard Postgres error, not a silent
+  # duplicate. `regclass` resolves `qualified` by the table's CURRENT name
+  # regardless of that history, since a rename never changes the OID.
+  defp pkey_guard(table, qualified) do
     """
     DO $$
     BEGIN
       IF NOT EXISTS (
-        SELECT 1
-        FROM pg_constraint c
-        JOIN pg_class t ON t.oid = c.conrelid
-        JOIN pg_namespace n ON n.oid = t.relnamespace
-        WHERE c.conname = '#{table}_pkey'
-          AND t.relname = '#{table}'
-          AND n.nspname = '#{prefix}'
+        SELECT 1 FROM pg_constraint
+        WHERE conrelid = '#{qualified}'::regclass AND contype = 'p'
       ) THEN
         ALTER TABLE #{qualified} ADD CONSTRAINT #{table}_pkey PRIMARY KEY (uuid);
       END IF;
@@ -512,18 +643,32 @@ defmodule PhoenixKitNewsletters.Migrations do
     """
   end
 
-  defp check_guard(table, qualified, constraint_name, check_expr, prefix) do
+  # Matches by name (core has always created both of this chain's CHECK
+  # constraints under their current name — they were introduced at V152/V158,
+  # after the only rename event found in the wild) OR by an identical
+  # `pg_get_constraintdef` text, as a defense-in-depth fallback that costs
+  # nothing if no host is ever found with a differently-named one.
+  # `canonical_def` is the exact text Postgres's own `pg_get_constraintdef`
+  # renders for `check_expr` (verified against a live catalog, not guessed —
+  # Postgres re-parenthesizes fully and deterministically, so a literal
+  # string compare is reliable here).
+  defp check_guard(qualified, constraint_name, check_expr, canonical_def) do
+    # `canonical_def` is embedded as a single-quoted SQL string literal, so
+    # any single quote it contains (e.g. the 'array'::text literal inside
+    # the attachments CHECK's own canonical text) must be SQL-escaped by
+    # doubling it, or the literal terminates early and the rest is parsed
+    # as SQL — exactly the syntax error a plain `#{canonical_def}` produced
+    # here originally.
+    escaped_canonical_def = String.replace(canonical_def, "'", "''")
+
     """
     DO $$
     BEGIN
       IF NOT EXISTS (
-        SELECT 1
-        FROM pg_constraint c
-        JOIN pg_class t ON t.oid = c.conrelid
-        JOIN pg_namespace n ON n.oid = t.relnamespace
-        WHERE c.conname = '#{constraint_name}'
-          AND t.relname = '#{table}'
-          AND n.nspname = '#{prefix}'
+        SELECT 1 FROM pg_constraint
+        WHERE conrelid = '#{qualified}'::regclass
+          AND contype = 'c'
+          AND (conname = '#{constraint_name}' OR pg_get_constraintdef(oid) = '#{escaped_canonical_def}')
       ) THEN
         ALTER TABLE #{qualified} ADD CONSTRAINT #{constraint_name} CHECK (#{check_expr});
       END IF;
@@ -532,20 +677,80 @@ defmodule PhoenixKitNewsletters.Migrations do
     """
   end
 
-  defp fk_guard(table, qualified, constraint_name, column, references, on_delete, prefix) do
+  # Semantic: "does this table already have a foreign key from `column` to
+  # `references`", matched via `conrelid`/`confrelid` (both resolved through
+  # `regclass`, immune to either table having been renamed) and `conkey`
+  # (the source column, by attnum — immune to the constraint's own name).
+  # A name-based guard would silently ADD A DUPLICATE FK under the new name
+  # next to an already-functioning, differently-named one — this is not
+  # hypothetical, the same defect already left 3 duplicate UNIQUE indexes on
+  # a real host for a sibling module (`phoenix_kit_posts`) before this fix.
+  defp fk_guard(qualified, constraint_name, column, references, on_delete) do
+    """
+    DO $$
+    BEGIN
+      IF NOT EXISTS (
+        SELECT 1 FROM pg_constraint
+        WHERE conrelid = '#{qualified}'::regclass
+          AND contype = 'f'
+          AND confrelid = '#{references}'::regclass
+          AND conkey = ARRAY[(
+            SELECT attnum FROM pg_attribute
+            WHERE attrelid = '#{qualified}'::regclass AND attname = '#{column}'
+          )]::smallint[]
+      ) THEN
+        ALTER TABLE #{qualified} ADD CONSTRAINT #{constraint_name} FOREIGN KEY (#{column}) REFERENCES #{references}(uuid) ON DELETE #{on_delete};
+      END IF;
+    END
+    $$
+    """
+  end
+
+  # Semantic: "does this table already have an index on these columns, in
+  # this order, with this uniqueness and this partial predicate" — NOT
+  # merely "is there an index with this exact name". A bare
+  # `CREATE INDEX IF NOT EXISTS <name> ...` only guards against its own
+  # literal name; it does nothing to stop a second, differently-named index
+  # with an identical definition (the `phoenix_kit_posts` duplicate-index
+  # incident this guard exists to prevent here). `i.indkey::int2[]` resolved
+  # to column names via `pg_attribute`, in index-column order, compared
+  # against the expected column list; `pg_get_expr(i.indpred, i.indrelid)`
+  # is Postgres's own canonical rendering of a partial index's predicate
+  # (NULL when the index isn't partial) — both sides of that comparison are
+  # verified-live text, not guessed. `CREATE INDEX` is DDL, not a plain SQL
+  # statement PL/pgSQL can run directly inside `IF`, hence `EXECUTE`.
+  defp index_guard(name, qualified, unique?, method, columns, predicate) do
+    columns_sql = Enum.join(columns, ", ")
+    where_clause = if predicate, do: " WHERE #{predicate}", else: ""
+    unique_sql = if unique?, do: "UNIQUE ", else: ""
+    columns_array = columns |> Enum.map_join(", ", &"'#{&1}'")
+
+    predicate_condition =
+      if predicate do
+        "pg_get_expr(i.indpred, i.indrelid) = '#{predicate}'"
+      else
+        "i.indpred IS NULL"
+      end
+
     """
     DO $$
     BEGIN
       IF NOT EXISTS (
         SELECT 1
-        FROM pg_constraint c
-        JOIN pg_class t ON t.oid = c.conrelid
-        JOIN pg_namespace n ON n.oid = t.relnamespace
-        WHERE c.conname = '#{constraint_name}'
-          AND t.relname = '#{table}'
-          AND n.nspname = '#{prefix}'
+        FROM pg_index i
+        JOIN pg_class ic ON ic.oid = i.indexrelid
+        JOIN pg_am am ON am.oid = ic.relam
+        WHERE i.indrelid = '#{qualified}'::regclass
+          AND i.indisunique = #{unique?}
+          AND am.amname = '#{method}'
+          AND #{predicate_condition}
+          AND (
+            SELECT array_agg(a.attname ORDER BY k.ord)
+            FROM unnest(i.indkey::int2[]) WITH ORDINALITY AS k(attnum, ord)
+            JOIN pg_attribute a ON a.attrelid = i.indrelid AND a.attnum = k.attnum
+          ) = ARRAY[#{columns_array}]::name[]
       ) THEN
-        ALTER TABLE #{qualified} ADD CONSTRAINT #{constraint_name} FOREIGN KEY (#{column}) REFERENCES #{references}(uuid) ON DELETE #{on_delete};
+        EXECUTE 'CREATE #{unique_sql}INDEX IF NOT EXISTS #{name} ON #{qualified} USING #{method} (#{columns_sql})#{where_clause}';
       END IF;
     END
     $$

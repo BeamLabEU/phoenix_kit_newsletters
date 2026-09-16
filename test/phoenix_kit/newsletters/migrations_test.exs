@@ -162,25 +162,25 @@ defmodule PhoenixKitNewsletters.MigrationsTest do
       assert v1 == [
                "CREATE TABLE IF NOT EXISTS public.phoenix_kit_newsletters_broadcasts ( \"uuid\" uuid DEFAULT public.uuid_generate_v7() NOT NULL, \"subject\" character varying(998) NOT NULL, \"markdown_body\" text, \"html_body\" text, \"text_body\" text, \"template_uuid\" uuid, \"status\" character varying(20) DEFAULT 'draft'::character varying NOT NULL, \"scheduled_at\" timestamp with time zone, \"sent_at\" timestamp with time zone, \"total_recipients\" integer DEFAULT 0 NOT NULL, \"sent_count\" integer DEFAULT 0 NOT NULL, \"delivered_count\" integer DEFAULT 0 NOT NULL, \"opened_count\" integer DEFAULT 0 NOT NULL, \"bounced_count\" integer DEFAULT 0 NOT NULL, \"created_by_user_uuid\" uuid, \"inserted_at\" timestamp with time zone DEFAULT now() NOT NULL, \"updated_at\" timestamp with time zone DEFAULT now() NOT NULL, \"send_profile_uuid\" uuid, \"source_type\" character varying(20) DEFAULT 'newsletters_list'::character varying NOT NULL, \"crm_list_uuid\" uuid, \"source_params\" jsonb DEFAULT '{}'::jsonb NOT NULL, \"attachments\" jsonb DEFAULT '[]'::jsonb NOT NULL )",
                "CREATE TABLE IF NOT EXISTS public.phoenix_kit_newsletters_deliveries ( \"uuid\" uuid DEFAULT public.uuid_generate_v7() NOT NULL, \"broadcast_uuid\" uuid NOT NULL, \"user_uuid\" uuid, \"status\" character varying(20) DEFAULT 'pending'::character varying NOT NULL, \"sent_at\" timestamp with time zone, \"delivered_at\" timestamp with time zone, \"opened_at\" timestamp with time zone, \"error\" text, \"message_id\" character varying(255), \"inserted_at\" timestamp with time zone DEFAULT now() NOT NULL, \"updated_at\" timestamp with time zone DEFAULT now() NOT NULL, \"recipient_email\" public.citext, \"crm_contact_uuid\" uuid )",
-               "DO $$ BEGIN IF NOT EXISTS ( SELECT 1 FROM pg_constraint c JOIN pg_class t ON t.oid = c.conrelid JOIN pg_namespace n ON n.oid = t.relnamespace WHERE c.conname = 'phoenix_kit_newsletters_broadcasts_pkey' AND t.relname = 'phoenix_kit_newsletters_broadcasts' AND n.nspname = 'public' ) THEN ALTER TABLE public.phoenix_kit_newsletters_broadcasts ADD CONSTRAINT phoenix_kit_newsletters_broadcasts_pkey PRIMARY KEY (uuid); END IF; END $$",
-               "DO $$ BEGIN IF NOT EXISTS ( SELECT 1 FROM pg_constraint c JOIN pg_class t ON t.oid = c.conrelid JOIN pg_namespace n ON n.oid = t.relnamespace WHERE c.conname = 'phoenix_kit_newsletters_deliveries_pkey' AND t.relname = 'phoenix_kit_newsletters_deliveries' AND n.nspname = 'public' ) THEN ALTER TABLE public.phoenix_kit_newsletters_deliveries ADD CONSTRAINT phoenix_kit_newsletters_deliveries_pkey PRIMARY KEY (uuid); END IF; END $$",
-               "DO $$ BEGIN IF NOT EXISTS ( SELECT 1 FROM pg_constraint c JOIN pg_class t ON t.oid = c.conrelid JOIN pg_namespace n ON n.oid = t.relnamespace WHERE c.conname = 'phoenix_kit_newsletters_broadcasts_attachments_is_array' AND t.relname = 'phoenix_kit_newsletters_broadcasts' AND n.nspname = 'public' ) THEN ALTER TABLE public.phoenix_kit_newsletters_broadcasts ADD CONSTRAINT phoenix_kit_newsletters_broadcasts_attachments_is_array CHECK (jsonb_typeof(attachments) = 'array'); END IF; END $$",
-               "DO $$ BEGIN IF NOT EXISTS ( SELECT 1 FROM pg_constraint c JOIN pg_class t ON t.oid = c.conrelid JOIN pg_namespace n ON n.oid = t.relnamespace WHERE c.conname = 'phoenix_kit_newsletters_deliveries_recipient_check' AND t.relname = 'phoenix_kit_newsletters_deliveries' AND n.nspname = 'public' ) THEN ALTER TABLE public.phoenix_kit_newsletters_deliveries ADD CONSTRAINT phoenix_kit_newsletters_deliveries_recipient_check CHECK ((user_uuid IS NOT NULL OR recipient_email IS NOT NULL) AND NOT (user_uuid IS NOT NULL AND crm_contact_uuid IS NOT NULL)); END IF; END $$",
-               "CREATE INDEX IF NOT EXISTS idx_newsletters_broadcasts_status ON public.phoenix_kit_newsletters_broadcasts USING btree (status)",
-               "CREATE INDEX IF NOT EXISTS idx_newsletters_broadcasts_scheduled_at ON public.phoenix_kit_newsletters_broadcasts USING btree (scheduled_at) WHERE (scheduled_at IS NOT NULL)",
-               "CREATE INDEX IF NOT EXISTS idx_newsletters_broadcasts_crm_list ON public.phoenix_kit_newsletters_broadcasts USING btree (crm_list_uuid) WHERE (crm_list_uuid IS NOT NULL)",
-               "CREATE INDEX IF NOT EXISTS idx_newsletters_deliveries_broadcast ON public.phoenix_kit_newsletters_deliveries USING btree (broadcast_uuid)",
-               "CREATE INDEX IF NOT EXISTS idx_newsletters_deliveries_user ON public.phoenix_kit_newsletters_deliveries USING btree (user_uuid)",
-               "CREATE UNIQUE INDEX IF NOT EXISTS idx_newsletters_deliveries_message_id ON public.phoenix_kit_newsletters_deliveries USING btree (message_id) WHERE (message_id IS NOT NULL)",
-               "CREATE INDEX IF NOT EXISTS idx_newsletters_deliveries_status ON public.phoenix_kit_newsletters_deliveries USING btree (status)",
-               "CREATE INDEX IF NOT EXISTS idx_newsletters_deliveries_crm_contact ON public.phoenix_kit_newsletters_deliveries USING btree (crm_contact_uuid)",
-               "CREATE UNIQUE INDEX IF NOT EXISTS idx_newsletters_deliveries_uniq_broadcast_user ON public.phoenix_kit_newsletters_deliveries USING btree (broadcast_uuid, user_uuid) WHERE (user_uuid IS NOT NULL)",
-               "CREATE UNIQUE INDEX IF NOT EXISTS idx_newsletters_deliveries_uniq_broadcast_contact ON public.phoenix_kit_newsletters_deliveries USING btree (broadcast_uuid, crm_contact_uuid) WHERE (crm_contact_uuid IS NOT NULL)",
-               "CREATE UNIQUE INDEX IF NOT EXISTS idx_newsletters_deliveries_uniq_broadcast_email ON public.phoenix_kit_newsletters_deliveries USING btree (broadcast_uuid, recipient_email) WHERE (recipient_email IS NOT NULL)",
-               "DO $$ BEGIN IF NOT EXISTS ( SELECT 1 FROM pg_constraint c JOIN pg_class t ON t.oid = c.conrelid JOIN pg_namespace n ON n.oid = t.relnamespace WHERE c.conname = 'fk_newsletters_broadcasts_created_by' AND t.relname = 'phoenix_kit_newsletters_broadcasts' AND n.nspname = 'public' ) THEN ALTER TABLE public.phoenix_kit_newsletters_broadcasts ADD CONSTRAINT fk_newsletters_broadcasts_created_by FOREIGN KEY (created_by_user_uuid) REFERENCES public.phoenix_kit_users(uuid) ON DELETE SET NULL; END IF; END $$",
-               "DO $$ BEGIN IF NOT EXISTS ( SELECT 1 FROM pg_constraint c JOIN pg_class t ON t.oid = c.conrelid JOIN pg_namespace n ON n.oid = t.relnamespace WHERE c.conname = 'fk_newsletters_broadcasts_template' AND t.relname = 'phoenix_kit_newsletters_broadcasts' AND n.nspname = 'public' ) THEN ALTER TABLE public.phoenix_kit_newsletters_broadcasts ADD CONSTRAINT fk_newsletters_broadcasts_template FOREIGN KEY (template_uuid) REFERENCES public.phoenix_kit_email_templates(uuid) ON DELETE SET NULL; END IF; END $$",
-               "DO $$ BEGIN IF NOT EXISTS ( SELECT 1 FROM pg_constraint c JOIN pg_class t ON t.oid = c.conrelid JOIN pg_namespace n ON n.oid = t.relnamespace WHERE c.conname = 'fk_newsletters_deliveries_broadcast' AND t.relname = 'phoenix_kit_newsletters_deliveries' AND n.nspname = 'public' ) THEN ALTER TABLE public.phoenix_kit_newsletters_deliveries ADD CONSTRAINT fk_newsletters_deliveries_broadcast FOREIGN KEY (broadcast_uuid) REFERENCES public.phoenix_kit_newsletters_broadcasts(uuid) ON DELETE CASCADE; END IF; END $$",
-               "DO $$ BEGIN IF NOT EXISTS ( SELECT 1 FROM pg_constraint c JOIN pg_class t ON t.oid = c.conrelid JOIN pg_namespace n ON n.oid = t.relnamespace WHERE c.conname = 'fk_newsletters_deliveries_user' AND t.relname = 'phoenix_kit_newsletters_deliveries' AND n.nspname = 'public' ) THEN ALTER TABLE public.phoenix_kit_newsletters_deliveries ADD CONSTRAINT fk_newsletters_deliveries_user FOREIGN KEY (user_uuid) REFERENCES public.phoenix_kit_users(uuid) ON DELETE CASCADE; END IF; END $$",
+               "DO $$ BEGIN IF NOT EXISTS ( SELECT 1 FROM pg_constraint WHERE conrelid = 'public.phoenix_kit_newsletters_broadcasts'::regclass AND contype = 'p' ) THEN ALTER TABLE public.phoenix_kit_newsletters_broadcasts ADD CONSTRAINT phoenix_kit_newsletters_broadcasts_pkey PRIMARY KEY (uuid); END IF; END $$",
+               "DO $$ BEGIN IF NOT EXISTS ( SELECT 1 FROM pg_constraint WHERE conrelid = 'public.phoenix_kit_newsletters_deliveries'::regclass AND contype = 'p' ) THEN ALTER TABLE public.phoenix_kit_newsletters_deliveries ADD CONSTRAINT phoenix_kit_newsletters_deliveries_pkey PRIMARY KEY (uuid); END IF; END $$",
+               "DO $$ BEGIN IF NOT EXISTS ( SELECT 1 FROM pg_constraint WHERE conrelid = 'public.phoenix_kit_newsletters_broadcasts'::regclass AND contype = 'c' AND (conname = 'phoenix_kit_newsletters_broadcasts_attachments_is_array' OR pg_get_constraintdef(oid) = 'CHECK ((jsonb_typeof(attachments) = ''array''::text))') ) THEN ALTER TABLE public.phoenix_kit_newsletters_broadcasts ADD CONSTRAINT phoenix_kit_newsletters_broadcasts_attachments_is_array CHECK (jsonb_typeof(attachments) = 'array'); END IF; END $$",
+               "DO $$ BEGIN IF NOT EXISTS ( SELECT 1 FROM pg_constraint WHERE conrelid = 'public.phoenix_kit_newsletters_deliveries'::regclass AND contype = 'c' AND (conname = 'phoenix_kit_newsletters_deliveries_recipient_check' OR pg_get_constraintdef(oid) = 'CHECK ((((user_uuid IS NOT NULL) OR (recipient_email IS NOT NULL)) AND (NOT ((user_uuid IS NOT NULL) AND (crm_contact_uuid IS NOT NULL)))))') ) THEN ALTER TABLE public.phoenix_kit_newsletters_deliveries ADD CONSTRAINT phoenix_kit_newsletters_deliveries_recipient_check CHECK ((user_uuid IS NOT NULL OR recipient_email IS NOT NULL) AND NOT (user_uuid IS NOT NULL AND crm_contact_uuid IS NOT NULL)); END IF; END $$",
+               "DO $$ BEGIN IF NOT EXISTS ( SELECT 1 FROM pg_index i JOIN pg_class ic ON ic.oid = i.indexrelid JOIN pg_am am ON am.oid = ic.relam WHERE i.indrelid = 'public.phoenix_kit_newsletters_broadcasts'::regclass AND i.indisunique = false AND am.amname = 'btree' AND i.indpred IS NULL AND ( SELECT array_agg(a.attname ORDER BY k.ord) FROM unnest(i.indkey::int2[]) WITH ORDINALITY AS k(attnum, ord) JOIN pg_attribute a ON a.attrelid = i.indrelid AND a.attnum = k.attnum ) = ARRAY['status']::name[] ) THEN EXECUTE 'CREATE INDEX IF NOT EXISTS idx_newsletters_broadcasts_status ON public.phoenix_kit_newsletters_broadcasts USING btree (status)'; END IF; END $$",
+               "DO $$ BEGIN IF NOT EXISTS ( SELECT 1 FROM pg_index i JOIN pg_class ic ON ic.oid = i.indexrelid JOIN pg_am am ON am.oid = ic.relam WHERE i.indrelid = 'public.phoenix_kit_newsletters_broadcasts'::regclass AND i.indisunique = false AND am.amname = 'btree' AND pg_get_expr(i.indpred, i.indrelid) = '(scheduled_at IS NOT NULL)' AND ( SELECT array_agg(a.attname ORDER BY k.ord) FROM unnest(i.indkey::int2[]) WITH ORDINALITY AS k(attnum, ord) JOIN pg_attribute a ON a.attrelid = i.indrelid AND a.attnum = k.attnum ) = ARRAY['scheduled_at']::name[] ) THEN EXECUTE 'CREATE INDEX IF NOT EXISTS idx_newsletters_broadcasts_scheduled_at ON public.phoenix_kit_newsletters_broadcasts USING btree (scheduled_at) WHERE (scheduled_at IS NOT NULL)'; END IF; END $$",
+               "DO $$ BEGIN IF NOT EXISTS ( SELECT 1 FROM pg_index i JOIN pg_class ic ON ic.oid = i.indexrelid JOIN pg_am am ON am.oid = ic.relam WHERE i.indrelid = 'public.phoenix_kit_newsletters_broadcasts'::regclass AND i.indisunique = false AND am.amname = 'btree' AND pg_get_expr(i.indpred, i.indrelid) = '(crm_list_uuid IS NOT NULL)' AND ( SELECT array_agg(a.attname ORDER BY k.ord) FROM unnest(i.indkey::int2[]) WITH ORDINALITY AS k(attnum, ord) JOIN pg_attribute a ON a.attrelid = i.indrelid AND a.attnum = k.attnum ) = ARRAY['crm_list_uuid']::name[] ) THEN EXECUTE 'CREATE INDEX IF NOT EXISTS idx_newsletters_broadcasts_crm_list ON public.phoenix_kit_newsletters_broadcasts USING btree (crm_list_uuid) WHERE (crm_list_uuid IS NOT NULL)'; END IF; END $$",
+               "DO $$ BEGIN IF NOT EXISTS ( SELECT 1 FROM pg_index i JOIN pg_class ic ON ic.oid = i.indexrelid JOIN pg_am am ON am.oid = ic.relam WHERE i.indrelid = 'public.phoenix_kit_newsletters_deliveries'::regclass AND i.indisunique = false AND am.amname = 'btree' AND i.indpred IS NULL AND ( SELECT array_agg(a.attname ORDER BY k.ord) FROM unnest(i.indkey::int2[]) WITH ORDINALITY AS k(attnum, ord) JOIN pg_attribute a ON a.attrelid = i.indrelid AND a.attnum = k.attnum ) = ARRAY['broadcast_uuid']::name[] ) THEN EXECUTE 'CREATE INDEX IF NOT EXISTS idx_newsletters_deliveries_broadcast ON public.phoenix_kit_newsletters_deliveries USING btree (broadcast_uuid)'; END IF; END $$",
+               "DO $$ BEGIN IF NOT EXISTS ( SELECT 1 FROM pg_index i JOIN pg_class ic ON ic.oid = i.indexrelid JOIN pg_am am ON am.oid = ic.relam WHERE i.indrelid = 'public.phoenix_kit_newsletters_deliveries'::regclass AND i.indisunique = false AND am.amname = 'btree' AND i.indpred IS NULL AND ( SELECT array_agg(a.attname ORDER BY k.ord) FROM unnest(i.indkey::int2[]) WITH ORDINALITY AS k(attnum, ord) JOIN pg_attribute a ON a.attrelid = i.indrelid AND a.attnum = k.attnum ) = ARRAY['user_uuid']::name[] ) THEN EXECUTE 'CREATE INDEX IF NOT EXISTS idx_newsletters_deliveries_user ON public.phoenix_kit_newsletters_deliveries USING btree (user_uuid)'; END IF; END $$",
+               "DO $$ BEGIN IF NOT EXISTS ( SELECT 1 FROM pg_index i JOIN pg_class ic ON ic.oid = i.indexrelid JOIN pg_am am ON am.oid = ic.relam WHERE i.indrelid = 'public.phoenix_kit_newsletters_deliveries'::regclass AND i.indisunique = true AND am.amname = 'btree' AND pg_get_expr(i.indpred, i.indrelid) = '(message_id IS NOT NULL)' AND ( SELECT array_agg(a.attname ORDER BY k.ord) FROM unnest(i.indkey::int2[]) WITH ORDINALITY AS k(attnum, ord) JOIN pg_attribute a ON a.attrelid = i.indrelid AND a.attnum = k.attnum ) = ARRAY['message_id']::name[] ) THEN EXECUTE 'CREATE UNIQUE INDEX IF NOT EXISTS idx_newsletters_deliveries_message_id ON public.phoenix_kit_newsletters_deliveries USING btree (message_id) WHERE (message_id IS NOT NULL)'; END IF; END $$",
+               "DO $$ BEGIN IF NOT EXISTS ( SELECT 1 FROM pg_index i JOIN pg_class ic ON ic.oid = i.indexrelid JOIN pg_am am ON am.oid = ic.relam WHERE i.indrelid = 'public.phoenix_kit_newsletters_deliveries'::regclass AND i.indisunique = false AND am.amname = 'btree' AND i.indpred IS NULL AND ( SELECT array_agg(a.attname ORDER BY k.ord) FROM unnest(i.indkey::int2[]) WITH ORDINALITY AS k(attnum, ord) JOIN pg_attribute a ON a.attrelid = i.indrelid AND a.attnum = k.attnum ) = ARRAY['status']::name[] ) THEN EXECUTE 'CREATE INDEX IF NOT EXISTS idx_newsletters_deliveries_status ON public.phoenix_kit_newsletters_deliveries USING btree (status)'; END IF; END $$",
+               "DO $$ BEGIN IF NOT EXISTS ( SELECT 1 FROM pg_index i JOIN pg_class ic ON ic.oid = i.indexrelid JOIN pg_am am ON am.oid = ic.relam WHERE i.indrelid = 'public.phoenix_kit_newsletters_deliveries'::regclass AND i.indisunique = false AND am.amname = 'btree' AND i.indpred IS NULL AND ( SELECT array_agg(a.attname ORDER BY k.ord) FROM unnest(i.indkey::int2[]) WITH ORDINALITY AS k(attnum, ord) JOIN pg_attribute a ON a.attrelid = i.indrelid AND a.attnum = k.attnum ) = ARRAY['crm_contact_uuid']::name[] ) THEN EXECUTE 'CREATE INDEX IF NOT EXISTS idx_newsletters_deliveries_crm_contact ON public.phoenix_kit_newsletters_deliveries USING btree (crm_contact_uuid)'; END IF; END $$",
+               "DO $$ BEGIN IF NOT EXISTS ( SELECT 1 FROM pg_index i JOIN pg_class ic ON ic.oid = i.indexrelid JOIN pg_am am ON am.oid = ic.relam WHERE i.indrelid = 'public.phoenix_kit_newsletters_deliveries'::regclass AND i.indisunique = true AND am.amname = 'btree' AND pg_get_expr(i.indpred, i.indrelid) = '(user_uuid IS NOT NULL)' AND ( SELECT array_agg(a.attname ORDER BY k.ord) FROM unnest(i.indkey::int2[]) WITH ORDINALITY AS k(attnum, ord) JOIN pg_attribute a ON a.attrelid = i.indrelid AND a.attnum = k.attnum ) = ARRAY['broadcast_uuid', 'user_uuid']::name[] ) THEN EXECUTE 'CREATE UNIQUE INDEX IF NOT EXISTS idx_newsletters_deliveries_uniq_broadcast_user ON public.phoenix_kit_newsletters_deliveries USING btree (broadcast_uuid, user_uuid) WHERE (user_uuid IS NOT NULL)'; END IF; END $$",
+               "DO $$ BEGIN IF NOT EXISTS ( SELECT 1 FROM pg_index i JOIN pg_class ic ON ic.oid = i.indexrelid JOIN pg_am am ON am.oid = ic.relam WHERE i.indrelid = 'public.phoenix_kit_newsletters_deliveries'::regclass AND i.indisunique = true AND am.amname = 'btree' AND pg_get_expr(i.indpred, i.indrelid) = '(crm_contact_uuid IS NOT NULL)' AND ( SELECT array_agg(a.attname ORDER BY k.ord) FROM unnest(i.indkey::int2[]) WITH ORDINALITY AS k(attnum, ord) JOIN pg_attribute a ON a.attrelid = i.indrelid AND a.attnum = k.attnum ) = ARRAY['broadcast_uuid', 'crm_contact_uuid']::name[] ) THEN EXECUTE 'CREATE UNIQUE INDEX IF NOT EXISTS idx_newsletters_deliveries_uniq_broadcast_contact ON public.phoenix_kit_newsletters_deliveries USING btree (broadcast_uuid, crm_contact_uuid) WHERE (crm_contact_uuid IS NOT NULL)'; END IF; END $$",
+               "DO $$ BEGIN IF NOT EXISTS ( SELECT 1 FROM pg_index i JOIN pg_class ic ON ic.oid = i.indexrelid JOIN pg_am am ON am.oid = ic.relam WHERE i.indrelid = 'public.phoenix_kit_newsletters_deliveries'::regclass AND i.indisunique = true AND am.amname = 'btree' AND pg_get_expr(i.indpred, i.indrelid) = '(recipient_email IS NOT NULL)' AND ( SELECT array_agg(a.attname ORDER BY k.ord) FROM unnest(i.indkey::int2[]) WITH ORDINALITY AS k(attnum, ord) JOIN pg_attribute a ON a.attrelid = i.indrelid AND a.attnum = k.attnum ) = ARRAY['broadcast_uuid', 'recipient_email']::name[] ) THEN EXECUTE 'CREATE UNIQUE INDEX IF NOT EXISTS idx_newsletters_deliveries_uniq_broadcast_email ON public.phoenix_kit_newsletters_deliveries USING btree (broadcast_uuid, recipient_email) WHERE (recipient_email IS NOT NULL)'; END IF; END $$",
+               "DO $$ BEGIN IF NOT EXISTS ( SELECT 1 FROM pg_constraint WHERE conrelid = 'public.phoenix_kit_newsletters_broadcasts'::regclass AND contype = 'f' AND confrelid = 'public.phoenix_kit_users'::regclass AND conkey = ARRAY[( SELECT attnum FROM pg_attribute WHERE attrelid = 'public.phoenix_kit_newsletters_broadcasts'::regclass AND attname = 'created_by_user_uuid' )]::smallint[] ) THEN ALTER TABLE public.phoenix_kit_newsletters_broadcasts ADD CONSTRAINT fk_newsletters_broadcasts_created_by FOREIGN KEY (created_by_user_uuid) REFERENCES public.phoenix_kit_users(uuid) ON DELETE SET NULL; END IF; END $$",
+               "DO $$ BEGIN IF NOT EXISTS ( SELECT 1 FROM pg_constraint WHERE conrelid = 'public.phoenix_kit_newsletters_broadcasts'::regclass AND contype = 'f' AND confrelid = 'public.phoenix_kit_email_templates'::regclass AND conkey = ARRAY[( SELECT attnum FROM pg_attribute WHERE attrelid = 'public.phoenix_kit_newsletters_broadcasts'::regclass AND attname = 'template_uuid' )]::smallint[] ) THEN ALTER TABLE public.phoenix_kit_newsletters_broadcasts ADD CONSTRAINT fk_newsletters_broadcasts_template FOREIGN KEY (template_uuid) REFERENCES public.phoenix_kit_email_templates(uuid) ON DELETE SET NULL; END IF; END $$",
+               "DO $$ BEGIN IF NOT EXISTS ( SELECT 1 FROM pg_constraint WHERE conrelid = 'public.phoenix_kit_newsletters_deliveries'::regclass AND contype = 'f' AND confrelid = 'public.phoenix_kit_newsletters_broadcasts'::regclass AND conkey = ARRAY[( SELECT attnum FROM pg_attribute WHERE attrelid = 'public.phoenix_kit_newsletters_deliveries'::regclass AND attname = 'broadcast_uuid' )]::smallint[] ) THEN ALTER TABLE public.phoenix_kit_newsletters_deliveries ADD CONSTRAINT fk_newsletters_deliveries_broadcast FOREIGN KEY (broadcast_uuid) REFERENCES public.phoenix_kit_newsletters_broadcasts(uuid) ON DELETE CASCADE; END IF; END $$",
+               "DO $$ BEGIN IF NOT EXISTS ( SELECT 1 FROM pg_constraint WHERE conrelid = 'public.phoenix_kit_newsletters_deliveries'::regclass AND contype = 'f' AND confrelid = 'public.phoenix_kit_users'::regclass AND conkey = ARRAY[( SELECT attnum FROM pg_attribute WHERE attrelid = 'public.phoenix_kit_newsletters_deliveries'::regclass AND attname = 'user_uuid' )]::smallint[] ) THEN ALTER TABLE public.phoenix_kit_newsletters_deliveries ADD CONSTRAINT fk_newsletters_deliveries_user FOREIGN KEY (user_uuid) REFERENCES public.phoenix_kit_users(uuid) ON DELETE CASCADE; END IF; END $$",
                "COMMENT ON TABLE public.phoenix_kit_newsletters_broadcasts IS 'pknl_schema:1'"
              ]
     end
@@ -248,7 +248,12 @@ defmodule PhoenixKitNewsletters.MigrationsTest do
 
     # No `ALTER TABLE` phase at all in this chain (see the moduledoc's
     # explicit "no safety net" reasoning) — unlike both cited sibling
-    # examples, whose section orders include one.
+    # examples, whose section orders include one. Every guard (pkey, check,
+    # index, fk) is wrapped in its own `DO $$ ... $$` block (see the
+    # moduledoc's "Guards are semantic, not name-based"), so classification
+    # looks at what EACH block does, not just that it is a `DO` block —
+    # otherwise pkeys/checks/indexes/fks would all collapse into one
+    # indistinguishable bucket and this test could not tell them apart.
     test "statement sections appear in the order tables -> pkeys -> checks -> indexes -> fks -> marker" do
       statements = Migrations.up_statements()
 
@@ -257,22 +262,16 @@ defmodule PhoenixKitNewsletters.MigrationsTest do
           cond do
             String.starts_with?(stmt, "CREATE TABLE") -> :table
             String.starts_with?(stmt, "COMMENT ON TABLE") -> :marker
-            String.starts_with?(stmt, "CREATE") -> :index
-            String.starts_with?(stmt, "DO") -> :constraint
+            stmt =~ "PRIMARY KEY" -> :pkey
+            stmt =~ "ADD CONSTRAINT" and stmt =~ " CHECK (" -> :check
+            stmt =~ "EXECUTE 'CREATE" -> :index
+            stmt =~ "FOREIGN KEY" -> :fk
           end
         end)
 
-      # Every :constraint DO block is a pkey, a check, or an fk — pkeys and
-      # checks are guaranteed to precede indexes (they run back to back,
-      # with no index between them, so they dedup into one :constraint run)
-      # and fks are guaranteed to follow indexes, by construction (see
-      # up_statements/2 below). `Enum.dedup/1`, not `Enum.uniq/1`: uniq
-      # would collapse the pkey+check :constraint run and the later fk
-      # :constraint run into one, silently hiding indexes sorted in between
-      # the two.
       order = Enum.dedup(sections)
 
-      assert order == [:table, :constraint, :index, :constraint, :marker],
+      assert order == [:table, :pkey, :check, :index, :fk, :marker],
              "sections are out of order: #{inspect(order)}"
     end
   end
@@ -415,8 +414,8 @@ defmodule PhoenixKitNewsletters.MigrationsTest do
     test "the 4 real unique indexes are present, and only them" do
       unique_indexes =
         Migrations.up_statements()
-        |> Enum.filter(&String.starts_with?(&1, "CREATE UNIQUE INDEX"))
         |> Enum.map(&operation/1)
+        |> Enum.filter(&(elem(&1, 0) == "CREATE UNIQUE INDEX"))
         |> Enum.map(&elem(&1, 1))
         |> Enum.sort()
 
@@ -505,22 +504,38 @@ defmodule PhoenixKitNewsletters.MigrationsTest do
       end
     end
 
-    # `{verb, object}` for one statement. The DO block is identified by the
-    # constraint it adds, since its verb says nothing about its target.
+    # `{verb, object}` for one statement. A pkey/check/fk DO block is
+    # identified by the constraint it adds; an index DO block (guarded via
+    # `EXECUTE` — see the moduledoc's "Guards are semantic, not name-based")
+    # is identified by the `CREATE [UNIQUE] INDEX` text inside its own
+    # `EXECUTE '...'` argument, since the DO block's own verb says nothing
+    # about either kind of target.
     defp operation(statement) do
       normalized = statement |> String.replace(~r/\s+/, " ") |> String.trim()
 
-      if String.starts_with?(normalized, "DO ") do
-        [_, constraint] = Regex.run(~r/ADD CONSTRAINT (\w+)/, normalized)
-        {"DO", constraint}
-      else
-        [_, verb, object] =
-          Regex.run(
-            ~r/^(CREATE UNIQUE INDEX|CREATE INDEX|CREATE TABLE|COMMENT ON TABLE|DROP TABLE|DROP INDEX|TRUNCATE|DELETE FROM|ALTER TABLE)(?: IF NOT EXISTS)? (?:\w+\.)?(\w+)/,
-            normalized
-          )
+      cond do
+        String.starts_with?(normalized, "DO ") and
+            normalized =~ ~r/EXECUTE '(CREATE|CREATE UNIQUE)/ ->
+          [_, verb, name] =
+            Regex.run(
+              ~r/EXECUTE '(CREATE UNIQUE INDEX|CREATE INDEX) IF NOT EXISTS (\w+)/,
+              normalized
+            )
 
-        {verb, object}
+          {verb, name}
+
+        String.starts_with?(normalized, "DO ") ->
+          [_, constraint] = Regex.run(~r/ADD CONSTRAINT (\w+)/, normalized)
+          {"DO", constraint}
+
+        true ->
+          [_, verb, object] =
+            Regex.run(
+              ~r/^(CREATE UNIQUE INDEX|CREATE INDEX|CREATE TABLE|COMMENT ON TABLE|DROP TABLE|DROP INDEX|TRUNCATE|DELETE FROM|ALTER TABLE)(?: IF NOT EXISTS)? (?:\w+\.)?(\w+)/,
+              normalized
+            )
+
+          {verb, object}
       end
     end
   end
