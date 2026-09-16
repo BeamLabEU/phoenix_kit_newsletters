@@ -30,6 +30,15 @@ defmodule PhoenixKitNewsletters.MigrationsRenamedHostTest do
   two minimal one-column stub tables standing in for `phoenix_kit_users`/
   `phoenix_kit_email_templates` so the real FKs have something to reference.
 
+  Both CHECK constraints are ALSO present in the fixture, under their real
+  (core) names — unlike the PK/FK/index objects, core has always created
+  both CHECKs under their current `phoenix_kit_newsletters_*` name (they
+  were introduced at `V152`/`V158`, after the only rename event found in
+  the wild), so a renamed host never has a differently-named one. Included
+  anyway so `check_guard`'s idempotence is exercised on a host that already
+  has them — a name-based OR-fallback bug there would show up as a second,
+  duplicate CHECK, not as an error.
+
   `async: false` — shares the migrator's sandbox connection, like
   `migrations_data_safety_test.exs`.
   """
@@ -84,7 +93,9 @@ defmodule PhoenixKitNewsletters.MigrationsRenamedHostTest do
       "crm_list_uuid" uuid,
       "source_params" jsonb DEFAULT '{}'::jsonb NOT NULL,
       "attachments" jsonb DEFAULT '[]'::jsonb NOT NULL,
-      CONSTRAINT phoenix_kit_mailing_broadcasts_pkey PRIMARY KEY (uuid)
+      CONSTRAINT phoenix_kit_mailing_broadcasts_pkey PRIMARY KEY (uuid),
+      CONSTRAINT phoenix_kit_newsletters_broadcasts_attachments_is_array
+        CHECK (jsonb_typeof(attachments) = 'array')
     )
     """)
 
@@ -103,7 +114,10 @@ defmodule PhoenixKitNewsletters.MigrationsRenamedHostTest do
       "updated_at" timestamp with time zone DEFAULT now() NOT NULL,
       "recipient_email" public.citext,
       "crm_contact_uuid" uuid,
-      CONSTRAINT phoenix_kit_mailing_deliveries_pkey PRIMARY KEY (uuid)
+      CONSTRAINT phoenix_kit_mailing_deliveries_pkey PRIMARY KEY (uuid),
+      CONSTRAINT phoenix_kit_newsletters_deliveries_recipient_check
+        CHECK ((user_uuid IS NOT NULL OR recipient_email IS NOT NULL)
+               AND NOT (user_uuid IS NOT NULL AND crm_contact_uuid IS NOT NULL))
     )
     """)
 
@@ -211,6 +225,17 @@ defmodule PhoenixKitNewsletters.MigrationsRenamedHostTest do
                "idx_newsletters_deliveries_uniq_broadcast_email"
              ])
 
+    # Both CHECKs are already present under their real (core) names — exactly
+    # one of each, not a duplicate added alongside by a name-match that
+    # somehow missed them.
+    assert check_names("phoenix_kit_newsletters_broadcasts") == [
+             "phoenix_kit_newsletters_broadcasts_attachments_is_array"
+           ]
+
+    assert check_names("phoenix_kit_newsletters_deliveries") == [
+             "phoenix_kit_newsletters_deliveries_recipient_check"
+           ]
+
     assert Migrations.migrated_version_runtime(prefix: @prefix) == 1
   end
 
@@ -226,6 +251,10 @@ defmodule PhoenixKitNewsletters.MigrationsRenamedHostTest do
 
     assert fk_names("phoenix_kit_newsletters_broadcasts") |> length() == 2
     assert fk_names("phoenix_kit_newsletters_deliveries") |> length() == 2
+
+    assert check_names("phoenix_kit_newsletters_broadcasts") |> length() == 1
+    assert check_names("phoenix_kit_newsletters_deliveries") |> length() == 1
+
     assert Migrations.migrated_version_runtime(prefix: @prefix) == 1
   end
 
@@ -258,6 +287,15 @@ defmodule PhoenixKitNewsletters.MigrationsRenamedHostTest do
     %{rows: rows} =
       Repo.query!(
         "SELECT conname FROM pg_constraint WHERE conrelid = '#{@prefix}.#{table}'::regclass AND contype = 'f'"
+      )
+
+    Enum.map(rows, &hd/1)
+  end
+
+  defp check_names(table) do
+    %{rows: rows} =
+      Repo.query!(
+        "SELECT conname FROM pg_constraint WHERE conrelid = '#{@prefix}.#{table}'::regclass AND contype = 'c'"
       )
 
     Enum.map(rows, &hd/1)

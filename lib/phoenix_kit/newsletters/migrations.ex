@@ -685,6 +685,16 @@ defmodule PhoenixKitNewsletters.Migrations do
   # next to an already-functioning, differently-named one — this is not
   # hypothetical, the same defect already left 3 duplicate UNIQUE indexes on
   # a real host for a sibling module (`phoenix_kit_posts`) before this fix.
+  #
+  # Deliberately NOT part of the match: `on_delete` (the referential action).
+  # This is an ADOPTION guard, not a shape-repair tool — if a host's
+  # existing FK (found by table/column/target alone) already has a
+  # different `ON DELETE` behavior than the `on_delete` argument below
+  # would create, this guard leaves it exactly as it is rather than trying
+  # to converge the two. A real disagreement there would be a legitimate
+  # V2+ shape change (with its own manifest/floor implications, see the
+  # moduledoc's Phase 1), never something V1's silent adoption should paper
+  # over by dropping and re-adding someone's live constraint.
   defp fk_guard(qualified, constraint_name, column, references, on_delete) do
     """
     DO $$
@@ -719,11 +729,31 @@ defmodule PhoenixKitNewsletters.Migrations do
   # (NULL when the index isn't partial) — both sides of that comparison are
   # verified-live text, not guessed. `CREATE INDEX` is DDL, not a plain SQL
   # statement PL/pgSQL can run directly inside `IF`, hence `EXECUTE`.
+  #
+  # `i.indexprs IS NULL` and the `array_length` check below both exist for
+  # the same real bug, caught by testing against a live catalog rather than
+  # reading the query: an EXPRESSION index (e.g. `ON t (status,
+  # lower(error))`) stores `0` — not a real attnum — in `indkey` for its
+  # expression column. `pg_attribute` has no row for attnum `0`, so the
+  # `JOIN pg_attribute` above silently DROPS that position instead of
+  # erroring, shortening the aggregated array from `{status, <expr
+  # position>}` down to just `{status}` — which then equals `ARRAY['status']`
+  # and gets misread as "the plain `idx_newsletters_deliveries_status`
+  # index already exists" even though the real index found is an unrelated
+  # expression index that only happens to share one column name. Verified
+  # live: `CREATE INDEX ON t (status, lower(error))` produces exactly this
+  # `{status}` aggregate with `indexprs IS NOT NULL` and
+  # `array_length(indkey, 1) = 2`. `indexprs IS NULL` alone would already
+  # exclude every expression index (none of this chain's own indexes are
+  # ever expression-based); the `array_length` check is kept alongside it
+  # as an independent guard against the same join silently dropping a row
+  # for any other reason.
   defp index_guard(name, qualified, unique?, method, columns, predicate) do
     columns_sql = Enum.join(columns, ", ")
     where_clause = if predicate, do: " WHERE #{predicate}", else: ""
     unique_sql = if unique?, do: "UNIQUE ", else: ""
     columns_array = columns |> Enum.map_join(", ", &"'#{&1}'")
+    column_count = length(columns)
 
     predicate_condition =
       if predicate do
@@ -731,6 +761,19 @@ defmodule PhoenixKitNewsletters.Migrations do
       else
         "i.indpred IS NULL"
       end
+
+    # The whole dynamic statement is embedded inside a single-quoted
+    # `EXECUTE '...'` argument, so any single quote it contains (none of
+    # this chain's own column names/predicates have one today, but a
+    # predicate string is caller-supplied text, not a fixed literal) must
+    # be SQL-escaped by doubling it — the same rule `check_guard`'s
+    # `canonical_def` needed, and for the same reason: an unescaped quote
+    # would terminate the `EXECUTE` argument early and the remainder would
+    # be parsed as SQL instead of stored as string content.
+    create_index_sql =
+      "CREATE #{unique_sql}INDEX IF NOT EXISTS #{name} ON #{qualified} USING #{method} (#{columns_sql})#{where_clause}"
+
+    escaped_create_index_sql = String.replace(create_index_sql, "'", "''")
 
     """
     DO $$
@@ -743,6 +786,8 @@ defmodule PhoenixKitNewsletters.Migrations do
         WHERE i.indrelid = '#{qualified}'::regclass
           AND i.indisunique = #{unique?}
           AND am.amname = '#{method}'
+          AND i.indexprs IS NULL
+          AND array_length(i.indkey::int2[], 1) = #{column_count}
           AND #{predicate_condition}
           AND (
             SELECT array_agg(a.attname ORDER BY k.ord)
@@ -750,7 +795,7 @@ defmodule PhoenixKitNewsletters.Migrations do
             JOIN pg_attribute a ON a.attrelid = i.indrelid AND a.attnum = k.attnum
           ) = ARRAY[#{columns_array}]::name[]
       ) THEN
-        EXECUTE 'CREATE #{unique_sql}INDEX IF NOT EXISTS #{name} ON #{qualified} USING #{method} (#{columns_sql})#{where_clause}';
+        EXECUTE '#{escaped_create_index_sql}';
       END IF;
     END
     $$
