@@ -160,6 +160,12 @@ defmodule PhoenixKit.Newsletters do
   @impl PhoenixKit.Module
   def route_module, do: PhoenixKit.Newsletters.Web.Routes
 
+  # Decentralized-migrations protocol (see PhoenixKitNewsletters.Migrations'
+  # moduledoc): this module owns the future shape of its two tables even
+  # though core's chain still creates them on every install.
+  @impl PhoenixKit.Module
+  def migration_module, do: PhoenixKitNewsletters.Migrations
+
   alias PhoenixKit.Newsletters.{
     Broadcast,
     Broadcaster,

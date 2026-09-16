@@ -12,6 +12,12 @@ defmodule PhoenixKit.Newsletters.Broadcast do
   @valid_statuses ["draft", "scheduled", "sending", "sent", "cancelled", "failed"]
   @valid_source_types ["crm_list", "user_group"]
 
+  # `phoenix_kit_newsletters_broadcasts` `character varying` column widths,
+  # interpolated into `PhoenixKitNewsletters.Migrations`' V1 DDL — the single
+  # source of truth so the migration chain and core's `ExpectedSchema`
+  # manifest can never independently disagree on a number.
+  @column_widths %{subject: 998, status: 20, source_type: 20}
+
   schema "phoenix_kit_newsletters_broadcasts" do
     field(:subject, :string)
     field(:markdown_body, :string)
@@ -205,6 +211,17 @@ defmodule PhoenixKit.Newsletters.Broadcast do
 
   def role_names_snapshot(%{"role_names_snapshot" => names}) when is_list(names), do: names
   def role_names_snapshot(_), do: []
+
+  @doc """
+  `character varying` column widths for
+  `phoenix_kit_newsletters_broadcasts`, keyed by field name.
+
+  The single source of truth `PhoenixKitNewsletters.Migrations`' V1 DDL
+  interpolates, so the migration chain and core's `ExpectedSchema` manifest
+  can never independently disagree on a number.
+  """
+  @spec column_widths() :: %{atom() => pos_integer()}
+  def column_widths, do: @column_widths
 
   def valid_statuses, do: @valid_statuses
   def valid_source_types, do: @valid_source_types

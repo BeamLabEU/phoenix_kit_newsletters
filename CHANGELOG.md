@@ -1,5 +1,23 @@
 # Changelog
 
+## Unreleased
+
+### Added
+
+- `PhoenixKitNewsletters.Migrations` — this module now owns and versions
+  the future shape of its 2 tables (`phoenix_kit_newsletters_broadcasts`,
+  `phoenix_kit_newsletters_deliveries`) via its own migration chain, the
+  same pattern already shipped for `phoenix_kit_customer_support` and
+  `phoenix_kit_manufacturing`. `V1` adopts core's current `V135`-through-
+  `V158` shape verbatim (send profiles, CRM-sourced recipients, the
+  recipient CHECK constraint, the dropped `list_uuid` column, and
+  `attachments`) and stamps a `pknl_schema:1` marker on
+  `phoenix_kit_newsletters_broadcasts`. Unlike those two sibling chains,
+  this is a pure no-op-shape adoption with no `ADD COLUMN`/`DROP NOT NULL`
+  safety-net section — a dedicated research pass found zero discrepancies
+  between core's migration source, its `ExpectedSchema` manifest, and a
+  live catalog. `down/1` never drops either table, for any target.
+
 ## 0.2.2 - 2026-09-06
 
 ### Changed
