@@ -123,9 +123,8 @@ defmodule PhoenixKitNewsletters.Migrations do
 
   ### Guards are semantic, not name-based — a real host discovery
 
-  A host-level rename migration exists in the wild
-  (`decor_3d_print`'s `20260316_rename_mailing_to_newsletters`) that renamed
-  both tables from `phoenix_kit_mailing_broadcasts`/`_deliveries` to their
+  A host-level rename migration exists in the wild (a real host's own
+  `rename_mailing_to_newsletters` migration) that renamed both tables from `phoenix_kit_mailing_broadcasts`/`_deliveries` to their
   current `phoenix_kit_newsletters_*` names — but a Postgres `ALTER TABLE
   ... RENAME TO` does not rename the table's own constraints or indexes.
   Every V135-era object on that host still carries its ORIGINAL name:
@@ -757,13 +756,14 @@ defmodule PhoenixKitNewsletters.Migrations do
 
     predicate_condition =
       if predicate do
-        "pg_get_expr(i.indpred, i.indrelid) = '#{predicate}'"
+        "pg_get_expr(i.indpred, i.indrelid) = '#{String.replace(predicate, "'", "''")}'"
       else
         "i.indpred IS NULL"
       end
 
-    # The whole dynamic statement is embedded inside a single-quoted
-    # `EXECUTE '...'` argument, so any single quote it contains (none of
+    # The predicate is compared above as a single-quoted SQL literal, and the
+    # whole dynamic statement below is embedded inside a single-quoted
+    # `EXECUTE '...'` argument, so any single quote either contains (none of
     # this chain's own column names/predicates have one today, but a
     # predicate string is caller-supplied text, not a fixed literal) must
     # be SQL-escaped by doubling it — the same rule `check_guard`'s

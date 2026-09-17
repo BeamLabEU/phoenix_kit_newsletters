@@ -40,15 +40,15 @@ work goes through Oban workers.
 
 ## What this module does NOT do
 
-- Owns its two tables' *future* shape through its own versioned chain,
-  `PhoenixKitNewsletters.Migrations` (`migration_module/0`) — but core's
-  chain still *creates* both tables on every install (V135 baseline, later
-  core migrations add `source_type`/`crm_list_uuid`/`source_params`,
-  `send_profile_uuid`, `attachments`, the delivery owner CHECK and the
-  partial unique indexes). V1 of this chain is a pure adoption of that
-  current shape (see "Database & migrations" below and the chain's own
-  moduledoc) — it changes nothing on an existing install beyond stamping a
-  version marker.
+- Does not yet create its own tables. It owns their *future* shape through
+  its own versioned chain, `PhoenixKitNewsletters.Migrations`
+  (`migration_module/0`), but core's chain still *creates* both tables on
+  every install (V135 baseline, later core migrations add
+  `source_type`/`crm_list_uuid`/`source_params`, `send_profile_uuid`,
+  `attachments`, the delivery owner CHECK and the partial unique indexes).
+  V1 of this chain is a pure adoption of that current shape (see "Database &
+  migrations" below and the chain's own moduledoc) — it changes nothing on an
+  existing install beyond stamping a version marker.
 - Has no mailing lists of its own. An audience is either a CRM contact list
   (`source_type "crm_list"`) or a set of core roles (`"user_group"`). The
   former `List`/`ListMember` schemas and the `"newsletters_list"` source type
@@ -248,6 +248,7 @@ lib/phoenix_kit/newsletters/
 ├── preference_token.ex     # Preference-center token (salt "newsletters_preferences")
 ├── paths.ex                # Admin + public path helpers
 ├── gettext.ex              # PhoenixKit.Newsletters.Gettext backend
+├── migrations.ex           # PhoenixKitNewsletters.Migrations: module-owned chain, V1 = adoption + pknl_schema marker
 ├── web/
 │   ├── routes.ex           # route_module/0: unsubscribe routes + preference-center live_session
 │   ├── broadcasts.ex/.heex          # Admin list, status filter via push_patch
@@ -386,9 +387,10 @@ verbatim — it is core-owned DDL, not something to fix here.
   honoured); `PGUSER`, `PGPASSWORD`, `PGHOST` are read with `postgres` /
   `postgres` / `localhost` defaults.
 - `test_helper.exs` starts `PhoenixKitNewsletters.Test.Repo`, brings it to
-  the current core schema with `PhoenixKit.Migration.ensure_current/2`, sets
-  sandbox `:manual`, and starts `PhoenixKit.PubSub.Manager` (role fixtures
-  broadcast through it). No reachable DB excludes `:integration`; it also
+  the current core schema with `PhoenixKit.Migration.ensure_current/2`, runs
+  this chain's `PhoenixKitNewsletters.Migrations.up_statements/0` on top
+  (so every run starts at `pknl_schema:1`), sets sandbox `:manual`, and
+  starts `PhoenixKit.PubSub.Manager` (role fixtures broadcast through it). No reachable DB excludes `:integration`; it also
   probes the `attachments` column with a real query and excludes
   `:requires_v158` when absent (every core ≥ 2.0 has it, so in practice both
   tags skip together).
@@ -405,7 +407,9 @@ verbatim — it is core-owned DDL, not something to fix here.
 - Runs without Postgres: behaviour compliance, `CorePinConformanceTest`,
   `SchemaPrefixConformanceTest`, `I18nTest`, content, preference token,
   attachment cache, send-error, provider-options, controller and broadcaster
-  unit tests.
+  unit tests, and `migrations_test.exs` (pure assertions over the chain's
+  statements and core's `ExpectedSchema` manifest). The other
+  `migrations_*_test.exs` files run real DDL and need the DB.
 - Worker seams exposed as public `@doc false` functions for direct unit
   tests: `resolve_send_profile/1`, `build_profile_email/5`,
   `extract_message_id/1`, `compose_html/3`, `handle_failure/4`,

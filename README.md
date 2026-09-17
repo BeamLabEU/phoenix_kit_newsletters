@@ -101,7 +101,7 @@ from the schema by core's `V156`.
 | Module | Role |
 |---|---|
 | `Newsletters` | Main context — CRUD for broadcasts, deliveries, scheduled processing |
-| `Migrations` | This module's own versioned migration chain (`migration_module/0`) |
+| `PhoenixKitNewsletters.Migrations` | This module's own versioned migration chain (`migration_module/0`) |
 | `Broadcaster` | Validates, renders and sends a broadcast; enqueues Oban jobs |
 | `DeliveryWorker` | Oban worker — sends individual emails, tracks delivery status |
 | `CRMSource` | Soft-dependency bridge to `phoenix_kit_crm` contact lists |
