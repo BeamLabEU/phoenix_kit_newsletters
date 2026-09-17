@@ -40,7 +40,15 @@ work goes through Oban workers.
 
 ## What this module does NOT do
 
-- Owns no tables and no migration chain; every table lives in core's chain.
+- Owns its two tables' *future* shape through its own versioned chain,
+  `PhoenixKitNewsletters.Migrations` (`migration_module/0`) — but core's
+  chain still *creates* both tables on every install (V135 baseline, later
+  core migrations add `source_type`/`crm_list_uuid`/`source_params`,
+  `send_profile_uuid`, `attachments`, the delivery owner CHECK and the
+  partial unique indexes). V1 of this chain is a pure adoption of that
+  current shape (see "Database & migrations" below and the chain's own
+  moduledoc) — it changes nothing on an existing install beyond stamping a
+  version marker.
 - Has no mailing lists of its own. An audience is either a CRM contact list
   (`source_type "crm_list"`) or a set of core roles (`"user_group"`). The
   former `List`/`ListMember` schemas and the `"newsletters_list"` source type
@@ -339,18 +347,38 @@ PubSub: none.
 
 ## Database & migrations
 
-None. Tables `phoenix_kit_newsletters_broadcasts` and
-`phoenix_kit_newsletters_deliveries` ship in core's chain (V135 baseline, later
-core migrations add `source_type`/`crm_list_uuid`/`source_params`,
-`send_profile_uuid`, `attachments`, the delivery owner CHECK and the partial
-unique indexes); `migration_module/0` is unset. A schema change is a core
-migration first, then schema edits here. `mix phoenix_kit.update` in the host
-applies it. Always UUIDv7 PKs and `use PhoenixKit.SchemaPrefix` on
-table-backed schemas.
+Core's `V135` (parent [phoenix_kit](https://github.com/BeamLabEU/phoenix_kit)
+project) baseline still **creates** both tables
+(`phoenix_kit_newsletters_broadcasts`, `phoenix_kit_newsletters_deliveries`)
+on every existing/fresh install, and five later core migrations
+(`V145`/`V152`/`V155`/`V156`/`V158`) layered further shape changes on top —
+send profiles, CRM-sourced recipients, the recipient CHECK, dropping the old
+`list_uuid` column/FK/index, and `attachments`. This module now owns their
+**future shape** through its own versioned chain,
+`PhoenixKitNewsletters.Migrations` (`migration_module/0`), which
+`mix phoenix_kit.update` discovers and drives the same way it drives core's
+own chain. V1 is a pure **adoption** (Phase 0): it changes nothing except
+stamping a `pknl_schema:1` marker (a `COMMENT ON TABLE`) on the anchor
+table, `phoenix_kit_newsletters_broadcasts` — every
+`CREATE TABLE`/pkey/CHECK/index/FK statement is `IF NOT EXISTS`/DO-guarded,
+so on every existing install it is a no-op against tables core already
+built. `down/1` never drops either table, for any target — see
+`PhoenixKitNewsletters.Migrations`' moduledoc for the full ownership
+writeup, including why there is no `ADD COLUMN`/`DROP NOT NULL` safety-net
+section here (unlike the customer_support/manufacturing sibling chains).
+
+Phase 1 (a future shape change) needs a core-side `ExpectedSchema` manifest
+update first, or `mix phoenix_kit.repair` silently reverts it. Phase 2 (a
+future core baseline squash that drops these tables from core) is already
+covered: V1 alone can build the complete shape of both tables from nothing,
+so a fresh install still gets a working schema even without core's chain.
+
+Always UUIDv7 PKs and `use PhoenixKit.SchemaPrefix` on table-backed schemas.
 
 The broadcasts table's DB column default for `source_type` is still the
 retired `'newsletters_list'`; the Ecto default `"crm_list"` is what every
-insert through the changeset uses.
+insert through the changeset uses. This chain's V1 adopts that DB default
+verbatim — it is core-owned DDL, not something to fix here.
 
 ## Testing
 
@@ -438,10 +466,3 @@ string must agree or every HexDocs source link 404s.
   either way — they are what closes the race — so this is a cost fix, not a
   correctness one. **Trigger:** a real send large enough for the wake-up
   cost to show.
-
-- `README.md` still describes the retired `List`/`ListMember` model and the
-  old unsubscribe token payload (`%{user_uuid, list_uuid}`, a
-  `/unsubscribe/:token` path, `list_uuid: :all`) — none of which exist any
-  more; its "Modules" table still lists `Web.Lists` / `Web.ListEditor` /
-  `Web.ListMembers`. Rewrite it from this file when the README is next
-  touched. The Oban queue name and the settings table are current.

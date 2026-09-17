@@ -10,6 +10,14 @@ repo_available =
   try do
     {:ok, _} = PhoenixKitNewsletters.Test.Repo.start_link()
     PhoenixKit.Migration.ensure_current(PhoenixKitNewsletters.Test.Repo, log: false)
+
+    # This module's own chain (PhoenixKitNewsletters.Migrations) stamps
+    # phoenix_kit_newsletters_broadcasts with pknl_schema:1 on top of what
+    # core's chain above already created — every test run starts from a
+    # database at this chain's current version, not just core's.
+    PhoenixKitNewsletters.Migrations.up_statements()
+    |> Enum.each(&Ecto.Adapters.SQL.query!(PhoenixKitNewsletters.Test.Repo, &1, []))
+
     Ecto.Adapters.SQL.Sandbox.mode(PhoenixKitNewsletters.Test.Repo, :manual)
     # PhoenixKit.Users.Roles.create_role/update_role/delete_role broadcast
     # through this (Admin.Events.broadcast_role_created/2 etc) — needed by

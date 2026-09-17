@@ -27,6 +27,12 @@ defmodule PhoenixKit.Newsletters.Delivery do
   # "sending") while a recipient's send is still queued to run.
   @non_terminal_statuses ["pending"]
 
+  # `phoenix_kit_newsletters_deliveries` `character varying` column widths,
+  # interpolated into `PhoenixKitNewsletters.Migrations`' V1 DDL — the single
+  # source of truth so the migration chain and core's `ExpectedSchema`
+  # manifest can never independently disagree on a number.
+  @column_widths %{status: 20, message_id: 255}
+
   schema "phoenix_kit_newsletters_deliveries" do
     field(:status, :string, default: "pending")
     field(:sent_at, :utc_datetime)
@@ -112,6 +118,17 @@ defmodule PhoenixKit.Newsletters.Delivery do
   end
 
   def valid_statuses, do: @valid_statuses
+
+  @doc """
+  `character varying` column widths for `phoenix_kit_newsletters_deliveries`,
+  keyed by field name.
+
+  The single source of truth `PhoenixKitNewsletters.Migrations`' V1 DDL
+  interpolates, so the migration chain and core's `ExpectedSchema` manifest
+  can never independently disagree on a number.
+  """
+  @spec column_widths() :: %{atom() => pos_integer()}
+  def column_widths, do: @column_widths
 
   @doc false
   # UUIDs of every broadcast that still has at least one delivery in a
