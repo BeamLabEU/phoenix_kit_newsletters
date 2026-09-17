@@ -1,5 +1,37 @@
 # Changelog
 
+## 0.3.0 - 2026-09-17
+
+### Added
+
+- **Module-owned migration chain.** `PhoenixKitNewsletters.Migrations`, wired
+  in through `migration_module/0`, now owns the future shape of
+  `phoenix_kit_newsletters_broadcasts` and `phoenix_kit_newsletters_deliveries`.
+  The next `mix phoenix_kit.update` on a host generates one migration for it.
+  V1 is a pure adoption of the shape core's V135–V158 already built: every
+  statement is guarded, it changes no column, constraint or index on an
+  existing install, and it only stamps a `pknl_schema:1` comment on the
+  broadcasts table. `down/1` never drops either table or any rows. (#35)
+- The guards match existing primary keys, foreign keys, indexes and CHECKs by
+  shape rather than by name. A host that renamed the tables from
+  `phoenix_kit_mailing_*` (renaming a table keeps its old constraint and index
+  names) therefore adopts cleanly instead of failing with "multiple primary
+  keys" or getting duplicate indexes. Expression indexes can't be mistaken for
+  plain ones. (#35)
+- `Broadcast.column_widths/0` and `Delivery.column_widths/0`: the varchar
+  widths the migration DDL reads, so they are defined in one place. (#35)
+
+### Changed
+
+- README rewritten to match the current model: CRM-list / role audiences,
+  preference center, send pipeline and migration chain. The removed
+  `List`/`ListMember` model is gone from the docs. (#35)
+- `index_guard` now escapes its partial-index predicate in the catalog
+  comparison as well as in the `EXECUTE` argument. The SQL it generates today
+  is unchanged.
+- Dependency updates: `phoenix_kit` 2.28.1, `phoenix` 1.8.14,
+  `phoenix_live_view` 1.2.12, `swoosh` 1.28.1, `phoenix_kit_crm` 0.14.0 (test).
+
 ## 0.2.2 - 2026-09-06
 
 ### Changed
