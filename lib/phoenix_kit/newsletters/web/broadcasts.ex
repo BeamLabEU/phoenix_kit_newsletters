@@ -23,7 +23,7 @@ defmodule PhoenixKit.Newsletters.Web.Broadcasts do
     if Newsletters.enabled?() do
       socket =
         socket
-        |> assign(:page_title, gettext("Broadcasts"))
+        |> assign(:page_title, gettext("Newsletters"))
         |> assign(:page_subtitle, gettext("Create and manage email broadcasts"))
         |> assign(:project_title, Settings.get_project_title())
         |> assign(:broadcasts, [])

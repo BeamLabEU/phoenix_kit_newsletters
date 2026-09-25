@@ -41,8 +41,9 @@ defmodule PhoenixKit.Newsletters.Web.BroadcastEditor do
           :page_subtitle,
           gettext("Compose and send a broadcast email to your newsletter list")
         )
-        |> assign(:page_section, gettext("Broadcasts"))
+        |> assign(:page_section, gettext("Newsletters"))
         |> assign(:page_section_path, Routes.path("/admin/newsletters/broadcasts"))
+        |> assign(:page_crumbs, [])
         |> assign(:project_title, Settings.get_project_title())
         |> assign(:templates, [])
         |> assign(:broadcast, nil)
@@ -92,7 +93,13 @@ defmodule PhoenixKit.Newsletters.Web.BroadcastEditor do
      socket
      |> assign(:crm_lists, crm_lists)
      |> assign(:templates, templates)
-     |> assign(:page_title, gettext("Edit broadcast"))
+     |> assign(:page_title, gettext("Edit"))
+     |> assign(:page_crumbs, [
+       %{
+         label: broadcast.subject,
+         path: Routes.path("/admin/newsletters/broadcasts/#{broadcast.uuid}")
+       }
+     ])
      |> assign(:broadcast, broadcast)
      |> assign(:subject, broadcast.subject || "")
      |> assign(:source_type, broadcast.source_type)
