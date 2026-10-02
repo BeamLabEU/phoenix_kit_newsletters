@@ -1,0 +1,87 @@
+defmodule PhoenixKit.Newsletters.LayoutTest do
+  use ExUnit.Case, async: true
+
+  alias PhoenixKit.Newsletters.Layout
+
+  describe "translation/3 — language → base → dialect → site → any" do
+    @map %{"en" => "EN", "de" => "DE", "pt-BR" => "PT-BR", "fr" => "FR"}
+
+    test "the exact language first" do
+      assert Layout.translation(@map, "de", "en") == "DE"
+      assert Layout.translation(@map, "pt-BR", "en") == "PT-BR"
+    end
+
+    test "a dialect narrows to its base, and _ reads as -" do
+      assert Layout.translation(@map, "de-AT", "en") == "DE"
+      assert Layout.translation(@map, "pt_BR", "en") == "PT-BR"
+    end
+
+    test "a base finds another dialect of itself before the site default" do
+      assert Layout.translation(@map, "pt", "en") == "PT-BR"
+      assert Layout.translation(@map, "pt-PT", "en") == "PT-BR"
+    end
+
+    test "then the site's language, then any language, alphabetically" do
+      assert Layout.translation(@map, "ru", "fr") == "FR"
+      assert Layout.translation(@map, "ru", "et") == "DE"
+      assert Layout.translation(@map, nil, nil) == "DE"
+    end
+
+    test "blank values count as missing; nothing usable is nil" do
+      assert Layout.translation(%{"de" => "  ", "en" => "EN"}, "de", "et") == "EN"
+      assert Layout.translation(%{"de" => ""}, "de", "en") == nil
+      assert Layout.translation(%{}, "de", "en") == nil
+      assert Layout.translation(nil, "de", "en") == nil
+    end
+  end
+
+  describe "changeset/2" do
+    defp changeset(attrs) do
+      Layout.changeset(
+        %Layout{},
+        Map.merge(%{"name" => "welcome_layout", "html_body" => %{"en" => "{{{content}}}"}}, attrs)
+      )
+    end
+
+    test "a valid layout" do
+      assert changeset(%{}).valid?
+      assert changeset(%{"html_body" => %{"en" => "<div>{{content}}</div>"}}).valid?
+    end
+
+    test "every HTML translation must place the body" do
+      cs = changeset(%{"html_body" => %{"en" => "{{{content}}}", "de" => "<p>kein Inhalt</p>"}})
+      refute cs.valid?
+
+      assert {"must place the broadcast with {{{content}}} (missing in %{language})", opts} =
+               cs.errors[:html_body]
+
+      assert opts[:language] == "de"
+    end
+
+    test "an HTML body is required" do
+      refute changeset(%{"html_body" => %{}}).valid?
+      refute changeset(%{"html_body" => %{"en" => "   "}}).valid?
+    end
+
+    test "a subject pattern must place {{subject}}; blank ones are dropped" do
+      refute changeset(%{"subject" => %{"en" => "Fixed subject"}}).valid?
+      assert changeset(%{"subject" => %{"en" => "[News] {{subject}}"}}).valid?
+
+      cs = changeset(%{"subject" => %{"en" => "", "de" => "  "}})
+      assert cs.valid?
+      assert Ecto.Changeset.get_field(cs, :subject) == %{}
+    end
+
+    test "name is a slug, status is active or archived" do
+      refute changeset(%{"name" => "Welcome Layout"}).valid?
+      refute changeset(%{"name" => "1st"}).valid?
+      refute changeset(%{"status" => "draft"}).valid?
+      assert changeset(%{"status" => "archived"}).valid?
+    end
+  end
+
+  test "languages/1 lists the languages with HTML" do
+    layout = %Layout{html_body: %{"en" => "x", "de" => "y", "fr" => " "}}
+    assert Layout.languages(layout) == ["de", "en"]
+  end
+end

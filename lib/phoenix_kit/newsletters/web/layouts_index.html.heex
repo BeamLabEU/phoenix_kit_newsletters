@@ -1,0 +1,112 @@
+<PhoenixKitWeb.Components.LayoutWrapper.app_layout
+  flash={@flash}
+  phoenix_kit_current_scope={assigns[:phoenix_kit_current_scope]}
+  page_title={@page_title}
+  page_subtitle={@page_subtitle}
+  page_section={@page_section}
+  page_section_path={@page_section_path}
+  current_path={@url_path}
+  project_title={@project_title}
+>
+<div class="container flex-col mx-auto px-4 py-6">
+  <div class="flex flex-wrap items-center justify-between gap-2 mb-4">
+    <label class="select select-sm">
+      <select name="status" phx-change="filter_status">
+        <option value="active" selected={@status_filter == "active"}>{gettext("Active")}</option>
+        <option value="archived" selected={@status_filter == "archived"}>
+          {gettext("Archived")}
+        </option>
+        <option value="all" selected={@status_filter == "all"}>{gettext("All statuses")}</option>
+      </select>
+    </label>
+    <div class="flex gap-2">
+      <button :if={@default_uuid} type="button" class="btn btn-ghost btn-sm" phx-click="clear_default">
+        {gettext("Use the standard layout by default")}
+      </button>
+      <.pk_link navigate={Paths.layout_new()} class="btn btn-primary btn-sm">
+        <.icon name="hero-plus" class="w-4 h-4" /> {gettext("New layout")}
+      </.pk_link>
+    </div>
+  </div>
+
+  <p class="text-sm text-base-content/70 mb-4">
+    {gettext(
+      "A broadcast without a layout is sent inside the site's standard email layout. A layout places the broadcast with {{{content}}} and can place the site's {{{header}}} and {{{footer}}}."
+    )}
+  </p>
+
+  <%= if @layouts == [] do %>
+    <.empty_state
+      icon="hero-rectangle-group"
+      title={gettext("No layouts found")}
+      description={gettext("Broadcasts use the standard email layout until you add one.")}
+    />
+  <% else %>
+    <div class="overflow-x-auto">
+      <table class="table table-zebra table-sm w-full">
+        <thead>
+          <tr>
+            <th>{gettext("Name")}</th>
+            <th>{gettext("Languages")}</th>
+            <th>{gettext("Status")}</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr :for={layout <- @layouts}>
+            <td>
+              <div class="font-medium">{Layout.display_name(layout, @current_locale)}</div>
+              <div class="text-xs text-base-content/60 font-mono">{layout.name}</div>
+            </td>
+            <td class="text-sm">{Enum.join(Layout.languages(layout), ", ")}</td>
+            <td>
+              <span class={[
+                "badge badge-sm",
+                if(layout.status == "active", do: "badge-success", else: "badge-ghost")
+              ]}>
+                {status_label(layout.status)}
+              </span>
+              <span :if={layout.uuid == @default_uuid} class="badge badge-sm badge-primary ml-1">
+                {gettext("Default")}
+              </span>
+            </td>
+            <td class="text-right whitespace-nowrap">
+              <.pk_link navigate={Paths.layout_edit(layout.uuid)} class="btn btn-xs btn-outline">
+                {gettext("Edit")}
+              </.pk_link>
+              <button
+                :if={layout.status == "active" and layout.uuid != @default_uuid}
+                type="button"
+                class="btn btn-xs btn-ghost"
+                phx-click="set_default"
+                phx-value-uuid={layout.uuid}
+              >
+                {gettext("Make default")}
+              </button>
+              <button
+                :if={layout.status == "active"}
+                type="button"
+                class="btn btn-xs btn-ghost"
+                phx-click="archive"
+                phx-value-uuid={layout.uuid}
+                data-confirm={gettext("Archive this layout? Broadcasts already using it keep it.")}
+              >
+                {gettext("Archive")}
+              </button>
+              <button
+                :if={layout.status == "archived"}
+                type="button"
+                class="btn btn-xs btn-ghost"
+                phx-click="restore"
+                phx-value-uuid={layout.uuid}
+              >
+                {gettext("Restore")}
+              </button>
+            </td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  <% end %>
+</div>
+</PhoenixKitWeb.Components.LayoutWrapper.app_layout>

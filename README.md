@@ -63,7 +63,7 @@ same way it drives core's own.
 | Dependency | Version |
 |---|---|
 | Elixir | `~> 1.18` |
-| PhoenixKit | `~> 2.0` |
+| PhoenixKit | `~> 2.45` |
 | Phoenix LiveView | `~> 1.1` |
 | Oban | `~> 2.20` |
 | MDEx | `~> 0.13` |
@@ -79,6 +79,7 @@ All schemas use UUIDv7 primary keys.
 | Schema | Description |
 |---|---|
 | `Broadcast` | Email content (Markdown → HTML); status lifecycle: `draft → scheduled → sending → sent`, plus `cancelled`/`failed`. Audience is either a CRM contact list (`source_type "crm_list"`, `crm_list_uuid`) or a set of core roles (`source_type "user_group"`, `source_params["role_uuids"]`). Up to 10 Storage file attachments. |
+| `Layout` | An operator-authored wrapper a broadcast is sent inside. One row per layout; `display_name`, `subject`, `html_body`, `text_body` are maps keyed by language. Status `active`/`archived`. `Broadcast.template_uuid` is a foreign key to it. |
 | `Delivery` | Per-recipient tracking record; status: `pending → sent → delivered / opened / bounced / failed / blocked`. Exactly one owner: `user_uuid` (role recipient) or `crm_contact_uuid` + `recipient_email` (CRM recipient) — enforced by a DB CHECK constraint. |
 
 There is no `List`/`ListMember` model any more — the old newsletters-owned
@@ -94,7 +95,25 @@ from the schema by core's `V156`.
 3. Inserts `Delivery` records in batches of 500 via `insert_all`, inside one transaction
 4. Enqueues one `DeliveryWorker` Oban job per delivery, paced by the send profile's rate limits
 
-`DeliveryWorker` sends individual emails with variable substitution (`{{name}}`, `{{email}}`, `{{unsubscribe_url}}`, `{{preferences_url}}`), optionally wraps in an email template (soft dependency on the Emails module), and tracks delivery status.
+`DeliveryWorker` sends individual emails and tracks delivery status. Each email is
+rendered in the recipient's language (`RecipientLanguage`: a user's preferred locale; a
+CRM contact's `locale`, else the list's; else the site's content language):
+
+- **With a layout**, the layout's HTML in that language (falling back to the base language,
+  the site's language, then any) is the document. The broadcast goes where it places
+  `{{{content}}}` (the older `{{content}}` still works), then one pass fills the variables:
+  `{{name}}`, `{{email}}`, `{{unsubscribe_url}}`, `{{preferences_url}}`, and core's email
+  chrome — `{{{header}}}`, `{{{footer}}}`, `{{logo_url}}`, `{{accent_color}}`, `{{site_name}}`,
+  `{{site_url}}`, `{{subject}}`. `{{…}}` values are HTML-escaped; `{{{…}}}` are inserted raw.
+- **Without a layout**, the broadcast is wrapped in core's standard email layout for the
+  `newsletters` group, so a host's `_layout-newsletters` / `_header-newsletters` /
+  `_footer-newsletters` template files (or the shared `_layout`/`_header`/`_footer`) apply.
+- A layout's subject, when it contains `{{subject}}`, is a pattern around the broadcast's
+  subject. The text part is never wrapped.
+
+Layouts are managed under **Newsletters → Layouts** in the admin. Rows created before
+this table existed (operator-authored email templates) were carried over by migration V2
+under their own uuids.
 
 ## Modules
 
@@ -102,6 +121,8 @@ from the schema by core's `V156`.
 |---|---|
 | `Newsletters` | Main context — CRUD for broadcasts, deliveries, scheduled processing |
 | `PhoenixKitNewsletters.Migrations` | This module's own versioned migration chain (`migration_module/0`) |
+| `Layouts` | Layout context — list/get/create/update/archive/restore, default layout |
+| `Render` | Builds one email's subject, HTML and text (layout, language, core chrome) |
 | `Broadcaster` | Validates, renders and sends a broadcast; enqueues Oban jobs |
 | `DeliveryWorker` | Oban worker — sends individual emails, tracks delivery status |
 | `CRMSource` | Soft-dependency bridge to `phoenix_kit_crm` contact lists |
@@ -110,6 +131,8 @@ from the schema by core's `V156`.
 | `Web.Broadcasts` | Admin LiveView — broadcasts index |
 | `Web.BroadcastEditor` | Admin LiveView — create/edit broadcast with Markdown editor |
 | `Web.BroadcastDetails` | Admin LiveView — delivery stats and recipient list |
+| `Web.LayoutsIndex` | Admin LiveView — layouts list, archive/restore, default layout |
+| `Web.LayoutEditor` | Admin LiveView — create/edit a layout per language, with preview |
 | `Web.PreferenceCenterLive` | Public LiveView — self-service subscription preferences (token or login) |
 | `Web.UnsubscribeController` | Public controller — confirm/unsubscribe/one-click flow |
 | `Web.Routes` | Public route definitions via `route_module/0` |
@@ -119,7 +142,7 @@ from the schema by core's `V156`.
 | Key | Default | Description |
 |---|---|---|
 | `newsletters_enabled` | `false` | Enables/disables the module |
-| `newsletters_default_template` | — | Default email template UUID (when Emails is installed) |
+| `newsletters_default_template` | — | UUID of the layout new broadcasts start with (set from the Layouts page) |
 | `from_email` | `noreply@example.com` | Sender email address (shared with core, used by the legacy send path) |
 | `from_name` | `Newsletter` | Sender display name (shared with core, used by the legacy send path) |
 

@@ -43,7 +43,7 @@ defmodule PhoenixKitNewsletters.MigrationsTest do
     alias PhoenixKit.Migrations.Postgres.Helpers
 
     test "current_version/0 and version_table/0" do
-      assert Migrations.current_version() == 1
+      assert Migrations.current_version() == 2
       assert Migrations.version_table() == "phoenix_kit_newsletters_broadcasts"
     end
 
@@ -188,7 +188,7 @@ defmodule PhoenixKitNewsletters.MigrationsTest do
 
   describe "the chain DDL adopts core's V135-through-V158 shape" do
     test "V1 uses core's exact object names (shape-identical adoption)" do
-      statements = Enum.join(Migrations.up_statements(), "\n")
+      statements = Enum.join(Migrations.up_statements("public", 1), "\n")
 
       for name <- [
             "phoenix_kit_newsletters_broadcasts_pkey",
@@ -217,11 +217,16 @@ defmodule PhoenixKitNewsletters.MigrationsTest do
     end
 
     test "up stamps the version marker, and stamps it last" do
-      statements = Migrations.up_statements()
+      for target <- [1, 2] do
+        statements = Migrations.up_statements("public", target)
 
-      assert List.last(statements) ==
-               "COMMENT ON TABLE public.phoenix_kit_newsletters_broadcasts IS 'pknl_schema:1'",
-             "the marker must be stamped after the DDL it certifies, not before"
+        assert List.last(statements) ==
+                 "COMMENT ON TABLE public.phoenix_kit_newsletters_broadcasts IS 'pknl_schema:#{target}'",
+               "the marker must be stamped after the DDL it certifies, not before"
+
+        assert Enum.count(statements, &String.starts_with?(&1, "COMMENT ON TABLE")) == 1,
+               "up_statements(\"public\", #{target}) stamps more than one marker"
+      end
     end
 
     test "applying up to version 0 is not an operation" do
@@ -238,7 +243,7 @@ defmodule PhoenixKitNewsletters.MigrationsTest do
       # here — see the moduledoc for why this adoption needs none.
       exempt = ["COMMENT ON TABLE public.phoenix_kit_newsletters_broadcasts IS 'pknl_schema:1'"]
 
-      ddl = Enum.reject(Migrations.up_statements(), &(&1 in exempt))
+      ddl = Enum.reject(Migrations.up_statements("public", 1), &(&1 in exempt))
 
       for stmt <- ddl do
         assert stmt =~ "IF NOT EXISTS",
@@ -255,7 +260,7 @@ defmodule PhoenixKitNewsletters.MigrationsTest do
     # otherwise pkeys/checks/indexes/fks would all collapse into one
     # indistinguishable bucket and this test could not tell them apart.
     test "statement sections appear in the order tables -> pkeys -> checks -> indexes -> fks -> marker" do
-      statements = Migrations.up_statements()
+      statements = Migrations.up_statements("public", 1)
 
       sections =
         Enum.map(statements, fn stmt ->
@@ -284,7 +289,7 @@ defmodule PhoenixKitNewsletters.MigrationsTest do
     # every prefix/target, so that never happens silently.
     test "up_statements/2 never emits list_uuid, its FK, or its index" do
       for prefix <- ["public", "newsletters_alt"] do
-        for target <- [0, 1] do
+        for target <- [0, 1, 2] do
           statements = Enum.join(Migrations.up_statements(prefix, target), "\n")
 
           # The quoted column form, not a bare substring scan — "list_uuid"
@@ -327,6 +332,11 @@ defmodule PhoenixKitNewsletters.MigrationsTest do
                [
                  "COMMENT ON TABLE newsletters_alt.phoenix_kit_newsletters_broadcasts IS 'pknl_schema:1'"
                ]
+
+      # Rolling back from V2 leaves the layouts table, its rows and the new
+      # FK alone too — only the marker moves.
+      assert Migrations.down_statements("public", 2) ==
+               ["COMMENT ON TABLE public.phoenix_kit_newsletters_broadcasts IS 'pknl_schema:2'"]
     end
 
     # For `up/1` the expected content is the full set of OPERATIONS rather
@@ -361,7 +371,7 @@ defmodule PhoenixKitNewsletters.MigrationsTest do
 
     test "up_statements/2 emits exactly these operations and no others" do
       for prefix <- ["public", "newsletters_alt"] do
-        actual = Enum.map(Migrations.up_statements(prefix), &operation/1)
+        actual = Enum.map(Migrations.up_statements(prefix, 1), &operation/1)
 
         assert Enum.sort(actual) == Enum.sort(@up_operations),
                """
@@ -413,7 +423,7 @@ defmodule PhoenixKitNewsletters.MigrationsTest do
 
     test "the 4 real unique indexes are present, and only them" do
       unique_indexes =
-        Migrations.up_statements()
+        Migrations.up_statements("public", 1)
         |> Enum.map(&operation/1)
         |> Enum.filter(&(elem(&1, 0) == "CREATE UNIQUE INDEX"))
         |> Enum.map(&elem(&1, 1))
@@ -495,7 +505,7 @@ defmodule PhoenixKitNewsletters.MigrationsTest do
                  "up_statements(#{inspect(prefix)}) contains: #{stmt}"
         end
 
-        for target <- [0, 1] do
+        for target <- [0, 1, 2] do
           for stmt <- Migrations.down_statements(prefix, target) do
             refute strip_referential_actions(stmt) =~ forbidden,
                    "down_statements(#{inspect(prefix)}, #{target}) contains: #{stmt}"
@@ -513,9 +523,14 @@ defmodule PhoenixKitNewsletters.MigrationsTest do
     defp operation(statement) do
       normalized = statement |> String.replace(~r/\s+/, " ") |> String.trim()
 
+      if String.starts_with?(normalized, "DO "),
+        do: do_block_operation(normalized),
+        else: plain_operation(normalized)
+    end
+
+    defp do_block_operation(normalized) do
       cond do
-        String.starts_with?(normalized, "DO ") and
-            normalized =~ ~r/EXECUTE '(CREATE|CREATE UNIQUE)/ ->
+        normalized =~ ~r/EXECUTE '(CREATE|CREATE UNIQUE)/ ->
           [_, verb, name] =
             Regex.run(
               ~r/EXECUTE '(CREATE UNIQUE INDEX|CREATE INDEX) IF NOT EXISTS (\w+)/,
@@ -524,19 +539,135 @@ defmodule PhoenixKitNewsletters.MigrationsTest do
 
           {verb, name}
 
-        String.starts_with?(normalized, "DO ") ->
+        normalized =~ "ADD CONSTRAINT" ->
           [_, constraint] = Regex.run(~r/ADD CONSTRAINT (\w+)/, normalized)
           {"DO", constraint}
 
-        true ->
-          [_, verb, object] =
-            Regex.run(
-              ~r/^(CREATE UNIQUE INDEX|CREATE INDEX|CREATE TABLE|COMMENT ON TABLE|DROP TABLE|DROP INDEX|TRUNCATE|DELETE FROM|ALTER TABLE)(?: IF NOT EXISTS)? (?:\w+\.)?(\w+)/,
-              normalized
-            )
+        # V2's data steps: what each one writes to, by its verb.
+        normalized =~ "INSERT INTO" ->
+          [_, table] = Regex.run(~r/INSERT INTO (?:\w+\.)?(\w+)/, normalized)
+          {"INSERT INTO", table}
 
-          {verb, object}
+        normalized =~ "DROP CONSTRAINT" ->
+          [_, table] = Regex.run(~r/ALTER TABLE (?:\w+\.)?(\w+) DROP CONSTRAINT/, normalized)
+          {"DROP CONSTRAINT", table}
+
+        normalized =~ "UPDATE " ->
+          [_, table] = Regex.run(~r/UPDATE (?:\w+\.)?(\w+)/, normalized)
+          {"UPDATE", table}
       end
+    end
+
+    defp plain_operation(normalized) do
+      [_, verb, object] =
+        Regex.run(
+          ~r/^(CREATE UNIQUE INDEX|CREATE INDEX|CREATE TABLE|COMMENT ON TABLE|DROP TABLE|DROP INDEX|TRUNCATE|DELETE FROM|ALTER TABLE)(?: IF NOT EXISTS)? (?:\w+\.)?(\w+)/,
+          normalized
+        )
+
+      {verb, object}
+    end
+  end
+
+  describe "V2: the layouts table and the template reference" do
+    alias PhoenixKit.Newsletters.Layout
+
+    # V2 is a PUBLISHED version once this ships — same reasoning as V1's
+    # pin above: editing it splits fresh installs from upgraded ones.
+    @v2_statements [
+      "CREATE TABLE IF NOT EXISTS public.phoenix_kit_newsletters_layouts ( \"uuid\" uuid DEFAULT public.uuid_generate_v7() NOT NULL, \"name\" character varying(255) NOT NULL, \"display_name\" jsonb DEFAULT '{}'::jsonb NOT NULL, \"subject\" jsonb DEFAULT '{}'::jsonb NOT NULL, \"html_body\" jsonb DEFAULT '{}'::jsonb NOT NULL, \"text_body\" jsonb DEFAULT '{}'::jsonb NOT NULL, \"status\" character varying(20) DEFAULT 'active'::character varying NOT NULL, \"metadata\" jsonb DEFAULT '{}'::jsonb NOT NULL, \"created_by_user_uuid\" uuid, \"inserted_at\" timestamp with time zone DEFAULT now() NOT NULL, \"updated_at\" timestamp with time zone DEFAULT now() NOT NULL )",
+      "DO $$ BEGIN IF NOT EXISTS ( SELECT 1 FROM pg_constraint WHERE conrelid = 'public.phoenix_kit_newsletters_layouts'::regclass AND contype = 'p' ) THEN ALTER TABLE public.phoenix_kit_newsletters_layouts ADD CONSTRAINT phoenix_kit_newsletters_layouts_pkey PRIMARY KEY (uuid); END IF; END $$",
+      "DO $$ BEGIN IF NOT EXISTS ( SELECT 1 FROM pg_constraint WHERE conrelid = 'public.phoenix_kit_newsletters_layouts'::regclass AND contype = 'c' AND (conname = 'phoenix_kit_newsletters_layouts_status_check' OR pg_get_constraintdef(oid) = 'CHECK (((status)::text = ANY ((ARRAY[''active''::character varying, ''archived''::character varying])::text[])))') ) THEN ALTER TABLE public.phoenix_kit_newsletters_layouts ADD CONSTRAINT phoenix_kit_newsletters_layouts_status_check CHECK (status IN ('active', 'archived')); END IF; END $$",
+      "DO $$ BEGIN IF NOT EXISTS ( SELECT 1 FROM pg_index i JOIN pg_class ic ON ic.oid = i.indexrelid JOIN pg_am am ON am.oid = ic.relam WHERE i.indrelid = 'public.phoenix_kit_newsletters_layouts'::regclass AND i.indisunique = true AND am.amname = 'btree' AND i.indexprs IS NULL AND array_length(i.indkey::int2[], 1) = 1 AND i.indpred IS NULL AND ( SELECT array_agg(a.attname ORDER BY k.ord) FROM unnest(i.indkey::int2[]) WITH ORDINALITY AS k(attnum, ord) JOIN pg_attribute a ON a.attrelid = i.indrelid AND a.attnum = k.attnum ) = ARRAY['name']::name[] ) THEN EXECUTE 'CREATE UNIQUE INDEX IF NOT EXISTS idx_newsletters_layouts_name ON public.phoenix_kit_newsletters_layouts USING btree (name)'; END IF; END $$",
+      "DO $$ BEGIN IF NOT EXISTS ( SELECT 1 FROM pg_constraint WHERE conrelid = 'public.phoenix_kit_newsletters_layouts'::regclass AND contype = 'f' AND confrelid = 'public.phoenix_kit_users'::regclass AND conkey = ARRAY[( SELECT attnum FROM pg_attribute WHERE attrelid = 'public.phoenix_kit_newsletters_layouts'::regclass AND attname = 'created_by_user_uuid' )]::smallint[] ) THEN ALTER TABLE public.phoenix_kit_newsletters_layouts ADD CONSTRAINT fk_newsletters_layouts_created_by FOREIGN KEY (created_by_user_uuid) REFERENCES public.phoenix_kit_users(uuid) ON DELETE SET NULL; END IF; END $$",
+      "DO $$ BEGIN IF to_regclass('public.phoenix_kit_email_templates') IS NOT NULL THEN INSERT INTO public.phoenix_kit_newsletters_layouts ( uuid, name, display_name, subject, html_body, text_body, status, metadata, created_by_user_uuid, inserted_at, updated_at ) SELECT t.uuid, t.name, COALESCE(t.display_name, '{}'::jsonb), COALESCE(t.subject, '{}'::jsonb), COALESCE(t.html_body, '{}'::jsonb), COALESCE(t.text_body, '{}'::jsonb), CASE WHEN t.status = 'active' THEN 'active' ELSE 'archived' END, COALESCE(t.metadata, '{}'::jsonb) || jsonb_build_object( 'migrated_from', 'phoenix_kit_email_templates', 'email_category', t.category, 'email_status', t.status ), u.uuid, COALESCE(t.inserted_at, now()), COALESCE(t.updated_at, now()) FROM public.phoenix_kit_email_templates t LEFT JOIN public.phoenix_kit_users u ON u.uuid = t.created_by_user_uuid WHERE t.is_system = false ON CONFLICT DO NOTHING; END IF; END $$",
+      "DO $$ DECLARE r record; BEGIN FOR r IN SELECT c.conname FROM pg_constraint c WHERE c.conrelid = 'public.phoenix_kit_newsletters_broadcasts'::regclass AND c.contype = 'f' AND c.confrelid <> 'public.phoenix_kit_newsletters_layouts'::regclass AND c.conkey = ARRAY[( SELECT attnum FROM pg_attribute WHERE attrelid = 'public.phoenix_kit_newsletters_broadcasts'::regclass AND attname = 'template_uuid' )]::smallint[] LOOP EXECUTE format('ALTER TABLE public.phoenix_kit_newsletters_broadcasts DROP CONSTRAINT %I', r.conname); END LOOP; END $$",
+      "DO $$ DECLARE r record; BEGIN FOR r IN SELECT b.uuid AS broadcast_uuid, b.template_uuid FROM public.phoenix_kit_newsletters_broadcasts b WHERE b.template_uuid IS NOT NULL AND NOT EXISTS (SELECT 1 FROM public.phoenix_kit_newsletters_layouts l WHERE l.uuid = b.template_uuid) LOOP RAISE NOTICE 'phoenix_kit_newsletters V2: broadcast % pointed at template %, which is not a newsletters layout; template_uuid cleared', r.broadcast_uuid, r.template_uuid; END LOOP; UPDATE public.phoenix_kit_newsletters_broadcasts b SET template_uuid = NULL WHERE b.template_uuid IS NOT NULL AND NOT EXISTS (SELECT 1 FROM public.phoenix_kit_newsletters_layouts l WHERE l.uuid = b.template_uuid); END $$",
+      "DO $$ BEGIN IF NOT EXISTS ( SELECT 1 FROM pg_constraint WHERE conrelid = 'public.phoenix_kit_newsletters_broadcasts'::regclass AND contype = 'f' AND confrelid = 'public.phoenix_kit_newsletters_layouts'::regclass AND conkey = ARRAY[( SELECT attnum FROM pg_attribute WHERE attrelid = 'public.phoenix_kit_newsletters_broadcasts'::regclass AND attname = 'template_uuid' )]::smallint[] ) THEN ALTER TABLE public.phoenix_kit_newsletters_broadcasts ADD CONSTRAINT fk_newsletters_broadcasts_template FOREIGN KEY (template_uuid) REFERENCES public.phoenix_kit_newsletters_layouts(uuid) ON DELETE SET NULL; END IF; END $$"
+    ]
+
+    # V2 = everything up_statements/2 emits at target 2 that it does not at
+    # target 1, minus the marker. V1's part at target 2 is V1's own
+    # statements without the superseded template FK.
+    defp v1_part(prefix, target) do
+      prefix
+      |> Migrations.up_statements(target)
+      |> Enum.take_while(&(not String.contains?(&1, "phoenix_kit_newsletters_layouts")))
+    end
+
+    defp v2_part(prefix) do
+      prefix
+      |> Migrations.up_statements(2)
+      |> Enum.drop(length(v1_part(prefix, 2)))
+      |> Enum.reject(&String.starts_with?(&1, "COMMENT ON TABLE"))
+    end
+
+    test "V2's published statements are frozen" do
+      assert normalised(v2_part("public")) == @v2_statements
+    end
+
+    test "at target 2, V1's part is V1 without the superseded template FK" do
+      v1 = Migrations.up_statements("public", 1) |> Enum.drop(-1)
+
+      template_fk =
+        Enum.find(v1, &(&1 =~ "fk_newsletters_broadcasts_template"))
+
+      assert template_fk =~ "phoenix_kit_email_templates"
+      assert v1_part("public", 2) == List.delete(v1, template_fk)
+    end
+
+    test "a run up to V2 references the email-templates table only through to_regclass" do
+      for prefix <- ["public", "newsletters_alt"] do
+        mentions =
+          prefix
+          |> Migrations.up_statements(2)
+          |> Enum.filter(&(&1 =~ "phoenix_kit_email_templates"))
+
+        assert [copy] = mentions
+        assert copy =~ "IF to_regclass('#{prefix}.phoenix_kit_email_templates') IS NOT NULL"
+        refute copy =~ "phoenix_kit_email_templates'::regclass"
+      end
+    end
+
+    test "V2 emits exactly these operations, in this order" do
+      for prefix <- ["public", "newsletters_alt"] do
+        assert Enum.map(v2_part(prefix), &operation/1) == [
+                 {"CREATE TABLE", "phoenix_kit_newsletters_layouts"},
+                 {"DO", "phoenix_kit_newsletters_layouts_pkey"},
+                 {"DO", "phoenix_kit_newsletters_layouts_status_check"},
+                 {"CREATE UNIQUE INDEX", "idx_newsletters_layouts_name"},
+                 {"DO", "fk_newsletters_layouts_created_by"},
+                 {"INSERT INTO", "phoenix_kit_newsletters_layouts"},
+                 {"DROP CONSTRAINT", "phoenix_kit_newsletters_broadcasts"},
+                 {"UPDATE", "phoenix_kit_newsletters_broadcasts"},
+                 {"DO", "fk_newsletters_broadcasts_template"}
+               ]
+      end
+    end
+
+    test "the new template FK points at the layouts table, ON DELETE SET NULL" do
+      fk = v2_part("public") |> List.last() |> String.replace(~r/\s+/, " ")
+
+      assert fk =~
+               "ADD CONSTRAINT fk_newsletters_broadcasts_template FOREIGN KEY (template_uuid) " <>
+                 "REFERENCES public.phoenix_kit_newsletters_layouts(uuid) ON DELETE SET NULL"
+    end
+
+    test "the copy takes operator-authored rows only, under their own uuid, idempotently" do
+      [copy] = Enum.filter(v2_part("public"), &(&1 =~ "INSERT INTO"))
+      copy = String.replace(copy, ~r/\s+/, " ")
+
+      assert copy =~ "WHERE t.is_system = false"
+      assert copy =~ "SELECT t.uuid, t.name,"
+      assert copy =~ "ON CONFLICT DO NOTHING"
+    end
+
+    test "every varchar width in the layouts CREATE is Layout.column_widths/0" do
+      [create] = Enum.filter(v2_part("public"), &String.starts_with?(&1, "CREATE TABLE"))
+      widths = Layout.column_widths()
+
+      assert create =~ ~s["name" character varying(#{widths.name}) NOT NULL]
+      assert create =~ ~s["status" character varying(#{widths.status}) DEFAULT 'active']
     end
   end
 

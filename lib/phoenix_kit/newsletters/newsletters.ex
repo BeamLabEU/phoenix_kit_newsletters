@@ -5,11 +5,13 @@ defmodule PhoenixKit.Newsletters do
   Provides newsletter list management, broadcast creation with Markdown editor,
   per-recipient delivery tracking via Oban workers, and unsubscribe flow.
 
-  Requires the Emails module to be enabled for full functionality.
-  Template integration is optional — works without Emails installed.
+  Broadcasts are sent inside an operator-authored layout
+  (`PhoenixKit.Newsletters.Layouts`, this package's own table) or, without
+  one, inside core's standard email layout for the `"newsletters"` group.
   """
 
   use PhoenixKit.Module
+  use Gettext, backend: PhoenixKit.Newsletters.Gettext
 
   require Logger
 
@@ -124,7 +126,66 @@ defmodule PhoenixKit.Newsletters do
         visible: false,
         live_view: {Web.BroadcastDetails, :show},
         gettext_backend: PhoenixKit.Newsletters.Gettext
+      ),
+      Tab.new!(
+        id: :admin_newsletters_layouts,
+        label: "Layouts",
+        icon: "hero-rectangle-group",
+        path: "newsletters/layouts",
+        priority: 522,
+        level: :admin,
+        permission: "newsletters",
+        parent: :admin_newsletters,
+        match: :prefix,
+        live_view: {Web.LayoutsIndex, :index},
+        gettext_backend: PhoenixKit.Newsletters.Gettext
+      ),
+      Tab.new!(
+        id: :admin_newsletters_layout_new,
+        label: "New layout",
+        path: "newsletters/layouts/new",
+        level: :admin,
+        permission: "newsletters",
+        parent: :admin_newsletters,
+        visible: false,
+        live_view: {Web.LayoutEditor, :new},
+        gettext_backend: PhoenixKit.Newsletters.Gettext
+      ),
+      Tab.new!(
+        id: :admin_newsletters_layout_edit,
+        label: "Edit layout",
+        path: "newsletters/layouts/:id/edit",
+        level: :admin,
+        permission: "newsletters",
+        parent: :admin_newsletters,
+        visible: false,
+        live_view: {Web.LayoutEditor, :edit},
+        gettext_backend: PhoenixKit.Newsletters.Gettext
       )
+    ]
+  end
+
+  # Core's admin email preview (`/admin/settings/email-sending/preview`)
+  # lists this entry so a host can see its `_layout-newsletters` /
+  # `_header-newsletters` / `_footer-newsletters` files — the chrome a
+  # broadcast WITHOUT a layout of its own is sent in — with a sample body.
+  # The name is only a catalogue key: a send never resolves a template by it
+  # (`PhoenixKit.Newsletters.Render` wraps the broadcast's own HTML), and
+  # operator layouts have their own preview in the layout editor.
+  @impl PhoenixKit.Module
+  def email_templates do
+    alias PhoenixKit.Newsletters.Render
+
+    [
+      %{
+        name: "newsletters_broadcast",
+        label: gettext("Newsletter broadcast"),
+        description:
+          gettext("A broadcast sent without a layout of its own, in the standard layout"),
+        defaults: &Render.preview_defaults/0,
+        variables: &Render.preview_variables/0,
+        layout: Render.group()
+      }
     ]
   end
 
@@ -190,15 +251,11 @@ defmodule PhoenixKit.Newsletters do
   def get_broadcast!(uuid), do: repo().get!(Broadcast, uuid)
 
   @doc """
-  Returns a broadcast with optional template loaded.
-
-  If Emails module is available and the broadcast has a template_uuid,
-  the template is loaded and put into `broadcast.template`. Otherwise
-  `broadcast.template` is nil.
+  Returns a broadcast with its layout (`broadcast.template`, a
+  `PhoenixKit.Newsletters.Layout` or `nil`) loaded.
   """
   def get_broadcast_with_template!(uuid) do
-    broadcast = get_broadcast!(uuid)
-    maybe_load_template(broadcast)
+    uuid |> get_broadcast!() |> repo().preload(:template)
   end
 
   def create_broadcast(attrs) do
@@ -344,17 +401,6 @@ defmodule PhoenixKit.Newsletters do
   # ============================================================================
 
   defp repo, do: PhoenixKit.RepoHelper.repo()
-
-  defp maybe_load_template(%{template_uuid: nil} = broadcast), do: broadcast
-
-  defp maybe_load_template(%{template_uuid: _uuid} = broadcast) do
-    if Code.ensure_loaded?(PhoenixKit.Modules.Emails.Template) do
-      template = repo().get(PhoenixKit.Modules.Emails.Template, broadcast.template_uuid)
-      Map.put(broadcast, :template, template)
-    else
-      broadcast
-    end
-  end
 
   defp maybe_filter_broadcast_status(query, %{status: status})
        when is_binary(status) and status != "" do
