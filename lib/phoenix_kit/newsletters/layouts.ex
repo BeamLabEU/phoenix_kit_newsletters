@@ -51,10 +51,16 @@ defmodule PhoenixKit.Newsletters.Layouts do
   @spec change_layout(Layout.t(), map()) :: Ecto.Changeset.t()
   def change_layout(%Layout{} = layout, attrs \\ %{}), do: Layout.changeset(layout, attrs)
 
-  @doc "Creates a layout."
-  @spec create_layout(map()) :: {:ok, Layout.t()} | {:error, Ecto.Changeset.t()}
-  def create_layout(attrs) do
-    %Layout{}
+  @doc """
+  Creates a layout.
+
+  ## Options
+
+    * `:created_by_user_uuid` — the author; never taken from `attrs`.
+  """
+  @spec create_layout(map(), keyword()) :: {:ok, Layout.t()} | {:error, Ecto.Changeset.t()}
+  def create_layout(attrs, opts \\ []) do
+    %Layout{created_by_user_uuid: Keyword.get(opts, :created_by_user_uuid)}
     |> Layout.changeset(attrs)
     |> repo().insert()
   end

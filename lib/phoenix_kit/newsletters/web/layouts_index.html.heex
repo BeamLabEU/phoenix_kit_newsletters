@@ -13,11 +13,13 @@
     <form id="layouts-status-filter" phx-change="filter_status">
       <label class="select select-sm">
         <select name="status">
-        <option value="active" selected={@status_filter == "active"}>{gettext("Active")}</option>
-        <option value="archived" selected={@status_filter == "archived"}>
-          {gettext("Archived")}
-        </option>
-        <option value="all" selected={@status_filter == "all"}>{gettext("All statuses")}</option>
+          <option value="active" selected={@status_filter == "active"}>{gettext("Active")}</option>
+          <option value="archived" selected={@status_filter == "archived"}>
+            {gettext("Archived")}
+          </option>
+          <option value="all" selected={@status_filter == "all"}>
+            {gettext("All statuses")}
+          </option>
         </select>
       </label>
     </form>

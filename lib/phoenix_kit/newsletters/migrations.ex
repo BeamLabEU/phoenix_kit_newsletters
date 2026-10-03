@@ -244,11 +244,13 @@ defmodule PhoenixKitNewsletters.Migrations do
        as `archived`: those broadcasts keep their reference, new broadcasts
        are never offered it. Guarded by `to_regclass`: an install without
        that table copies nothing. The import runs ONCE: it leaves
-       `pknl_layouts:imported` as the layouts table's comment and never
-       runs again — not on a replay of the cumulative chain (a later
+       `pknl_layouts:imported` in the layouts table's comment (appended to
+       an operator's own; a comment rewritten without it re-enables the
+       import, like the version marker) and never runs again — not on a replay of the cumulative chain (a later
        version, a down-then-up), so email templates created after V2 are
        never imported. `ON CONFLICT (uuid) DO NOTHING`; a name already taken
-       by another layout gets a `_<8 hex>` suffix rather than being skipped.
+       by another layout gets a `_<8 hex>` (or, if taken, `_<32 hex>`) suffix
+       rather than being skipped.
        The source rows are left alone (an archive).
     3. Every FK from `template_uuid` to any table other than the layouts
        table is dropped — found by `conrelid`/`conkey`/`confrelid`, never by
@@ -787,9 +789,13 @@ defmodule PhoenixKitNewsletters.Migrations do
   # run of the chain (a V3, a down-then-up) replays V2 — and a replay would
   # import email templates created after V2, as ACTIVE layouts. The version
   # marker cannot gate it (a rollback lowers it again), so the import leaves
-  # its own mark: `pknl_layouts:imported` as the layouts table's comment, which
+  # its own mark: `pknl_layouts:imported` in the layouts table's comment, which
   # nothing in this chain ever clears. Set even when there was nothing to
-  # import, so a table that appears later is never imported either.
+  # import, so a table that appears later is never imported either. The mark
+  # is found anywhere in the comment and APPENDED to one already there, so an
+  # operator's own comment on the table survives — but, like the version
+  # marker on the broadcasts table, a comment REWRITTEN without it re-enables
+  # the import on the next replay.
   #
   # Guarded by `to_regclass`, not `::regclass`: a host without the
   # email-templates table (an install whose core no longer creates it)
@@ -800,15 +806,17 @@ defmodule PhoenixKitNewsletters.Migrations do
   #
   # `ON CONFLICT (uuid) DO NOTHING`: a row already there under its uuid is
   # kept as it is. A row whose NAME is already taken by another layout is
-  # still copied — under `<name>_<first 8 hex digits of its uuid>` — so the
-  # broadcasts pointing at it keep a layout to point at.
+  # still copied — under `<name>_<first 8 hex digits of its uuid>`, or, if
+  # that is taken too, `<name>_<all 32 hex digits>`, which no other row can
+  # hold — so the broadcasts pointing at it keep a layout to point at.
   defp copy_email_templates(q_layouts, q_broadcasts, email_templates, users, settings) do
     """
     DO $$
     DECLARE
       default_uuid text;
+      table_comment text := obj_description('#{q_layouts}'::regclass, 'pg_class');
     BEGIN
-      IF obj_description('#{q_layouts}'::regclass, 'pg_class') IS DISTINCT FROM '#{@import_mark}'
+      IF position('#{@import_mark}' in coalesce(table_comment, '')) = 0
          AND to_regclass('#{email_templates}') IS NOT NULL THEN
         IF to_regclass('#{settings}') IS NOT NULL THEN
           EXECUTE 'SELECT value FROM #{settings} WHERE key = $1'
@@ -823,9 +831,14 @@ defmodule PhoenixKitNewsletters.Migrations do
         SELECT
           t.uuid,
           CASE
-            WHEN EXISTS (SELECT 1 FROM #{q_layouts} l WHERE l.name = t.name AND l.uuid <> t.uuid)
+            WHEN NOT EXISTS (SELECT 1 FROM #{q_layouts} l WHERE l.name = t.name AND l.uuid <> t.uuid)
+              THEN t.name
+            WHEN NOT EXISTS (
+              SELECT 1 FROM #{q_layouts} l
+              WHERE l.name = left(t.name, 246) || '_' || left(replace(t.uuid::text, '-', ''), 8)
+            )
               THEN left(t.name, 246) || '_' || left(replace(t.uuid::text, '-', ''), 8)
-            ELSE t.name
+            ELSE left(t.name, 222) || '_' || replace(t.uuid::text, '-', '')
           END,
           COALESCE(t.display_name, '{}'::jsonb),
           COALESCE(t.subject, '{}'::jsonb),
@@ -849,7 +862,12 @@ defmodule PhoenixKitNewsletters.Migrations do
         ON CONFLICT (uuid) DO NOTHING;
       END IF;
 
-      COMMENT ON TABLE #{q_layouts} IS '#{@import_mark}';
+      IF position('#{@import_mark}' in coalesce(table_comment, '')) = 0 THEN
+        EXECUTE format(
+          'COMMENT ON TABLE #{q_layouts} IS %L',
+          concat_ws(' ', nullif(table_comment, ''), '#{@import_mark}')
+        );
+      END IF;
     END
     $$
     """

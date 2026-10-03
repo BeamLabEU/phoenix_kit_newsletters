@@ -7,7 +7,7 @@
   project_title={@project_title}
 >
 <div class="container flex-col mx-auto px-4 py-6">
-  <%= if @broadcasts == [] do %>
+  <%= if @broadcasts == [] and @status_filter == "" do %>
     <.empty_state
       variant="featured"
       icon="hero-megaphone"
@@ -19,10 +19,26 @@
       </.pk_link>
     </.empty_state>
   <% else %>
-    <p class="text-xs text-base-content/50 mb-2">
+    <%!-- A filter that matches nothing keeps the filter on screen, so the
+         reader can widen it again. --%>
+    <div :if={@broadcasts == []}>
+      <div class="flex flex-wrap items-center justify-between gap-2 mb-4">
+        <.status_filter status_filter={@status_filter} />
+        <.pk_link navigate="/admin/newsletters/broadcasts/new" class="btn btn-primary btn-sm">
+          <.icon name="hero-plus" class="w-4 h-4" /> {gettext("New broadcast")}
+        </.pk_link>
+      </div>
+      <.empty_state
+        icon="hero-funnel"
+        title={gettext("No broadcasts with this status")}
+        description={gettext("Choose another status to see more broadcasts.")}
+      />
+    </div>
+    <p :if={@broadcasts != []} class="text-xs text-base-content/50 mb-2">
       {gettext("Times shown in %{tz}", tz: @tz_label)}
     </p>
     <.table_default
+      :if={@broadcasts != []}
       id="broadcasts-table"
       variant="zebra"
       size="sm"
@@ -47,27 +63,7 @@
       }
     >
       <:toolbar_title>
-        <form id="broadcasts-status-filter" phx-change="filter_status">
-          <label class="select select-sm">
-          <select name="status">
-            <option value="" selected={@status_filter == ""}>{gettext("All statuses")}</option>
-            <option value="draft" selected={@status_filter == "draft"}>{gettext("Draft")}</option>
-            <option value="scheduled" selected={@status_filter == "scheduled"}>
-              {gettext("Scheduled")}
-            </option>
-            <option value="sending" selected={@status_filter == "sending"}>
-              {gettext("Sending")}
-            </option>
-            <option value="sent" selected={@status_filter == "sent"}>{gettext("Sent")}</option>
-            <option value="cancelled" selected={@status_filter == "cancelled"}>
-              {gettext("Cancelled")}
-            </option>
-            <option value="failed" selected={@status_filter == "failed"}>
-              {gettext("Failed")}
-            </option>
-          </select>
-        </label>
-        </form>
+        <.status_filter status_filter={@status_filter} />
       </:toolbar_title>
       <:toolbar_actions>
         <.pk_link navigate="/admin/newsletters/broadcasts/new" class="btn btn-primary btn-sm">

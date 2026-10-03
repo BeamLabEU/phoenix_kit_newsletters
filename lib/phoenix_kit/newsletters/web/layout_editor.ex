@@ -115,9 +115,7 @@ defmodule PhoenixKit.Newsletters.Web.LayoutEditor do
     result =
       case socket.assigns.layout do
         nil ->
-          attrs
-          |> Map.put("created_by_user_uuid", current_user_uuid(socket))
-          |> Layouts.create_layout()
+          Layouts.create_layout(attrs, created_by_user_uuid: current_user_uuid(socket))
 
         layout ->
           Layouts.update_layout(layout, attrs)

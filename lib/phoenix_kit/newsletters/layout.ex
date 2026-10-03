@@ -78,8 +78,13 @@ defmodule PhoenixKit.Newsletters.Layout do
   or alters: a row carried over from the email-templates table keeps its
   other languages as they were, and stays editable.
 
-  A carried-over SYSTEM email (`metadata["email_is_system"]`) is archived
-  for good: it cannot be made active again.
+  An edit of `html_body` must also leave at least one language that places
+  the body.
+
+  `metadata` and `created_by_user_uuid` are never cast: the migration and
+  `PhoenixKit.Newsletters.Layouts.create_layout/2` set them. So a
+  carried-over SYSTEM email (`metadata["email_is_system"]`) is archived for
+  good: it cannot be made active again, and no attrs can drop the flag.
 
   Error messages are `gettext_noop` msgids of this package's backend;
   translate them with `PhoenixKit.Newsletters.Gettext` when shown.
@@ -87,16 +92,7 @@ defmodule PhoenixKit.Newsletters.Layout do
   @spec changeset(t(), map()) :: Ecto.Changeset.t()
   def changeset(layout, attrs) do
     layout
-    |> cast(attrs, [
-      :name,
-      :display_name,
-      :subject,
-      :html_body,
-      :text_body,
-      :status,
-      :metadata,
-      :created_by_user_uuid
-    ])
+    |> cast(attrs, [:name, :display_name, :subject, :html_body, :text_body, :status])
     |> update_change(:display_name, &compact/1)
     |> update_change(:subject, &compact/1)
     |> update_change(:html_body, &compact/1)
@@ -290,6 +286,16 @@ defmodule PhoenixKit.Newsletters.Layout do
           :html_body,
           gettext_noop("must place the broadcast with {{{content}}} (missing in %{language})"),
           language: language
+        )
+
+      # An edit that leaves no language placing the body (deleting the only
+      # one that did) would turn every send into the standard layout.
+      changed?(changeset, :html_body) and
+          not Enum.any?(html, fn {_l, v} -> places_content?(v) end) ->
+        add_error(
+          changeset,
+          :html_body,
+          gettext_noop("at least one language must place the broadcast with {{{content}}}")
         )
 
       true ->

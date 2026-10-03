@@ -45,6 +45,32 @@ defmodule PhoenixKit.Newsletters.LayoutsTest do
     assert %{name: [_]} = errors_on(changeset)
   end
 
+  test "the author comes from the option, never from attrs" do
+    author = Ecto.UUID.generate()
+
+    {:ok, layout} =
+      Layouts.create_layout(
+        %{
+          "name" => "authored",
+          "html_body" => %{"en" => "{{{content}}}"},
+          "created_by_user_uuid" => Ecto.UUID.generate(),
+          "metadata" => %{"email_is_system" => true}
+        },
+        created_by_user_uuid: nil
+      )
+
+    assert layout.created_by_user_uuid == nil
+    assert layout.metadata == %{}
+
+    changeset =
+      Layout.changeset(%Layout{created_by_user_uuid: author}, %{
+        "name" => "x",
+        "html_body" => %{"en" => "{{{content}}}"}
+      })
+
+    assert Ecto.Changeset.get_field(changeset, :created_by_user_uuid) == author
+  end
+
   test "update keeps the language maps whole" do
     layout = create("maps_layout")
 
@@ -101,16 +127,19 @@ defmodule PhoenixKit.Newsletters.LayoutsTest do
   end
 
   describe "a carried-over system email" do
+    # As V2 writes one: metadata is never cast, so it goes in directly.
     defp system_layout do
-      {:ok, layout} =
-        Layouts.create_layout(%{
-          "name" => "test_email",
-          "status" => "archived",
-          "html_body" => %{"en" => "{{{content}}}"},
-          "metadata" => %{"email_is_system" => true}
-        })
+      Repo.insert!(%Layout{
+        name: "test_email",
+        status: "archived",
+        html_body: %{"en" => "<p>A core email, no body placeholder</p>"},
+        metadata: %{"email_is_system" => true}
+      })
+    end
 
-      layout
+    defp make_active_behind_changeset(layout) do
+      Repo.update_all(from(l in Layout, where: l.uuid == ^layout.uuid), set: [status: "active"])
+      Layouts.get_layout(layout.uuid)
     end
 
     test "cannot be restored" do
@@ -128,15 +157,33 @@ defmodule PhoenixKit.Newsletters.LayoutsTest do
     end
 
     test "is never the default, even if its row were made active behind the changeset" do
-      layout = system_layout()
+      layout = system_layout() |> make_active_behind_changeset()
+      assert layout.status == "active"
 
-      Repo.update_all(
-        from(l in Layout, where: l.uuid == ^layout.uuid),
-        set: [status: "active"]
-      )
+      # Refused by set_default_layout/1 itself, not only by the archived clause…
+      assert {:error, :not_active} = Layouts.set_default_layout(layout)
+      assert {:error, :not_active} = Layouts.set_default_layout(layout.uuid)
+      assert Settings.get_setting("newsletters_default_template") in [nil, ""]
 
+      # …and ignored if a setting names it anyway.
       Settings.update_setting("newsletters_default_template", layout.uuid)
       assert Layouts.default_layout_uuid() == nil
+    end
+
+    test "attrs cannot drop the system flag and then restore it in a second update" do
+      layout = system_layout()
+
+      {:ok, updated} =
+        Layouts.update_layout(layout, %{"metadata" => %{}, "display_name" => %{"en" => "Test"}})
+
+      assert updated.metadata == %{"email_is_system" => true}
+      assert {:error, :system_email} = Layouts.restore_layout(updated)
+      assert {:error, _changeset} = Layouts.update_layout(updated, %{"status" => "active"})
+    end
+
+    test "stays editable although no language places the body" do
+      layout = system_layout()
+      assert {:ok, _} = Layouts.update_layout(layout, %{"display_name" => %{"en" => "Test"}})
     end
 
     test "is not offered to new broadcasts" do

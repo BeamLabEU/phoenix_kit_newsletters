@@ -301,7 +301,7 @@ lib/phoenix_kit/newsletters/
 | Schema | Table | Notes |
 |---|---|---|
 | `Broadcast` | `phoenix_kit_newsletters_broadcasts` | statuses `draft → scheduled → sending → sent`, plus `cancelled`, `failed`; `source_type` `"crm_list"` (needs `crm_list_uuid`) or `"user_group"` (needs `source_params["role_uuids"]`, with `role_names_snapshot` display-only); `attachments` = up to 10 distinct Storage file uuids in send order; `template_uuid` is a FK → `phoenix_kit_newsletters_layouts` `ON DELETE SET NULL` (since V2, `fk_newsletters_broadcasts_template`); `send_profile_uuid`, `crm_list_uuid` are bare soft references, no FK |
-| `Layout` | `phoenix_kit_newsletters_layouts` | `name` unique slug; `display_name`/`subject`/`html_body`/`text_body` are maps keyed by language; `status` `active`/`archived`; `metadata` (carried-over rows hold `migrated_from`, `email_category`, `email_status`, `email_is_system`; an `email_is_system: true` row stays archived — no restore, never the default); `created_by_user_uuid` FK → users `ON DELETE SET NULL`. Every HTML translation must place `{{{content}}}`; a non-blank subject must contain `{{subject}}` |
+| `Layout` | `phoenix_kit_newsletters_layouts` | `name` unique slug; `display_name`/`subject`/`html_body`/`text_body` are maps keyed by language; `status` `active`/`archived`; `metadata` (carried-over rows hold `migrated_from`, `email_category`, `email_status`, `email_is_system`; an `email_is_system: true` row stays archived — no restore, never the default); `created_by_user_uuid` FK → users `ON DELETE SET NULL`. An HTML translation a change adds or alters must place `{{{content}}}` (and an `html_body` edit must leave at least one language that does); a subject translation a change adds or alters must contain `{{subject}}` — untouched carried-over translations are not re-checked. `metadata`/`created_by_user_uuid` are never cast (`create_layout/2` takes the author as an option) |
 | `Delivery` | `phoenix_kit_newsletters_deliveries` | statuses `pending` (only non-terminal), `sent`, `delivered`, `opened`, `bounced`, `failed`, `blocked`; exactly one owner: `user_uuid` (role recipient) or `crm_contact_uuid` + `recipient_email` (CRM recipient); `message_id` unique |
 
 Roles are resolved by uuid, never by name: a role's name is mutable, so a
@@ -408,8 +408,9 @@ it under the same uuid, plus every system row a broadcast's `template_uuid`
 or the `newsletters_default_template` setting still names (always as
 `archived`: those broadcasts keep it, the picker never offers it) — only
 when that table exists (`to_regclass`; `ON CONFLICT (uuid) DO NOTHING`, a
-taken name gets a `_<8 hex>` suffix). The import runs ONCE per install: it
-leaves `pknl_layouts:imported` as the layouts table's comment, so a replay
+taken name gets a `_<8 hex>` suffix, or `_<32 hex>` if that is taken too). The import runs ONCE per install: it
+leaves `pknl_layouts:imported` in the layouts table's comment (appended to an
+operator's own; a comment rewritten without it re-enables the import), so a replay
 of the cumulative chain (a later version, a down-then-up) never imports
 email templates created after V2. It then
 drops whatever FK `broadcasts.template_uuid` has to any other table (found

@@ -249,10 +249,7 @@ defmodule PhoenixKitNewsletters.MigrationsV2Test do
       refute late in copied_uuids()
       assert Enum.sort(copied_uuids()) == Enum.sort(before)
 
-      assert [["pknl_layouts:imported"]] =
-               rows(
-                 "SELECT obj_description('#{@prefix}.phoenix_kit_newsletters_layouts'::regclass, 'pg_class')"
-               )
+      assert [["pknl_layouts:imported"]] = rows(layouts_comment_sql())
     end
 
     test "a name already taken by another layout is copied under a suffixed name",
@@ -273,6 +270,38 @@ defmodule PhoenixKitNewsletters.MigrationsV2Test do
 
       # Its broadcasts still point at it — nothing was cleared.
       assert Enum.any?(template_refs(), fn {_b, t} -> t == welcome end)
+    end
+
+    test "when the 8-hex suffix is taken too, the full uuid makes the name free",
+         %{operator: [welcome | _]} do
+      create_layouts_table()
+      hex = String.replace(welcome, "-", "")
+      insert_layout(uuid(), "welcome_layout")
+      insert_layout(uuid(), "welcome_layout_" <> binary_part(hex, 0, 8))
+
+      run_migration(UpToTwo)
+
+      assert [["welcome_layout_" <> ^hex]] =
+               rows(
+                 "SELECT name FROM #{@prefix}.phoenix_kit_newsletters_layouts WHERE uuid = '#{welcome}'"
+               )
+    end
+
+    test "an operator's own comment on the layouts table is kept, the mark appended" do
+      create_layouts_table()
+      Repo.query!("COMMENT ON TABLE #{@prefix}.phoenix_kit_newsletters_layouts IS 'owned by ops'")
+
+      run_migration(UpToTwo)
+
+      assert [["owned by ops pknl_layouts:imported"]] = rows(layouts_comment_sql())
+      before = copied_uuids()
+
+      # The mark is found inside the comment: a replay imports nothing new.
+      insert_template("late_layout", "active", false, nil)
+      @prefix |> Migrations.up_statements(2) |> Enum.each(&Repo.query!/1)
+
+      assert Enum.sort(copied_uuids()) == Enum.sort(before)
+      assert [["owned by ops pknl_layouts:imported"]] = rows(layouts_comment_sql())
     end
 
     test "a row already there under its uuid is kept as it is (ON CONFLICT (uuid))",
@@ -596,6 +625,10 @@ defmodule PhoenixKitNewsletters.MigrationsV2Test do
   end
 
   defp rows(sql), do: Repo.query!(sql).rows
+
+  defp layouts_comment_sql,
+    do:
+      "SELECT obj_description('#{@prefix}.phoenix_kit_newsletters_layouts'::regclass, 'pg_class')"
 
   defp copied_uuids do
     "SELECT uuid FROM #{@prefix}.phoenix_kit_newsletters_layouts"

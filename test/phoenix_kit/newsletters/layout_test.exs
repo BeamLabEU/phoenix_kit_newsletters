@@ -100,6 +100,19 @@ defmodule PhoenixKit.Newsletters.LayoutTest do
              }).valid?
     end
 
+    test "an edit cannot leave no language placing the body" do
+      layout = %Layout{
+        name: "two_languages",
+        status: "active",
+        html_body: %{"en" => "<div>{{{content}}}</div>", "de" => "<p>alt</p>"}
+      }
+
+      # Deleting the only translation that places the body: the untouched
+      # German one does not, so nothing would.
+      refute Layout.changeset(layout, %{"html_body" => %{"de" => "<p>alt</p>"}}).valid?
+      assert Layout.changeset(layout, %{"html_body" => %{"en" => "{{content}}"}}).valid?
+    end
+
     test "a carried-over system email cannot be made active" do
       system = %Layout{
         name: "test_email",
@@ -111,6 +124,10 @@ defmodule PhoenixKit.Newsletters.LayoutTest do
       assert Layout.system_email?(system)
       refute Layout.changeset(system, %{"status" => "active"}).valid?
       assert Layout.changeset(system, %{"display_name" => %{"en" => "Test"}}).valid?
+
+      # metadata is not cast: the flag cannot be dropped through attrs.
+      cs = Layout.changeset(system, %{"metadata" => %{}})
+      assert Ecto.Changeset.get_field(cs, :metadata) == %{"email_is_system" => true}
     end
 
     test "name is a slug, status is active or archived" do

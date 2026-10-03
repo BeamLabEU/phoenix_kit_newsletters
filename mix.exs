@@ -18,10 +18,7 @@ defmodule PhoenixKitNewsletters.MixProject do
         "Newsletters module for PhoenixKit — email broadcasts and subscription management",
 
       # Dialyzer
-      dialyzer: [
-        plt_add_apps: [:phoenix_kit, :phoenix_kit_templates],
-        ignore_warnings: ".dialyzer_ignore.exs"
-      ],
+      dialyzer: [plt_add_apps: [:phoenix_kit], ignore_warnings: ".dialyzer_ignore.exs"],
 
       # Docs
       name: "PhoenixKitNewsletters",
