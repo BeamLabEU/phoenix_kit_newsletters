@@ -25,6 +25,7 @@ defmodule PhoenixKit.Newsletters.Layout do
 
   use Ecto.Schema
   use PhoenixKit.SchemaPrefix
+  use Gettext, backend: PhoenixKit.Newsletters.Gettext
   import Ecto.Changeset
 
   alias PhoenixKit.Settings
@@ -70,10 +71,18 @@ defmodule PhoenixKit.Newsletters.Layout do
   Changeset for creating and editing a layout.
 
   Every translatable field must be a map of language => string. At least
-  one language must have an HTML body, and every HTML translation must
-  place the body (`{{{content}}}` or `{{content}}`) — a wrapper without it
-  would send the wrapper alone. A non-blank subject translation must
-  contain `{{subject}}`.
+  one language must have an HTML body. An HTML translation must place the
+  body (`{{{content}}}` or `{{content}}`) — a wrapper without it would send
+  the wrapper alone — and a non-blank subject translation must contain
+  `{{subject}}`. Both rules check only the translations this change adds
+  or alters: a row carried over from the email-templates table keeps its
+  other languages as they were, and stays editable.
+
+  A carried-over SYSTEM email (`metadata["email_is_system"]`) is archived
+  for good: it cannot be made active again.
+
+  Error messages are `gettext_noop` msgids of this package's backend;
+  translate them with `PhoenixKit.Newsletters.Gettext` when shown.
   """
   @spec changeset(t(), map()) :: Ecto.Changeset.t()
   def changeset(layout, attrs) do
@@ -96,14 +105,27 @@ defmodule PhoenixKit.Newsletters.Layout do
     |> validate_length(:name, max: @column_widths.name)
     |> validate_format(:name, @name_format,
       message:
-        "must start with a letter and contain only lowercase letters, numbers, and underscores"
+        gettext_noop(
+          "must start with a letter and contain only lowercase letters, numbers, and underscores"
+        )
     )
     |> validate_inclusion(:status, @valid_statuses)
     |> validate_translation_maps()
     |> validate_html_body()
     |> validate_subject()
+    |> validate_system_stays_archived()
     |> unique_constraint(:name, name: :idx_newsletters_layouts_name)
   end
+
+  @doc """
+  Whether the layout is a SYSTEM email carried over from the email-templates
+  table because a broadcast or the default setting still pointed at it.
+  Such a layout stays archived: it keeps rendering for those broadcasts,
+  and is never offered again.
+  """
+  @spec system_email?(t()) :: boolean()
+  def system_email?(%__MODULE__{metadata: %{"email_is_system" => true}}), do: true
+  def system_email?(_layout), do: false
 
   @doc "Whether `html` places the broadcast body (`{{{content}}}` or `{{content}}`)."
   @spec places_content?(String.t() | nil) :: boolean()
@@ -219,7 +241,9 @@ defmodule PhoenixKit.Newsletters.Layout do
       @translatable,
       changeset,
       &validate_change(&2, &1, fn field, value ->
-        if translation_map?(value), do: [], else: [{field, "must map each language to text"}]
+        if translation_map?(value),
+          do: [],
+          else: [{field, gettext_noop("must map each language to text")}]
       end)
     )
   end
@@ -229,6 +253,23 @@ defmodule PhoenixKit.Newsletters.Layout do
 
   defp translation_map?(_value), do: false
 
+  # The languages of `field` this change adds or alters — the only ones the
+  # content rules below check, so an untouched carried-over translation
+  # never blocks an edit of another one.
+  defp changed_languages(changeset, field) do
+    case fetch_change(changeset, field) do
+      {:ok, new} when is_map(new) ->
+        old = Map.get(changeset.data, field) || %{}
+
+        new
+        |> Enum.reject(fn {lang, value} -> Map.get(old, lang) == value end)
+        |> Enum.map(&elem(&1, 0))
+
+      _ ->
+        []
+    end
+  end
+
   defp validate_html_body(changeset) do
     html = get_field(changeset, :html_body) || %{}
 
@@ -237,13 +278,17 @@ defmodule PhoenixKit.Newsletters.Layout do
         changeset
 
       html == %{} ->
-        add_error(changeset, :html_body, "can't be blank")
+        add_error(changeset, :html_body, gettext_noop("can't be blank"))
 
-      language = Enum.find(Enum.sort(Map.keys(html)), &(not places_content?(html[&1]))) ->
+      language =
+          changeset
+          |> changed_languages(:html_body)
+          |> Enum.sort()
+          |> Enum.find(&(not places_content?(html[&1]))) ->
         add_error(
           changeset,
           :html_body,
-          "must place the broadcast with {{{content}}} (missing in %{language})",
+          gettext_noop("must place the broadcast with {{{content}}} (missing in %{language})"),
           language: language
         )
 
@@ -256,15 +301,31 @@ defmodule PhoenixKit.Newsletters.Layout do
     subject = get_field(changeset, :subject) || %{}
 
     missing =
-      if is_map(subject),
-        do:
-          subject |> Map.keys() |> Enum.sort() |> Enum.find(&(not subject_pattern?(subject[&1]))),
-        else: nil
+      if is_map(subject) do
+        changeset
+        |> changed_languages(:subject)
+        |> Enum.sort()
+        |> Enum.find(&(not subject_pattern?(subject[&1])))
+      end
 
     if missing,
       do:
-        add_error(changeset, :subject, "must contain {{subject}} (missing in %{language})",
+        add_error(
+          changeset,
+          :subject,
+          gettext_noop("must contain {{subject}} (missing in %{language})"),
           language: missing
+        ),
+      else: changeset
+  end
+
+  defp validate_system_stays_archived(changeset) do
+    if system_email?(changeset.data) and get_field(changeset, :status) != "archived",
+      do:
+        add_error(
+          changeset,
+          :status,
+          gettext_noop("a carried-over system email stays archived")
         ),
       else: changeset
   end

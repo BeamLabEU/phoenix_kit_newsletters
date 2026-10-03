@@ -1,10 +1,13 @@
 defmodule PhoenixKit.Newsletters.LayoutsTest do
   use PhoenixKitNewsletters.DataCase, async: false
 
+  import Ecto.Query, only: [from: 2]
+
   alias PhoenixKit.Newsletters
   alias PhoenixKit.Newsletters.Layout
   alias PhoenixKit.Newsletters.Layouts
   alias PhoenixKit.Settings
+  alias PhoenixKitNewsletters.Test.Repo
 
   defp create(name, status \\ "active") do
     {:ok, layout} =
@@ -95,6 +98,57 @@ defmodule PhoenixKit.Newsletters.LayoutsTest do
       assert restored.status == "active"
       assert Layouts.default_layout_uuid() == nil
     end
+  end
+
+  describe "a carried-over system email" do
+    defp system_layout do
+      {:ok, layout} =
+        Layouts.create_layout(%{
+          "name" => "test_email",
+          "status" => "archived",
+          "html_body" => %{"en" => "{{{content}}}"},
+          "metadata" => %{"email_is_system" => true}
+        })
+
+      layout
+    end
+
+    test "cannot be restored" do
+      layout = system_layout()
+      assert {:error, :system_email} = Layouts.restore_layout(layout)
+      assert Layouts.get_layout(layout.uuid).status == "archived"
+    end
+
+    test "cannot be the default, and a setting naming it reads as no default" do
+      layout = system_layout()
+      assert {:error, :not_active} = Layouts.set_default_layout(layout)
+
+      Settings.update_setting("newsletters_default_template", layout.uuid)
+      assert Layouts.default_layout_uuid() == nil
+    end
+
+    test "is never the default, even if its row were made active behind the changeset" do
+      layout = system_layout()
+
+      Repo.update_all(
+        from(l in Layout, where: l.uuid == ^layout.uuid),
+        set: [status: "active"]
+      )
+
+      Settings.update_setting("newsletters_default_template", layout.uuid)
+      assert Layouts.default_layout_uuid() == nil
+    end
+
+    test "is not offered to new broadcasts" do
+      layout = system_layout()
+      refute layout.uuid in Enum.map(Layouts.list_layouts(status: "active"), & &1.uuid)
+    end
+  end
+
+  test "a setting naming an archived layout reads as no default" do
+    layout = create("archived_default", "archived")
+    Settings.update_setting("newsletters_default_template", layout.uuid)
+    assert Layouts.default_layout_uuid() == nil
   end
 
   test "an archived layout still renders for the broadcast that uses it" do

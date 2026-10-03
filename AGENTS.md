@@ -18,10 +18,11 @@ with its owner, and Oban job processes are too short-lived to own a cache
 shared across jobs). Nothing else belongs in that supervision tree; background
 work goes through Oban workers.
 
-- **Depends on:** `phoenix_kit` `~> 2.45` (Hex; 2.45 brings the email
-  chrome broadcasts are rendered in — `PhoenixKit.Email.Layout` groups and
-  header/footer parts, `Branding`, `{{{raw}}}` substitution);
-  `phoenix_live_view ~> 1.1`, `oban ~> 2.20`, `mdex ~> 0.13`,
+- **Depends on:** `phoenix_kit` `~> 2.48` (Hex; 2.48 has
+  `PhoenixKit.Email.Layout.render_parts/2`, the header/footer a layout
+  places — see "Release order" under Database & migrations for the floor
+  this must reach before release); `phoenix_kit_templates ~> 0.2.2`
+  (`Templates.Substitution` is called directly); `phoenix_live_view ~> 1.1`, `oban ~> 2.20`, `mdex ~> 0.13`,
   `uuidv7 ~> 1.0`, `gettext ~> 1.0`. Optional at runtime, guarded with
   `Code.ensure_loaded?/1`: `phoenix_kit_crm` (`PhoenixKitCRM.*`,
   contact-list audiences and the preference center). Broadcast layouts no
@@ -171,11 +172,11 @@ Repo-local aliases:
 - Background work is Oban only (`DeliveryWorker`, queue `newsletters_delivery`,
   `max_attempts: 3`, unique on `delivery_uuid` while incomplete). Never spawn a
   bare `Task` for email work.
-- Core pin: keep `{:phoenix_kit, "~> 2.45"}` two-segment.
-  `CorePinConformanceTest` rejects a three-segment `~> 2.45.x` (it excludes
+- Core pin: keep `{:phoenix_kit, "~> 2.48"}` two-segment.
+  `CorePinConformanceTest` rejects a three-segment `~> 2.48.x` (it excludes
   every later core minor and breaks `mix deps.get` for hosts) and a committed
   `path:` dep. Raise the floor only when a new core migration or core API is
-  required (2.45: the email chrome `Render` uses).
+  required (2.48: `Layout.render_parts/2`).
 - Timezones: storage is UTC. Display goes through
   `Web.Timezone.viewer_tz/1` (profile `user_timezone`, then the `time_zone`
   setting, then `"0"`) and core's per-instant helpers; labels come from
@@ -200,11 +201,10 @@ Repo-local aliases:
   else the list's `locale`, else the site's content language. Layout
   translations fall back language → base → other dialect of the base →
   site language → any (`Layout.translation/3`). Never hard-code `"en"`.
-- Core chrome: `Render.chrome/2` calls `PhoenixKit.Email.Layout.render_parts/2`
-  when core has it, otherwise builds header/footer from core's public pieces
-  (`Overrides.locate/4` over `_header-newsletters` → `_header`, core's
-  default parts, `Branding`). The fallback is temporary — remove it once the
-  core floor includes `render_parts/2`.
+- Core chrome: `Render.chrome/2` is `PhoenixKit.Email.Layout.render_parts/2`
+  with group `"newsletters"` — `_header-newsletters` → `_header` → core's
+  own part (and the footer's), `Branding`'s logo and accent colour. Never
+  rebuild those parts here.
 
 ### Landmines
 
@@ -301,7 +301,7 @@ lib/phoenix_kit/newsletters/
 | Schema | Table | Notes |
 |---|---|---|
 | `Broadcast` | `phoenix_kit_newsletters_broadcasts` | statuses `draft → scheduled → sending → sent`, plus `cancelled`, `failed`; `source_type` `"crm_list"` (needs `crm_list_uuid`) or `"user_group"` (needs `source_params["role_uuids"]`, with `role_names_snapshot` display-only); `attachments` = up to 10 distinct Storage file uuids in send order; `template_uuid` is a FK → `phoenix_kit_newsletters_layouts` `ON DELETE SET NULL` (since V2, `fk_newsletters_broadcasts_template`); `send_profile_uuid`, `crm_list_uuid` are bare soft references, no FK |
-| `Layout` | `phoenix_kit_newsletters_layouts` | `name` unique slug; `display_name`/`subject`/`html_body`/`text_body` are maps keyed by language; `status` `active`/`archived`; `metadata` (carried-over rows hold `migrated_from`, `email_category`, `email_status`); `created_by_user_uuid` FK → users `ON DELETE SET NULL`. Every HTML translation must place `{{{content}}}`; a non-blank subject must contain `{{subject}}` |
+| `Layout` | `phoenix_kit_newsletters_layouts` | `name` unique slug; `display_name`/`subject`/`html_body`/`text_body` are maps keyed by language; `status` `active`/`archived`; `metadata` (carried-over rows hold `migrated_from`, `email_category`, `email_status`, `email_is_system`; an `email_is_system: true` row stays archived — no restore, never the default); `created_by_user_uuid` FK → users `ON DELETE SET NULL`. Every HTML translation must place `{{{content}}}`; a non-blank subject must contain `{{subject}}` |
 | `Delivery` | `phoenix_kit_newsletters_deliveries` | statuses `pending` (only non-terminal), `sent`, `delivered`, `opened`, `bounced`, `failed`, `blocked`; exactly one owner: `user_uuid` (role recipient) or `crm_contact_uuid` + `recipient_email` (CRM recipient); `message_id` unique |
 
 Roles are resolved by uuid, never by name: a role's name is mutable, so a
@@ -407,7 +407,11 @@ copies every `is_system = false` row of `phoenix_kit_email_templates` into
 it under the same uuid, plus every system row a broadcast's `template_uuid`
 or the `newsletters_default_template` setting still names (always as
 `archived`: those broadcasts keep it, the picker never offers it) — only
-when that table exists (`to_regclass`; `ON CONFLICT DO NOTHING`). It then
+when that table exists (`to_regclass`; `ON CONFLICT (uuid) DO NOTHING`, a
+taken name gets a `_<8 hex>` suffix). The import runs ONCE per install: it
+leaves `pknl_layouts:imported` as the layouts table's comment, so a replay
+of the cumulative chain (a later version, a down-then-up) never imports
+email templates created after V2. It then
 drops whatever FK `broadcasts.template_uuid` has to any other table (found
 by `conrelid`/`conkey`, not by name — a renamed host calls it
 `fk_mailing_broadcasts_template`), clears a `template_uuid` that names a
@@ -416,12 +420,16 @@ uuid existing nowhere (logged as a NOTICE per broadcast), and adds
 target 2 V1's own template FK guard is not emitted, so a run up to V2 never
 touches the email-templates table except through `to_regclass`.
 
-Core's `ExpectedSchema` still lists `fk_newsletters_broadcasts_template` with
-the email-templates target until core's manifest is updated, so `doctor` /
-`repair` report `wrong_shape` for it in the meantime; the canonical name
-keeps `repair` from re-adding the old FK. Any later shape change likewise
-needs a core-side manifest update first, or `mix phoenix_kit.repair`
-silently reverts it. Phase 2 (a
+Release order: core's `ExpectedSchema` (2.49 and earlier) still declares
+`fk_newsletters_broadcasts_template` with the email-templates target. The
+version carrying V2 is merged and released only AFTER core ships the change
+that drops it from the manifest (BeamLabEU/phoenix_kit#896), with the
+`:phoenix_kit` floor raised to that release. Before that, on a host that
+ran V2, `doctor` warns, `repair` exits non-zero on the `wrong_shape`, and
+`repair --adopt` does not stamp core's floor (the canonical name keeps
+`repair` from re-adding the old FK). Any later shape change likewise needs a
+core-side manifest update first, or `mix phoenix_kit.repair` silently
+reverts it. Phase 2 (a
 future core baseline squash that drops these tables from core) is already
 covered: V1 alone can build the complete shape of both tables from nothing,
 so a fresh install still gets a working schema even without core's chain.

@@ -167,7 +167,12 @@ defmodule PhoenixKit.Newsletters.Web.BroadcastEditor do
     role_uuids = resolve_role_uuids(source_type, params)
     template_uuid = params["template_uuid"] || socket.assigns.template_uuid
     scheduled_at = params["scheduled_at"] || socket.assigns.scheduled_at
-    preview_locale = params["preview_locale"] || socket.assigns.preview_locale
+    # Only a language the picker offers: every new value would otherwise be
+    # a new locale key in core's override-lookup cache.
+    preview_locale =
+      if params["preview_locale"] in socket.assigns.preview_languages,
+        do: params["preview_locale"],
+        else: socket.assigns.preview_locale
 
     preview_html =
       render_preview(

@@ -54,12 +54,9 @@ defmodule PhoenixKit.Newsletters.Render do
 
   use Gettext, backend: PhoenixKit.Newsletters.Gettext
 
-  alias PhoenixKit.Email.Branding
   alias PhoenixKit.Email.Content, as: EmailContent
   alias PhoenixKit.Email.Layout, as: CoreLayout
   alias PhoenixKit.Newsletters.Layout
-  alias PhoenixKit.Settings
-  alias PhoenixKit.Templates.Overrides
   alias PhoenixKit.Templates.Substitution
   alias PhoenixKit.Utils.Routes
 
@@ -87,7 +84,6 @@ defmodule PhoenixKit.Newsletters.Render do
       and core's chrome.
     * `:subject` — the email's subject, for core's `{{subject}}`.
     * `:paths` — template override roots (default: core's).
-    * `:layout_module` — the core layout module; a test seam.
   """
   @spec html(String.t(), Layout.t() | String.t() | nil, variables(), keyword()) :: String.t()
   def html(body_html, layout, variables, opts \\ []) when is_binary(body_html) do
@@ -189,14 +185,10 @@ defmodule PhoenixKit.Newsletters.Render do
 
   @doc """
   Core's header, footer and branding variables for one email, in the
-  `"newsletters"` group.
-
-  Uses `PhoenixKit.Email.Layout.render_parts/2` when core has it. Until
-  then the parts are built here from the same public pieces core's layout
-  uses — the override files `_header-newsletters` / `_header` (and the
-  footer's), core's default parts, `Branding` — so a layout sees what
-  core's own layout would place. That fallback is temporary and goes once
-  the core floor includes `render_parts/2`.
+  `"newsletters"` group — `PhoenixKit.Email.Layout.render_parts/2`, so a
+  layout places exactly what core's own layout would: `_header-newsletters`
+  / `_header` / core's part (and the footer's), per locale and override
+  root, with `Branding`'s logo and accent colour.
   """
   @spec chrome(String.t() | nil, keyword()) :: %{
           header: String.t(),
@@ -204,14 +196,13 @@ defmodule PhoenixKit.Newsletters.Render do
           variables: variables()
         }
   def chrome(subject, opts \\ []) do
-    layout_module = Keyword.get(opts, :layout_module, CoreLayout)
-    core_opts = [locale: Keyword.get(opts, :locale), group: @group, paths: paths(opts)]
-
-    if Code.ensure_loaded?(layout_module) and function_exported?(layout_module, :render_parts, 2) do
-      subject |> layout_module.render_parts(core_opts) |> Map.take([:header, :footer, :variables])
-    else
-      local_chrome(subject, core_opts)
-    end
+    subject
+    |> CoreLayout.render_parts(
+      locale: Keyword.get(opts, :locale),
+      group: @group,
+      paths: paths(opts)
+    )
+    |> Map.take([:header, :footer, :variables])
   end
 
   # ── internals ──────────────────────────────────────────────────────────
@@ -258,61 +249,7 @@ defmodule PhoenixKit.Newsletters.Render do
     end
   end
 
-  defp local_chrome(subject, opts) do
-    locale = Keyword.fetch!(opts, :locale)
-    paths = Keyword.fetch!(opts, :paths)
-    site_url = Routes.base_url()
-
-    variables =
-      Map.merge(Branding.variables(), %{
-        "subject" => subject || "",
-        "site_name" => Settings.get_project_title(),
-        "site_url" => site_url
-      })
-
-    logo? = present?(variables["logo_url"])
-
-    header =
-      part(
-        CoreLayout.header_name(),
-        CoreLayout.default_header_html(logo: logo?),
-        variables,
-        locale,
-        paths
-      )
-
-    footer =
-      part(
-        CoreLayout.footer_name(),
-        CoreLayout.default_footer_html(link: Regex.match?(~r{\Ahttps?://\S}i, site_url)),
-        variables,
-        locale,
-        paths
-      )
-
-    %{header: header, footer: footer, variables: variables}
-  end
-
-  # The group's file, the shared file, core's default — the first with
-  # something in it, as core's layout picks its own header and footer.
-  defp part(base, default, variables, locale, paths) do
-    template =
-      Enum.find_value(["#{base}-#{@group}", base], &override(paths, &1, locale))
-
-    Substitution.substitute(template || default, variables, escape: true)
-  end
-
-  # A host file with something in it; an empty one counts as missing.
-  defp override(paths, name, locale) do
-    case Overrides.locate(paths, name, :html, locale) do
-      {_path, content} -> if present?(content), do: content
-      nil -> nil
-    end
-  end
-
   defp paths(opts), do: Keyword.get(opts, :paths) || EmailContent.override_paths()
-
-  defp present?(value), do: is_binary(value) and String.trim(value) != ""
 
   defp stringify(variables), do: Map.new(variables, fn {k, v} -> {to_string(k), v} end)
 end

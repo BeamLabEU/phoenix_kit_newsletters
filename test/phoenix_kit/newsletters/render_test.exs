@@ -8,25 +8,6 @@ defmodule PhoenixKit.Newsletters.RenderTest do
 
   @moduletag :tmp_dir
 
-  # Stands in for a core that has `Layout.render_parts/2`: whatever it
-  # returns is what a layout must place.
-  defmodule CoreWithParts do
-    @moduledoc false
-    def render_parts(subject, opts) do
-      send(self(), {:render_parts, subject, opts})
-
-      %{
-        header: "<b>STUB HEADER</b>",
-        footer: "STUB FOOTER",
-        variables: %{
-          "logo_url" => "https://cdn.example.com/logo.png",
-          "accent_color" => "#123456"
-        },
-        sources: %{}
-      }
-    end
-  end
-
   defp layout(html_by_language, subject \\ %{}) do
     %Layout{
       uuid: Ecto.UUID.generate(),
@@ -47,50 +28,41 @@ defmodule PhoenixKit.Newsletters.RenderTest do
                "<i>EN</i><p>Hi</p>"
     end
 
-    test "places core's parts and branding, through render_parts/2 when core has it",
-         %{tmp_dir: dir} do
+    test "places core's header, footer and branding (render_parts/2)", %{tmp_dir: dir} do
       layout =
         layout(%{
           "en" =>
-            ~s(<div style="color:{{accent_color}}"><img src="{{logo_url}}">{{{header}}}{{{content}}}{{{footer}}}</div>)
+            ~s(<div style="color:{{accent_color}}" data-logo="{{logo_url}}">[{{{header}}}]{{{content}}}[{{{footer}}}]</div>)
         })
 
-      html =
-        Render.html("<p>Body</p>", layout, %{},
-          locale: "en",
-          subject: "Hi",
-          paths: [dir],
-          layout_module: CoreWithParts
-        )
-
-      assert html ==
-               ~s(<div style="color:#123456"><img src="https://cdn.example.com/logo.png">) <>
-                 ~s(<b>STUB HEADER</b><p>Body</p>STUB FOOTER</div>)
-
-      assert_received {:render_parts, "Hi", opts}
-      assert opts[:group] == "newsletters"
-      assert opts[:locale] == "en"
-      assert opts[:paths] == [dir]
-    end
-
-    test "builds the parts itself while core has no render_parts/2", %{tmp_dir: dir} do
-      layout = layout(%{"en" => "[{{{header}}}]{{{content}}}[{{{footer}}}]|{{accent_color}}"})
-
-      html =
-        Render.html("<p>Body</p>", layout, %{}, locale: "en", paths: [dir], layout_module: Nope)
+      html = Render.html("<p>Body</p>", layout, %{}, locale: "en", subject: "Hi", paths: [dir])
 
       site = escape(PhoenixKit.Settings.get_project_title())
+      branding = Branding.variables()
+
+      assert html =~ ~s(style="color:#{branding["accent_color"]}")
+      assert html =~ ~s(data-logo="#{branding["logo_url"]}")
       assert html =~ "[#{site}]<p>Body</p>["
-      assert html =~ "|#{Branding.variables()["accent_color"]}"
+      refute html =~ "{{"
     end
 
-    test "the fallback reads _header-newsletters, then _header, per locale", %{tmp_dir: dir} do
+    test "markup in the site's name is escaped in the header", %{tmp_dir: dir} do
+      PhoenixKit.Settings.update_setting("project_title", "Acme <b>&</b>")
+      layout = layout(%{"en" => "{{{header}}}|{{{content}}}"})
+
+      html = Render.html("B", layout, %{}, locale: "en", paths: [dir])
+
+      assert html =~ "Acme &lt;b&gt;&amp;&lt;/b&gt;|B"
+      refute html =~ "<b>&</b>"
+    end
+
+    test "the header is _header-newsletters, then _header, per locale", %{tmp_dir: dir} do
       write(dir, "_header-newsletters/html.de.html", "Kopf {{site_name}}")
       write(dir, "_header/html.html", "Shared head")
       write(dir, "_footer-newsletters/html.html", "   ")
 
       layout = layout(%{"en" => "{{{header}}}|{{{content}}}|{{{footer}}}"})
-      opts = [paths: [dir], layout_module: Nope]
+      opts = [paths: [dir]]
 
       site = escape(PhoenixKit.Settings.get_project_title())
 
@@ -134,6 +106,17 @@ defmodule PhoenixKit.Newsletters.RenderTest do
       assert html =~ "<!DOCTYPE html>"
       assert html =~ "<title>News</title>"
       assert html =~ "<p>Body</p>"
+    end
+
+    test "the reader's own data is escaped in the standard layout too", %{tmp_dir: dir} do
+      html =
+        Render.html("<p>Hi {{name}}</p>", nil, %{"name" => "<script>x</script>"},
+          locale: "en",
+          paths: [dir]
+        )
+
+      assert html =~ "<p>Hi &lt;script&gt;x&lt;/script&gt;</p>"
+      refute html =~ "<script>"
     end
 
     test "a host's _layout-newsletters frames it", %{tmp_dir: dir} do

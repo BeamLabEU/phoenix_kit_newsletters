@@ -72,6 +72,47 @@ defmodule PhoenixKit.Newsletters.LayoutTest do
       assert Ecto.Changeset.get_field(cs, :subject) == %{}
     end
 
+    test "a carried-over row stays editable: only the translations a change touches are checked" do
+      # As V2 copies it: subjects without {{subject}}, a language without a
+      # body placeholder.
+      carried = %Layout{
+        name: "newsletter",
+        status: "active",
+        html_body: %{"en" => "<div>{{content}}</div>", "de" => "<p>alt</p>"},
+        subject: Map.new(~w(en de fr it es pl ru), &{&1, "News (#{&1})"})
+      }
+
+      assert Layout.changeset(carried, %{"display_name" => %{"en" => "Newsletter"}}).valid?
+
+      # The editor sends every language back; unchanged ones are not checked.
+      resent = %{"subject" => carried.subject, "html_body" => carried.html_body}
+      assert Layout.changeset(carried, resent).valid?
+
+      # An edited translation is.
+      refute Layout.changeset(carried, %{"subject" => Map.put(carried.subject, "en", "Fixed")}).valid?
+
+      refute Layout.changeset(carried, %{
+               "html_body" => Map.put(carried.html_body, "en", "<p>no body</p>")
+             }).valid?
+
+      assert Layout.changeset(carried, %{
+               "subject" => Map.put(carried.subject, "en", "[News] {{subject}}")
+             }).valid?
+    end
+
+    test "a carried-over system email cannot be made active" do
+      system = %Layout{
+        name: "test_email",
+        status: "archived",
+        html_body: %{"en" => "<p>test</p>"},
+        metadata: %{"email_is_system" => true}
+      }
+
+      assert Layout.system_email?(system)
+      refute Layout.changeset(system, %{"status" => "active"}).valid?
+      assert Layout.changeset(system, %{"display_name" => %{"en" => "Test"}}).valid?
+    end
+
     test "name is a slug, status is active or archived" do
       refute changeset(%{"name" => "Welcome Layout"}).valid?
       refute changeset(%{"name" => "1st"}).valid?

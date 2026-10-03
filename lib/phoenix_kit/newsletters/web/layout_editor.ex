@@ -210,15 +210,20 @@ defmodule PhoenixKit.Newsletters.Web.LayoutEditor do
 
   defp error_messages(changeset) do
     changeset
-    |> Ecto.Changeset.traverse_errors(fn {message, opts} ->
-      Enum.reduce(opts, message, fn {key, value}, acc ->
-        String.replace(acc, "%{#{key}}", to_string(value))
-      end)
-    end)
+    |> Ecto.Changeset.traverse_errors(&translate_error/1)
     |> Enum.flat_map(fn {field, messages} ->
       Enum.map(messages, &"#{field_label(field)}: #{&1}")
     end)
   end
+
+  # Layout's messages are this package's msgids (`gettext_noop`); Ecto's own
+  # ("can't be blank", …) are not in the catalogue and come back as written.
+  defp translate_error({message, opts}) do
+    bindings = for {key, value} <- opts, scalar?(value), into: %{}, do: {key, value}
+    Gettext.dgettext(PhoenixKit.Newsletters.Gettext, "default", message, bindings)
+  end
+
+  defp scalar?(value), do: is_binary(value) or is_number(value) or is_atom(value)
 
   defp field_label(:name), do: gettext("Name")
   defp field_label(:display_name), do: gettext("Display name")

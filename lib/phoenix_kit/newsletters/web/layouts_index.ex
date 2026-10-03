@@ -68,7 +68,16 @@ defmodule PhoenixKit.Newsletters.Web.LayoutsIndex do
          {:ok, _layout} <- Layouts.restore_layout(layout) do
       {:noreply, socket |> put_flash(:info, gettext("Layout restored")) |> load()}
     else
-      _ -> {:noreply, put_flash(socket, :error, gettext("Could not restore the layout"))}
+      {:error, :system_email} ->
+        {:noreply,
+         put_flash(
+           socket,
+           :error,
+           gettext("A system email carried over for old broadcasts stays archived")
+         )}
+
+      _ ->
+        {:noreply, put_flash(socket, :error, gettext("Could not restore the layout"))}
     end
   end
 

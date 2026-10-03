@@ -83,32 +83,48 @@ defmodule PhoenixKit.Newsletters.Layouts do
     end
   end
 
-  @doc "Makes an archived layout active again."
-  @spec restore_layout(Layout.t()) :: {:ok, Layout.t()} | {:error, Ecto.Changeset.t()}
-  def restore_layout(%Layout{} = layout), do: set_status(layout, "active")
+  @doc """
+  Makes an archived layout active again. A carried-over system email
+  (`Layout.system_email?/1`) stays archived: `{:error, :system_email}`.
+  """
+  @spec restore_layout(Layout.t()) ::
+          {:ok, Layout.t()} | {:error, :system_email | Ecto.Changeset.t()}
+  def restore_layout(%Layout{} = layout) do
+    if Layout.system_email?(layout),
+      do: {:error, :system_email},
+      else: set_status(layout, "active")
+  end
 
   @doc """
   The default layout's uuid, or `nil` when none is set or the setting
-  names something that is not an active layout.
+  names something that is not an active layout (an archived one, a
+  carried-over system email, a uuid that is gone).
   """
   @spec default_layout_uuid() :: String.t() | nil
   def default_layout_uuid do
     case get_layout(Settings.get_setting(@default_setting)) do
-      %Layout{status: "active", uuid: uuid} -> uuid
-      _ -> nil
+      %Layout{status: "active", uuid: uuid} = layout ->
+        if Layout.system_email?(layout), do: nil, else: uuid
+
+      _ ->
+        nil
     end
   end
 
   @doc """
   Sets the default layout for new broadcasts; `nil` clears it. Only an
-  active layout can be the default.
+  active layout can be the default — never a carried-over system email,
+  which is always archived.
   """
   @spec set_default_layout(Layout.t() | String.t() | nil) :: :ok | {:error, :not_active | term()}
   def set_default_layout(nil) do
     write_default("")
   end
 
-  def set_default_layout(%Layout{status: "active", uuid: uuid}), do: write_default(uuid)
+  def set_default_layout(%Layout{status: "active", uuid: uuid} = layout) do
+    if Layout.system_email?(layout), do: {:error, :not_active}, else: write_default(uuid)
+  end
+
   def set_default_layout(%Layout{}), do: {:error, :not_active}
 
   def set_default_layout(uuid) when is_binary(uuid) do

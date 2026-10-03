@@ -26,6 +26,7 @@ defmodule PhoenixKit.Newsletters.Web.BroadcastEditorTest do
       markdown_content: "",
       templates: [],
       preview_locale: nil,
+      preview_languages: [],
       preflight: nil,
       crm_list_archived?: false,
       broadcast: nil,
@@ -166,6 +167,7 @@ defmodule PhoenixKit.Newsletters.Web.BroadcastEditorTest do
             crm_lists: [],
             templates: [],
             preview_locale: nil,
+            preview_languages: [],
             page_title: "",
             __changed__: %{}
           }
@@ -207,6 +209,7 @@ defmodule PhoenixKit.Newsletters.Web.BroadcastEditorTest do
             crm_lists: [],
             templates: [],
             preview_locale: nil,
+            preview_languages: [],
             page_title: "",
             __changed__: %{}
           }
@@ -255,6 +258,7 @@ defmodule PhoenixKit.Newsletters.Web.BroadcastEditorTest do
             crm_lists: [],
             templates: [],
             preview_locale: nil,
+            preview_languages: [],
             template_uuid: "",
             page_title: "",
             live_action: :new,
@@ -427,7 +431,8 @@ defmodule PhoenixKit.Newsletters.Web.BroadcastEditorTest do
           templates: [layout],
           template_uuid: layout.uuid,
           markdown_content: "Hello **there**",
-          preview_locale: "en"
+          preview_locale: "en",
+          preview_languages: ["en", "de"]
         })
 
       {:noreply, updated} =
@@ -436,6 +441,15 @@ defmodule PhoenixKit.Newsletters.Web.BroadcastEditorTest do
       assert updated.assigns.preview_locale == "de"
       assert updated.assigns.preview_html =~ "<i>DE</i>"
       assert updated.assigns.preview_html =~ "<strong>there</strong>"
+    end
+
+    test "a preview language the picker does not offer is ignored" do
+      socket = socket(%{preview_locale: "en", preview_languages: ["en", "de"]})
+
+      {:noreply, updated} =
+        BroadcastEditor.handle_event("validate", %{"preview_locale" => "xx-made-up"}, socket)
+
+      assert updated.assigns.preview_locale == "en"
     end
 
     test "without a layout the preview is core's standard layout" do

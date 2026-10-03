@@ -230,6 +230,86 @@ defmodule PhoenixKitNewsletters.MigrationsV2Test do
       assert snapshot() == snapshot
     end
 
+    test "the import runs once: later email templates never come in on a replay" do
+      run_migration(UpToTwo)
+      before = copied_uuids()
+
+      # An operator template created after V2: before the one-time mark, a
+      # replay imported it as an ACTIVE layout.
+      late = insert_template("order_shipped", "active", false, nil)
+
+      # A replay of the cumulative chain (what a V3 run does)…
+      @prefix |> Migrations.up_statements(2) |> Enum.each(&Repo.query!/1)
+      assert Enum.sort(copied_uuids()) == Enum.sort(before)
+
+      # …and a rollback below 2 followed by up again.
+      run_migration(DownToOne)
+      run_migration(UpToTwo)
+
+      refute late in copied_uuids()
+      assert Enum.sort(copied_uuids()) == Enum.sort(before)
+
+      assert [["pknl_layouts:imported"]] =
+               rows(
+                 "SELECT obj_description('#{@prefix}.phoenix_kit_newsletters_layouts'::regclass, 'pg_class')"
+               )
+    end
+
+    test "a name already taken by another layout is copied under a suffixed name",
+         %{operator: [welcome | _]} do
+      create_layouts_table()
+      other = uuid()
+      insert_layout(other, "welcome_layout")
+
+      run_migration(UpToTwo)
+
+      [[name]] =
+        rows(
+          "SELECT name FROM #{@prefix}.phoenix_kit_newsletters_layouts WHERE uuid = '#{welcome}'"
+        )
+
+      assert name ==
+               "welcome_layout_" <> (welcome |> String.replace("-", "") |> binary_part(0, 8))
+
+      # Its broadcasts still point at it — nothing was cleared.
+      assert Enum.any?(template_refs(), fn {_b, t} -> t == welcome end)
+    end
+
+    test "a row already there under its uuid is kept as it is (ON CONFLICT (uuid))",
+         %{operator: [welcome | _]} do
+      create_layouts_table()
+      insert_layout(welcome, "kept_by_hand")
+
+      run_migration(UpToTwo)
+
+      assert [["kept_by_hand"]] =
+               rows(
+                 "SELECT name FROM #{@prefix}.phoenix_kit_newsletters_layouts WHERE uuid = '#{welcome}'"
+               )
+
+      assert Enum.count(copied_uuids(), &(&1 == welcome)) == 1
+    end
+
+    test "each cleared reference is reported as a NOTICE naming the broadcast and the uuid" do
+      Repo.query!("""
+      ALTER TABLE #{@prefix}.phoenix_kit_newsletters_broadcasts
+      DROP CONSTRAINT fk_newsletters_broadcasts_template
+      """)
+
+      gone = uuid()
+      dangling = insert_broadcast("On nothing", gone)
+
+      notices =
+        @prefix
+        |> Migrations.up_statements(2)
+        |> Enum.flat_map(&Repo.query!(&1).messages)
+        |> Enum.map(& &1.message)
+
+      assert [notice] = Enum.filter(notices, &(&1 =~ "template_uuid cleared"))
+      assert notice =~ dangling
+      assert notice =~ gone
+    end
+
     test "rolling V2 back keeps the layouts table, its rows and the new FK" do
       run_migration(UpToTwo)
       snapshot = snapshot()
@@ -399,6 +479,28 @@ defmodule PhoenixKitNewsletters.MigrationsV2Test do
     )
 
     id
+  end
+
+  # The layouts table as V2 builds it, before V2 runs — for a row that is
+  # already there when the import happens.
+  defp create_layouts_table do
+    @prefix
+    |> Migrations.up_statements(2)
+    |> Enum.find(&(&1 =~ "CREATE TABLE IF NOT EXISTS #{@prefix}.phoenix_kit_newsletters_layouts"))
+    |> Repo.query!()
+
+    Repo.query!("CREATE UNIQUE INDEX ON #{@prefix}.phoenix_kit_newsletters_layouts (uuid)")
+
+    Repo.query!(
+      "CREATE UNIQUE INDEX idx_newsletters_layouts_name ON #{@prefix}.phoenix_kit_newsletters_layouts (name)"
+    )
+  end
+
+  defp insert_layout(id, name) do
+    Repo.query!(
+      "INSERT INTO #{@prefix}.phoenix_kit_newsletters_layouts (uuid, name, html_body) VALUES ($1, $2, $3)",
+      [dump(id), name, %{"en" => "{{{content}}}"}]
+    )
   end
 
   defp html(name, language),

@@ -243,8 +243,13 @@ defmodule PhoenixKitNewsletters.Migrations do
        still points at (the old picker offered system emails too), always
        as `archived`: those broadcasts keep their reference, new broadcasts
        are never offered it. Guarded by `to_regclass`: an install without
-       that table copies nothing. `ON CONFLICT DO NOTHING`, so a re-run
-       copies nothing twice. The source rows are left alone (an archive).
+       that table copies nothing. The import runs ONCE: it leaves
+       `pknl_layouts:imported` as the layouts table's comment and never
+       runs again — not on a replay of the cumulative chain (a later
+       version, a down-then-up), so email templates created after V2 are
+       never imported. `ON CONFLICT (uuid) DO NOTHING`; a name already taken
+       by another layout gets a `_<8 hex>` suffix rather than being skipped.
+       The source rows are left alone (an archive).
     3. Every FK from `template_uuid` to any table other than the layouts
        table is dropped — found by `conrelid`/`conkey`/`confrelid`, never by
        name (a renamed host carries `fk_mailing_broadcasts_template`).
@@ -254,10 +259,24 @@ defmodule PhoenixKitNewsletters.Migrations do
        uuid it held. There is no row left to keep, and the worker renders
        such a broadcast in core's standard layout either way.
     5. `fk_newsletters_broadcasts_template` → layouts `ON DELETE SET NULL` —
-       core's own name for the old FK, so core's `ExpectedSchema` (which
-       still lists that name with the old target until core's manifest is
-       updated) sees it present: `repair` reports a `wrong_shape` instead of
-       re-adding an FK to the email-templates table.
+       core's own name for the old FK.
+
+  ### Release order — V2 changes a shape core still audits
+
+  This is the Phase 1 case above: V2 re-targets an FK that core's
+  `ExpectedSchema` manifest (2.49 and earlier) still declares with the
+  email-templates target. Core's change that drops it from the manifest
+  (BeamLabEU/phoenix_kit#896) must be RELEASED first, and this package's
+  `:phoenix_kit` floor raised to that release before V2 ships — merge and
+  release after core ships it. Until then, on a host that ran V2:
+
+    * `mix phoenix_kit.doctor` warns about `fk_newsletters_broadcasts_template`
+      (`wrong_shape`, foreign table);
+    * `mix phoenix_kit.repair` reports the same finding as an error and exits
+      non-zero — it does not re-add an FK to the old table, because the
+      canonical name is present;
+    * `mix phoenix_kit.repair --adopt` does not stamp core's floor while
+      that finding stands.
 
   At target 2, V1's own guard for the old FK is not emitted (it is
   superseded), so a run up to V2 — from 0, from 1, or repeated — never
@@ -306,6 +325,10 @@ defmodule PhoenixKitNewsletters.Migrations do
   @broadcasts "phoenix_kit_newsletters_broadcasts"
   @deliveries "phoenix_kit_newsletters_deliveries"
   @layouts "phoenix_kit_newsletters_layouts"
+
+  # Left on the layouts table by V2's one-time import of the email-template
+  # rows; see `copy_email_templates/5`.
+  @import_mark "pknl_layouts:imported"
 
   # The single table this chain's marker lives on — this module's own hub
   # table, not `deliveries` (see the moduledoc for why). Deliveries shares
@@ -760,6 +783,14 @@ defmodule PhoenixKitNewsletters.Migrations do
   #
   # The source rows are never touched — the old table stays as an archive.
   #
+  # It runs ONCE per install. `up_statements/2` is cumulative — every later
+  # run of the chain (a V3, a down-then-up) replays V2 — and a replay would
+  # import email templates created after V2, as ACTIVE layouts. The version
+  # marker cannot gate it (a rollback lowers it again), so the import leaves
+  # its own mark: `pknl_layouts:imported` as the layouts table's comment, which
+  # nothing in this chain ever clears. Set even when there was nothing to
+  # import, so a table that appears later is never imported either.
+  #
   # Guarded by `to_regclass`, not `::regclass`: a host without the
   # email-templates table (an install whose core no longer creates it)
   # simply has nothing to copy. PL/pgSQL plans the INSERT only when the
@@ -767,16 +798,18 @@ defmodule PhoenixKitNewsletters.Migrations do
   # table is read the same way, through `EXECUTE`, so a schema without it
   # reads as "no default set".
   #
-  # `ON CONFLICT DO NOTHING` without a target covers both the uuid and the
-  # `name` unique index, so a second run — or a layout created by hand under
-  # a migrated row's name — skips that row instead of failing the migration.
+  # `ON CONFLICT (uuid) DO NOTHING`: a row already there under its uuid is
+  # kept as it is. A row whose NAME is already taken by another layout is
+  # still copied — under `<name>_<first 8 hex digits of its uuid>` — so the
+  # broadcasts pointing at it keep a layout to point at.
   defp copy_email_templates(q_layouts, q_broadcasts, email_templates, users, settings) do
     """
     DO $$
     DECLARE
       default_uuid text;
     BEGIN
-      IF to_regclass('#{email_templates}') IS NOT NULL THEN
+      IF obj_description('#{q_layouts}'::regclass, 'pg_class') IS DISTINCT FROM '#{@import_mark}'
+         AND to_regclass('#{email_templates}') IS NOT NULL THEN
         IF to_regclass('#{settings}') IS NOT NULL THEN
           EXECUTE 'SELECT value FROM #{settings} WHERE key = $1'
             INTO default_uuid
@@ -789,7 +822,11 @@ defmodule PhoenixKitNewsletters.Migrations do
         )
         SELECT
           t.uuid,
-          t.name,
+          CASE
+            WHEN EXISTS (SELECT 1 FROM #{q_layouts} l WHERE l.name = t.name AND l.uuid <> t.uuid)
+              THEN left(t.name, 246) || '_' || left(replace(t.uuid::text, '-', ''), 8)
+            ELSE t.name
+          END,
           COALESCE(t.display_name, '{}'::jsonb),
           COALESCE(t.subject, '{}'::jsonb),
           COALESCE(t.html_body, '{}'::jsonb),
@@ -809,8 +846,10 @@ defmodule PhoenixKitNewsletters.Migrations do
         WHERE t.is_system = false
           OR EXISTS (SELECT 1 FROM #{q_broadcasts} b WHERE b.template_uuid = t.uuid)
           OR t.uuid::text = default_uuid
-        ON CONFLICT DO NOTHING;
+        ON CONFLICT (uuid) DO NOTHING;
       END IF;
+
+      COMMENT ON TABLE #{q_layouts} IS '#{@import_mark}';
     END
     $$
     """
