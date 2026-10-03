@@ -112,7 +112,8 @@ CRM contact's `locale`, else the list's; else the site's content language):
   subject. The text part is never wrapped.
 
 Layouts are managed under **Newsletters → Layouts** in the admin. Rows created before
-this table existed (operator-authored email templates) were carried over by migration V2
+this table existed (operator-authored email templates, plus any system email a broadcast or
+the default-layout setting still pointed at, as archived) were carried over by migration V2
 under their own uuids.
 
 ## Modules

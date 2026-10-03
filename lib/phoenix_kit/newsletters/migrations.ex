@@ -239,18 +239,20 @@ defmodule PhoenixKitNewsletters.Migrations do
     2. Every `is_system = false` row of the email-templates table is copied
        **under its own uuid**, language maps as they are — so neither
        `template_uuid` values nor the `newsletters_default_template`
-       setting change. Guarded by `to_regclass`: an install without that
-       table copies nothing. `ON CONFLICT DO NOTHING`, so a re-run copies
-       nothing twice. The source rows are left alone (an archive).
+       setting change. So is every SYSTEM row a broadcast or that setting
+       still points at (the old picker offered system emails too), always
+       as `archived`: those broadcasts keep their reference, new broadcasts
+       are never offered it. Guarded by `to_regclass`: an install without
+       that table copies nothing. `ON CONFLICT DO NOTHING`, so a re-run
+       copies nothing twice. The source rows are left alone (an archive).
     3. Every FK from `template_uuid` to any table other than the layouts
        table is dropped — found by `conrelid`/`conkey`/`confrelid`, never by
        name (a renamed host carries `fk_mailing_broadcasts_template`).
-    4. A `template_uuid` that names no layout — a SYSTEM email the old
-       editor also offered, or a row that is gone — is set to NULL, each one
-       reported as a `NOTICE` with the broadcast and the uuid it held. The
-       alternative, keeping the value without a FK, would leave a reference
-       nothing protects; and the worker renders such a broadcast in core's
-       standard layout either way.
+    4. A `template_uuid` that still names no layout — a uuid that exists
+       nowhere, possible only where the old FK was missing — is set to
+       NULL, each one reported as a `NOTICE` with the broadcast and the
+       uuid it held. There is no row left to keep, and the worker renders
+       such a broadcast in core's standard layout either way.
     5. `fk_newsletters_broadcasts_template` → layouts `ON DELETE SET NULL` —
        core's own name for the old FK, so core's `ExpectedSchema` (which
        still lists that name with the old target until core's manifest is
@@ -690,6 +692,7 @@ defmodule PhoenixKitNewsletters.Migrations do
   defp v2_statements(prefix, _target) do
     users = Helpers.qualify_table("phoenix_kit_users", prefix)
     email_templates = Helpers.qualify_table("phoenix_kit_email_templates", prefix)
+    settings = Helpers.qualify_table("phoenix_kit_settings", prefix)
     uuid_default = Helpers.uuid_v7_call(prefix)
 
     q_broadcasts = Helpers.qualify_table(@broadcasts, prefix)
@@ -728,7 +731,7 @@ defmodule PhoenixKitNewsletters.Migrations do
         users,
         "SET NULL"
       ),
-      copy_email_templates(q_layouts, email_templates, users),
+      copy_email_templates(q_layouts, q_broadcasts, email_templates, users, settings),
       release_template_reference(q_broadcasts, q_layouts),
       clear_unknown_templates(q_broadcasts, q_layouts),
       fk_guard(
@@ -742,11 +745,16 @@ defmodule PhoenixKitNewsletters.Migrations do
   end
 
   # Every operator-authored (`is_system = false`) row of the email-templates
-  # table, under its own uuid, so `template_uuid` values and the
-  # `newsletters_default_template` setting stay valid without being
-  # rewritten. The language maps are copied as they are. `status` keeps
-  # `active`; `draft`/`archived` (never offered by the broadcast editor)
-  # become `archived`; the original status and category are kept in
+  # table, plus every SYSTEM row something here still points at — a
+  # broadcast's `template_uuid`, or the `newsletters_default_template`
+  # setting (the old picker offered system emails too). All under their own
+  # uuid, so `template_uuid` values and the setting stay valid without being
+  # rewritten. The language maps are copied as they are. An operator row
+  # keeps `active`; `draft`/`archived` (never offered by the broadcast
+  # editor) become `archived`. A carried-over system row is always
+  # `archived`: the broadcasts that used it keep it, the picker for new
+  # broadcasts never offers it, and an archived layout is never the
+  # default. The original status, category and system flag are kept in
   # `metadata`. `created_by_user_uuid` is kept only when that user still
   # exists, since the new column carries a real FK.
   #
@@ -755,16 +763,26 @@ defmodule PhoenixKitNewsletters.Migrations do
   # Guarded by `to_regclass`, not `::regclass`: a host without the
   # email-templates table (an install whose core no longer creates it)
   # simply has nothing to copy. PL/pgSQL plans the INSERT only when the
-  # branch runs, so the missing table is never resolved.
+  # branch runs, so the missing table is never resolved. The settings
+  # table is read the same way, through `EXECUTE`, so a schema without it
+  # reads as "no default set".
   #
   # `ON CONFLICT DO NOTHING` without a target covers both the uuid and the
   # `name` unique index, so a second run — or a layout created by hand under
   # a migrated row's name — skips that row instead of failing the migration.
-  defp copy_email_templates(q_layouts, email_templates, users) do
+  defp copy_email_templates(q_layouts, q_broadcasts, email_templates, users, settings) do
     """
     DO $$
+    DECLARE
+      default_uuid text;
     BEGIN
       IF to_regclass('#{email_templates}') IS NOT NULL THEN
+        IF to_regclass('#{settings}') IS NOT NULL THEN
+          EXECUTE 'SELECT value FROM #{settings} WHERE key = $1'
+            INTO default_uuid
+            USING 'newsletters_default_template';
+        END IF;
+
         INSERT INTO #{q_layouts} (
           uuid, name, display_name, subject, html_body, text_body,
           status, metadata, created_by_user_uuid, inserted_at, updated_at
@@ -776,11 +794,12 @@ defmodule PhoenixKitNewsletters.Migrations do
           COALESCE(t.subject, '{}'::jsonb),
           COALESCE(t.html_body, '{}'::jsonb),
           COALESCE(t.text_body, '{}'::jsonb),
-          CASE WHEN t.status = 'active' THEN 'active' ELSE 'archived' END,
+          CASE WHEN t.is_system = false AND t.status = 'active' THEN 'active' ELSE 'archived' END,
           COALESCE(t.metadata, '{}'::jsonb) || jsonb_build_object(
             'migrated_from', 'phoenix_kit_email_templates',
             'email_category', t.category,
-            'email_status', t.status
+            'email_status', t.status,
+            'email_is_system', t.is_system
           ),
           u.uuid,
           COALESCE(t.inserted_at, now()),
@@ -788,6 +807,8 @@ defmodule PhoenixKitNewsletters.Migrations do
         FROM #{email_templates} t
         LEFT JOIN #{users} u ON u.uuid = t.created_by_user_uuid
         WHERE t.is_system = false
+          OR EXISTS (SELECT 1 FROM #{q_broadcasts} b WHERE b.template_uuid = t.uuid)
+          OR t.uuid::text = default_uuid
         ON CONFLICT DO NOTHING;
       END IF;
     END
@@ -824,13 +845,12 @@ defmodule PhoenixKitNewsletters.Migrations do
     """
   end
 
-  # A `template_uuid` with no layout behind it — a system email the old
-  # editor also offered, or a row that no longer exists — is cleared, and
-  # each one is reported as a NOTICE in the migration log with the uuid it
-  # held (the email-templates row itself is still there to look it up).
-  # Keeping the value without a foreign key would leave a reference no
-  # constraint protects, and the worker would render such a broadcast with
-  # the standard layout anyway.
+  # A `template_uuid` with no layout behind it — after the copy above, only
+  # a uuid that exists nowhere (a row deleted on a host without the old FK)
+  # — is cleared, and each one is reported as a NOTICE in the migration log
+  # with the uuid it held. There is nothing left to point a foreign key at,
+  # and the worker would render such a broadcast with the standard layout
+  # anyway.
   defp clear_unknown_templates(q_broadcasts, q_layouts) do
     """
     DO $$

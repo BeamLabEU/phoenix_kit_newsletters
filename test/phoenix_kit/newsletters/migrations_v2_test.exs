@@ -126,15 +126,73 @@ defmodule PhoenixKitNewsletters.MigrationsV2Test do
                templates_before
     end
 
-    test "system rows stay behind", %{system: system} do
+    test "system rows nothing points at stay behind", %{system: system} do
       run_migration(UpToTwo)
 
-      copied =
-        "SELECT uuid FROM #{@prefix}.phoenix_kit_newsletters_layouts"
-        |> column()
-        |> Enum.map(&load/1)
-
+      copied = copied_uuids()
       assert Enum.all?(system, &(&1 not in copied))
+    end
+
+    test "a system row a broadcast uses comes along, archived, and keeps the reference",
+         %{system: [test_email, magic_link]} do
+      on_system = insert_broadcast("On a system email", test_email)
+
+      run_migration(UpToTwo)
+
+      assert Map.new(template_refs())[on_system] == test_email
+
+      [row] =
+        query_maps("""
+        SELECT uuid, name, status, metadata, html_body
+        FROM #{@prefix}.phoenix_kit_newsletters_layouts WHERE uuid = '#{test_email}'
+        """)
+
+      assert row["name"] == "test_email"
+      assert row["status"] == "archived"
+      assert row["metadata"]["email_is_system"] == true
+      assert row["metadata"]["email_status"] == "active"
+      assert Map.keys(row["html_body"]) |> Enum.sort() == Enum.sort(@languages)
+
+      # The other system row has no user: not copied.
+      refute magic_link in copied_uuids()
+    end
+
+    test "a system row the default setting names comes along, archived",
+         %{system: [_test_email, magic_link]} do
+      Repo.query!(
+        "INSERT INTO #{@prefix}.phoenix_kit_settings (key, value) VALUES ($1, $2)",
+        ["newsletters_default_template", magic_link]
+      )
+
+      run_migration(UpToTwo)
+
+      assert magic_link in copied_uuids()
+
+      assert [["archived"]] =
+               rows(
+                 "SELECT status FROM #{@prefix}.phoenix_kit_newsletters_layouts WHERE uuid = '#{magic_link}'"
+               )
+    end
+
+    test "a schema without the settings table reads as no default set", %{operator: operator} do
+      Repo.query!("DROP TABLE #{@prefix}.phoenix_kit_settings")
+
+      run_migration(UpToTwo)
+
+      assert Enum.sort(copied_uuids()) == Enum.sort(operator)
+    end
+
+    test "a carried-over system row is copied once, however often V2 runs",
+         %{system: [test_email | _]} do
+      insert_broadcast("On a system email", test_email)
+
+      run_migration(UpToTwo)
+
+      for _ <- 1..2 do
+        @prefix |> Migrations.up_statements(2) |> Enum.each(&Repo.query!/1)
+      end
+
+      assert Enum.count(copied_uuids(), &(&1 == test_email)) == 1
     end
 
     test "every broadcast keeps its template_uuid, now behind the new FK",
@@ -202,7 +260,7 @@ defmodule PhoenixKitNewsletters.MigrationsV2Test do
                template_fks(@prefix)
     end
 
-    test "a reference to a system row or to nothing is cleared; the rest stay",
+    test "only a reference to nothing is cleared; system and operator references stay",
          %{system: [system | _], operator: [kept | _]} do
       on_system = insert_broadcast("On a system email", system)
 
@@ -219,7 +277,7 @@ defmodule PhoenixKitNewsletters.MigrationsV2Test do
       run_migration(UpToTwo)
 
       refs = Map.new(template_refs())
-      assert refs[on_system] == nil
+      assert refs[on_system] == system
       assert refs[dangling] == nil
       assert refs[on_operator] == kept
       assert [%{target: "phoenix_kit_newsletters_layouts"}] = template_fks(@prefix)
@@ -277,6 +335,14 @@ defmodule PhoenixKitNewsletters.MigrationsV2Test do
   defp create_host(prefix, email_templates?: email_templates?) do
     Repo.query!("CREATE SCHEMA IF NOT EXISTS #{prefix}")
     Repo.query!("CREATE TABLE #{prefix}.phoenix_kit_users (uuid uuid PRIMARY KEY)")
+
+    # Core's settings columns V2 reads (key/value).
+    Repo.query!("""
+    CREATE TABLE #{prefix}.phoenix_kit_settings (
+      "key" character varying(255) NOT NULL,
+      "value" character varying(255)
+    )
+    """)
 
     if email_templates? do
       # Core's V135 column shape for the table V2 reads.
@@ -428,6 +494,13 @@ defmodule PhoenixKitNewsletters.MigrationsV2Test do
   end
 
   defp rows(sql), do: Repo.query!(sql).rows
+
+  defp copied_uuids do
+    "SELECT uuid FROM #{@prefix}.phoenix_kit_newsletters_layouts"
+    |> column()
+    |> Enum.map(&load/1)
+  end
+
   defp column(sql), do: sql |> Repo.query!() |> Map.fetch!(:rows) |> Enum.map(&hd/1)
 
   defp count(table) do

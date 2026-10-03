@@ -404,12 +404,14 @@ section here (unlike the customer_support/manufacturing sibling chains).
 
 V2 creates `phoenix_kit_newsletters_layouts` (marker `pknl_schema:2`),
 copies every `is_system = false` row of `phoenix_kit_email_templates` into
-it under the same uuid (only when that table exists — `to_regclass`; `ON
-CONFLICT DO NOTHING`), drops whatever FK `broadcasts.template_uuid` has to
-any other table (found by `conrelid`/`conkey`, not by name — a renamed host
-calls it `fk_mailing_broadcasts_template`), clears a `template_uuid` that
-names no layout (a system email the old editor offered, or a lost row —
-logged as a NOTICE per broadcast), and adds
+it under the same uuid, plus every system row a broadcast's `template_uuid`
+or the `newsletters_default_template` setting still names (always as
+`archived`: those broadcasts keep it, the picker never offers it) — only
+when that table exists (`to_regclass`; `ON CONFLICT DO NOTHING`). It then
+drops whatever FK `broadcasts.template_uuid` has to any other table (found
+by `conrelid`/`conkey`, not by name — a renamed host calls it
+`fk_mailing_broadcasts_template`), clears a `template_uuid` that names a
+uuid existing nowhere (logged as a NOTICE per broadcast), and adds
 `fk_newsletters_broadcasts_template` → layouts `ON DELETE SET NULL`. At
 target 2 V1's own template FK guard is not emitted, so a run up to V2 never
 touches the email-templates table except through `to_regclass`.
