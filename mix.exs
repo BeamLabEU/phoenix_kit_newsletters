@@ -59,14 +59,17 @@ defmodule PhoenixKitNewsletters.MixProject do
   defp deps do
     [
       # Core
-      # The floor is a migration floor, not a feature-parity one: this
-      # package calls `PhoenixKit.Email`'s send-profile context (core V151)
-      # and reads/writes `phoenix_kit_newsletters_broadcasts.attachments`
-      # (core V158). 1.7.211 is the first hex release carrying both, so an
-      # older core would compile and then fail at runtime on a missing
-      # column. Raise it only when a new core migration is likewise
-      # required — no path/git override is needed any more.
-      {:phoenix_kit, "~> 2.0"},
+      # 2.48 is the first core with `PhoenixKit.Email.Layout.render_parts/2`,
+      # the header/footer a broadcast layout places as {{{header}}} and
+      # {{{footer}}}. Raise this to the core release that drops
+      # `fk_newsletters_broadcasts_template` from its `ExpectedSchema`
+      # manifest before this version is released — see
+      # `PhoenixKitNewsletters.Migrations`' moduledoc ("Release order").
+      {:phoenix_kit, "~> 2.48"},
+      # `PhoenixKit.Templates.Substitution` is called directly (the one
+      # substitution pass a broadcast gets), so it is declared rather than
+      # reached through core.
+      {:phoenix_kit_templates, "~> 0.2.2"},
       {:phoenix_live_view, "~> 1.1"},
       {:gettext, "~> 1.0"},
       {:oban, "~> 2.20"},

@@ -25,6 +25,8 @@ defmodule PhoenixKit.Newsletters.Web.BroadcastEditorTest do
       scheduled_at: "",
       markdown_content: "",
       templates: [],
+      preview_locale: nil,
+      preview_languages: [],
       preflight: nil,
       crm_list_archived?: false,
       broadcast: nil,
@@ -164,6 +166,8 @@ defmodule PhoenixKit.Newsletters.Web.BroadcastEditorTest do
             phoenix_kit_current_user: %{user_timezone: "3"},
             crm_lists: [],
             templates: [],
+            preview_locale: nil,
+            preview_languages: [],
             page_title: "",
             __changed__: %{}
           }
@@ -204,6 +208,8 @@ defmodule PhoenixKit.Newsletters.Web.BroadcastEditorTest do
             phoenix_kit_current_user: nil,
             crm_lists: [],
             templates: [],
+            preview_locale: nil,
+            preview_languages: [],
             page_title: "",
             __changed__: %{}
           }
@@ -251,6 +257,8 @@ defmodule PhoenixKit.Newsletters.Web.BroadcastEditorTest do
             phoenix_kit_current_user: %{user_timezone: "5"},
             crm_lists: [],
             templates: [],
+            preview_locale: nil,
+            preview_languages: [],
             template_uuid: "",
             page_title: "",
             live_action: :new,
@@ -398,6 +406,105 @@ defmodule PhoenixKit.Newsletters.Web.BroadcastEditorTest do
 
       assert updated.assigns.stranded_crm_list == nil
       refute updated.assigns.crm_list_archived?
+    end
+  end
+
+  describe "layouts in the editor" do
+    alias PhoenixKit.Newsletters.Layouts
+
+    defp create_layout(name, html, status \\ "active") do
+      {:ok, layout} =
+        Layouts.create_layout(%{"name" => name, "html_body" => html, "status" => status})
+
+      layout
+    end
+
+    test "the preview renders the chosen layout in the chosen language" do
+      layout =
+        create_layout("welcome_layout", %{
+          "en" => "<i>EN</i>{{{content}}}",
+          "de" => "<i>DE</i>{{{content}}}"
+        })
+
+      socket =
+        socket(%{
+          templates: [layout],
+          template_uuid: layout.uuid,
+          markdown_content: "Hello **there**",
+          preview_locale: "en",
+          preview_languages: ["en", "de"]
+        })
+
+      {:noreply, updated} =
+        BroadcastEditor.handle_event("validate", %{"preview_locale" => "de"}, socket)
+
+      assert updated.assigns.preview_locale == "de"
+      assert updated.assigns.preview_html =~ "<i>DE</i>"
+      assert updated.assigns.preview_html =~ "<strong>there</strong>"
+    end
+
+    test "a preview language the picker does not offer is ignored" do
+      socket = socket(%{preview_locale: "en", preview_languages: ["en", "de"]})
+
+      {:noreply, updated} =
+        BroadcastEditor.handle_event("validate", %{"preview_locale" => "xx-made-up"}, socket)
+
+      assert updated.assigns.preview_locale == "en"
+    end
+
+    test "without a layout the preview is core's standard layout" do
+      html = BroadcastEditor.render_preview("Hello", "", [], "en", "Subject")
+      assert html =~ "<!DOCTYPE html>"
+      assert html =~ "Hello"
+    end
+
+    test "an empty body previews as nothing, so the hint shows" do
+      assert BroadcastEditor.render_preview("  ", "", [], "en", "Subject") == ""
+    end
+
+    test "the picker offers active layouts, plus the broadcast's own when archived" do
+      active = create_layout("active_layout", %{"en" => "{{{content}}}"})
+      archived = create_layout("old_layout", %{"en" => "{{{content}}}"}, "archived")
+
+      {:ok, broadcast} =
+        Newsletters.create_broadcast(%{
+          subject: "Uses an archived layout",
+          source_type: "user_group",
+          source_params: %{"role_uuids" => [Ecto.UUID.generate()]},
+          template_uuid: archived.uuid
+        })
+
+      socket =
+        socket(%{phoenix_kit_current_user: nil, current_locale: nil, live_action: :edit})
+        |> Map.update!(:assigns, &Map.merge(&1, %{preview_languages: [], attachment_files: []}))
+
+      {:noreply, updated} =
+        BroadcastEditor.handle_params(%{"id" => broadcast.uuid}, "/", socket)
+
+      uuids = Enum.map(updated.assigns.templates, & &1.uuid)
+      assert active.uuid in uuids
+      assert archived.uuid in uuids
+      assert updated.assigns.template_uuid == archived.uuid
+
+      {:noreply, fresh} =
+        BroadcastEditor.handle_params(%{}, "/", %{
+          socket
+          | assigns: %{socket.assigns | live_action: :new}
+        })
+
+      refute archived.uuid in Enum.map(fresh.assigns.templates, & &1.uuid)
+    end
+
+    test "a new broadcast starts with the default layout" do
+      layout = create_layout("default_layout", %{"en" => "{{{content}}}"})
+      :ok = Layouts.set_default_layout(layout)
+
+      socket =
+        socket(%{live_action: :new})
+        |> Map.update!(:assigns, &Map.merge(&1, %{preview_languages: []}))
+
+      {:noreply, updated} = BroadcastEditor.handle_params(%{}, "/", socket)
+      assert updated.assigns.template_uuid == layout.uuid
     end
   end
 end

@@ -225,6 +225,74 @@ defmodule PhoenixKitNewsletters.Migrations do
   Existing installs are untouched — a baseline squash only affects fresh
   installs and below-floor bridging.
 
+  ### V2 — the layouts table, and `template_uuid` moves to it
+
+  Operator-authored broadcast layouts used to be rows of core's
+  `phoenix_kit_email_templates`, which `broadcasts.template_uuid` pointed at.
+  This package is the only reader of those rows, so V2 gives them a table of
+  its own, `phoenix_kit_newsletters_layouts` (shape:
+  `PhoenixKit.Newsletters.Layout`, widths from its `column_widths/0`), and
+  makes `template_uuid` an intra-package FK:
+
+    1. `CREATE TABLE IF NOT EXISTS` + semantic pkey/CHECK/unique-name/FK
+       guards, as V1's.
+    2. Every `is_system = false` row of the email-templates table is copied
+       **under its own uuid**, language maps as they are — so neither
+       `template_uuid` values nor the `newsletters_default_template`
+       setting change. So is every SYSTEM row a broadcast or that setting
+       still points at (the old picker offered system emails too), always
+       as `archived`: those broadcasts keep their reference, new broadcasts
+       are never offered it. Guarded by `to_regclass`: an install without
+       that table copies nothing. The import runs ONCE: it leaves
+       `pknl_layouts:imported` in the layouts table's comment (appended to
+       an operator's own; a comment rewritten without it re-enables the
+       import, like the version marker) and never runs again — not on a replay of the cumulative chain (a later
+       version, a down-then-up), so email templates created after V2 are
+       never imported. `ON CONFLICT (uuid) DO NOTHING`; a name already taken
+       by another layout gets a `_<8 hex>` (or, if taken, `_<32 hex>`) suffix
+       rather than being skipped.
+       The source rows are left alone (an archive).
+    3. Every FK from `template_uuid` to any table other than the layouts
+       table is dropped — found by `conrelid`/`conkey`/`confrelid`, never by
+       name (a renamed host carries `fk_mailing_broadcasts_template`).
+    4. A `template_uuid` that still names no layout — a uuid that exists
+       nowhere, possible only where the old FK was missing — is set to
+       NULL, each one reported as a `NOTICE` with the broadcast and the
+       uuid it held. There is no row left to keep, and the worker renders
+       such a broadcast in core's standard layout either way.
+    5. `fk_newsletters_broadcasts_template` → layouts `ON DELETE SET NULL` —
+       core's own name for the old FK.
+
+  ### Release order — V2 changes a shape core still audits
+
+  This is the Phase 1 case above: V2 re-targets an FK that core's
+  `ExpectedSchema` manifest (2.49 and earlier) still declares with the
+  email-templates target. Core's change that drops it from the manifest
+  (BeamLabEU/phoenix_kit#896) must be RELEASED first, and this package's
+  `:phoenix_kit` floor raised to that release before V2 ships — merge and
+  release after core ships it. Until then, on a host that ran V2:
+
+    * `mix phoenix_kit.doctor` warns about `fk_newsletters_broadcasts_template`
+      (`wrong_shape`, foreign table);
+    * `mix phoenix_kit.repair` reports the same finding as an error and exits
+      non-zero — it does not re-add an FK to the old table, because the
+      canonical name is present;
+    * `mix phoenix_kit.repair --adopt` does not stamp core's floor while
+      that finding stands.
+
+  At target 2, V1's own guard for the old FK is not emitted (it is
+  superseded), so a run up to V2 — from 0, from 1, or repeated — never
+  creates the reference V2 removes and never resolves the email-templates
+  table through `::regclass`. At target 1, V1 is byte-for-byte what it
+  always was (the drift guard pins it).
+
+  Rolling back below 2 moves the marker only: the layouts table, its rows
+  and the new FK all stay. Going back UP to exactly version 1 afterwards is
+  not a supported path: V1's frozen guard would try to re-add the old FK
+  under the name the new one already holds, and Postgres refuses it
+  (`duplicate_object`) — loudly, inside the migration's transaction, with
+  nothing changed. Up to 2 (the current version) is a no-op.
+
   ## What must NEVER happen
 
   No conditional core migration of the form "module absent → drop the
@@ -249,14 +317,20 @@ defmodule PhoenixKitNewsletters.Migrations do
   alias PhoenixKit.Migrations.Postgres.Helpers
   alias PhoenixKit.Newsletters.Broadcast
   alias PhoenixKit.Newsletters.Delivery
+  alias PhoenixKit.Newsletters.Layout
 
   @initial_version 1
-  @current_version 1
+  @current_version 2
   @default_prefix "public"
   @marker_prefix "pknl_schema:"
 
   @broadcasts "phoenix_kit_newsletters_broadcasts"
   @deliveries "phoenix_kit_newsletters_deliveries"
+  @layouts "phoenix_kit_newsletters_layouts"
+
+  # Left on the layouts table by V2's one-time import of the email-template
+  # rows; see `copy_email_templates/5`.
+  @import_mark "pknl_layouts:imported"
 
   # The single table this chain's marker lives on — this module's own hub
   # table, not `deliveries` (see the moduledoc for why). Deliveries shares
@@ -389,7 +463,7 @@ defmodule PhoenixKitNewsletters.Migrations do
     if target == 0 do
       []
     else
-      v1_statements(prefix, target)
+      v1_statements(prefix, target) ++ v2_statements(prefix, target) ++ [marker(prefix, target)]
     end
   end
 
@@ -592,13 +666,19 @@ defmodule PhoenixKitNewsletters.Migrations do
         users,
         "SET NULL"
       ),
-      fk_guard(
-        q_broadcasts,
-        "fk_newsletters_broadcasts_template",
-        "template_uuid",
-        email_templates,
-        "SET NULL"
-      ),
+      # Superseded by V2, which points `template_uuid` at this package's own
+      # layouts table. Emitted only when V1 is the target, so a run up to V2
+      # never re-creates the reference V2 replaces — and never touches
+      # `phoenix_kit_email_templates` at all, a table a host may not have.
+      if target == 1 do
+        fk_guard(
+          q_broadcasts,
+          "fk_newsletters_broadcasts_template",
+          "template_uuid",
+          email_templates,
+          "SET NULL"
+        )
+      end,
       fk_guard(
         q_deliveries,
         "fk_newsletters_deliveries_broadcast",
@@ -615,9 +695,242 @@ defmodule PhoenixKitNewsletters.Migrations do
       )
     ]
 
-    marker = ["COMMENT ON TABLE #{q_broadcasts} IS '#{@marker_prefix}#{target}'"]
+    tables ++ pkeys ++ checks ++ indexes ++ Enum.reject(fks, &is_nil/1)
+  end
 
-    tables ++ pkeys ++ checks ++ indexes ++ fks ++ marker
+  defp marker(prefix, target) do
+    "COMMENT ON TABLE #{Helpers.qualify_table(@version_table, prefix)} IS '#{@marker_prefix}#{target}'"
+  end
+
+  # ── V2 statement builder ────────────────────────────────────────────────
+  #
+  # The layouts table, the carry-over of the operator-authored rows from
+  # `phoenix_kit_email_templates`, and `template_uuid` re-pointed at it. In
+  # this order, because each step needs the one before: the FK can only be
+  # added once every `template_uuid` names a layout, which needs the rows
+  # copied and the leftovers cleared, which needs the old FK gone (it would
+  # not stop a NULL, but a leftover FK to the old table is exactly what this
+  # version removes, so it goes first). See the moduledoc's "V2" section.
+
+  defp v2_statements(_prefix, target) when target < 2, do: []
+
+  defp v2_statements(prefix, _target) do
+    users = Helpers.qualify_table("phoenix_kit_users", prefix)
+    email_templates = Helpers.qualify_table("phoenix_kit_email_templates", prefix)
+    settings = Helpers.qualify_table("phoenix_kit_settings", prefix)
+    uuid_default = Helpers.uuid_v7_call(prefix)
+
+    q_broadcasts = Helpers.qualify_table(@broadcasts, prefix)
+    q_layouts = Helpers.qualify_table(@layouts, prefix)
+
+    lw = Layout.column_widths()
+
+    [
+      """
+      CREATE TABLE IF NOT EXISTS #{q_layouts} (
+        "uuid" uuid DEFAULT #{uuid_default} NOT NULL,
+        "name" character varying(#{lw.name}) NOT NULL,
+        "display_name" jsonb DEFAULT '{}'::jsonb NOT NULL,
+        "subject" jsonb DEFAULT '{}'::jsonb NOT NULL,
+        "html_body" jsonb DEFAULT '{}'::jsonb NOT NULL,
+        "text_body" jsonb DEFAULT '{}'::jsonb NOT NULL,
+        "status" character varying(#{lw.status}) DEFAULT 'active'::character varying NOT NULL,
+        "metadata" jsonb DEFAULT '{}'::jsonb NOT NULL,
+        "created_by_user_uuid" uuid,
+        "inserted_at" timestamp with time zone DEFAULT now() NOT NULL,
+        "updated_at" timestamp with time zone DEFAULT now() NOT NULL
+      )
+      """,
+      pkey_guard(@layouts, q_layouts),
+      check_guard(
+        q_layouts,
+        "phoenix_kit_newsletters_layouts_status_check",
+        "status IN ('active', 'archived')",
+        "CHECK (((status)::text = ANY ((ARRAY['active'::character varying, 'archived'::character varying])::text[])))"
+      ),
+      index_guard("idx_newsletters_layouts_name", q_layouts, true, "btree", ["name"], nil),
+      fk_guard(
+        q_layouts,
+        "fk_newsletters_layouts_created_by",
+        "created_by_user_uuid",
+        users,
+        "SET NULL"
+      ),
+      copy_email_templates(q_layouts, q_broadcasts, email_templates, users, settings),
+      release_template_reference(q_broadcasts, q_layouts),
+      clear_unknown_templates(q_broadcasts, q_layouts),
+      fk_guard(
+        q_broadcasts,
+        "fk_newsletters_broadcasts_template",
+        "template_uuid",
+        q_layouts,
+        "SET NULL"
+      )
+    ]
+  end
+
+  # Every operator-authored (`is_system = false`) row of the email-templates
+  # table, plus every SYSTEM row something here still points at — a
+  # broadcast's `template_uuid`, or the `newsletters_default_template`
+  # setting (the old picker offered system emails too). All under their own
+  # uuid, so `template_uuid` values and the setting stay valid without being
+  # rewritten. The language maps are copied as they are. An operator row
+  # keeps `active`; `draft`/`archived` (never offered by the broadcast
+  # editor) become `archived`. A carried-over system row is always
+  # `archived`: the broadcasts that used it keep it, the picker for new
+  # broadcasts never offers it, and an archived layout is never the
+  # default. The original status, category and system flag are kept in
+  # `metadata`. `created_by_user_uuid` is kept only when that user still
+  # exists, since the new column carries a real FK.
+  #
+  # The source rows are never touched — the old table stays as an archive.
+  #
+  # It runs ONCE per install. `up_statements/2` is cumulative — every later
+  # run of the chain (a V3, a down-then-up) replays V2 — and a replay would
+  # import email templates created after V2, as ACTIVE layouts. The version
+  # marker cannot gate it (a rollback lowers it again), so the import leaves
+  # its own mark: `pknl_layouts:imported` in the layouts table's comment, which
+  # nothing in this chain ever clears. Set even when there was nothing to
+  # import, so a table that appears later is never imported either. The mark
+  # is found anywhere in the comment and APPENDED to one already there, so an
+  # operator's own comment on the table survives — but, like the version
+  # marker on the broadcasts table, a comment REWRITTEN without it re-enables
+  # the import on the next replay.
+  #
+  # Guarded by `to_regclass`, not `::regclass`: a host without the
+  # email-templates table (an install whose core no longer creates it)
+  # simply has nothing to copy. PL/pgSQL plans the INSERT only when the
+  # branch runs, so the missing table is never resolved. The settings
+  # table is read the same way, through `EXECUTE`, so a schema without it
+  # reads as "no default set".
+  #
+  # `ON CONFLICT (uuid) DO NOTHING`: a row already there under its uuid is
+  # kept as it is. A row whose NAME is already taken by another layout is
+  # still copied — under `<name>_<first 8 hex digits of its uuid>`, or, if
+  # that is taken too, `<name>_<all 32 hex digits>`, which no other row can
+  # hold — so the broadcasts pointing at it keep a layout to point at.
+  defp copy_email_templates(q_layouts, q_broadcasts, email_templates, users, settings) do
+    """
+    DO $$
+    DECLARE
+      default_uuid text;
+      table_comment text := obj_description('#{q_layouts}'::regclass, 'pg_class');
+    BEGIN
+      IF position('#{@import_mark}' in coalesce(table_comment, '')) = 0
+         AND to_regclass('#{email_templates}') IS NOT NULL THEN
+        IF to_regclass('#{settings}') IS NOT NULL THEN
+          EXECUTE 'SELECT value FROM #{settings} WHERE key = $1'
+            INTO default_uuid
+            USING 'newsletters_default_template';
+        END IF;
+
+        INSERT INTO #{q_layouts} (
+          uuid, name, display_name, subject, html_body, text_body,
+          status, metadata, created_by_user_uuid, inserted_at, updated_at
+        )
+        SELECT
+          t.uuid,
+          CASE
+            WHEN NOT EXISTS (SELECT 1 FROM #{q_layouts} l WHERE l.name = t.name AND l.uuid <> t.uuid)
+              THEN t.name
+            WHEN NOT EXISTS (
+              SELECT 1 FROM #{q_layouts} l
+              WHERE l.name = left(t.name, 246) || '_' || left(replace(t.uuid::text, '-', ''), 8)
+            )
+              THEN left(t.name, 246) || '_' || left(replace(t.uuid::text, '-', ''), 8)
+            ELSE left(t.name, 222) || '_' || replace(t.uuid::text, '-', '')
+          END,
+          COALESCE(t.display_name, '{}'::jsonb),
+          COALESCE(t.subject, '{}'::jsonb),
+          COALESCE(t.html_body, '{}'::jsonb),
+          COALESCE(t.text_body, '{}'::jsonb),
+          CASE WHEN t.is_system = false AND t.status = 'active' THEN 'active' ELSE 'archived' END,
+          COALESCE(t.metadata, '{}'::jsonb) || jsonb_build_object(
+            'migrated_from', 'phoenix_kit_email_templates',
+            'email_category', t.category,
+            'email_status', t.status,
+            'email_is_system', t.is_system
+          ),
+          u.uuid,
+          COALESCE(t.inserted_at, now()),
+          COALESCE(t.updated_at, now())
+        FROM #{email_templates} t
+        LEFT JOIN #{users} u ON u.uuid = t.created_by_user_uuid
+        WHERE t.is_system = false
+          OR EXISTS (SELECT 1 FROM #{q_broadcasts} b WHERE b.template_uuid = t.uuid)
+          OR t.uuid::text = default_uuid
+        ON CONFLICT (uuid) DO NOTHING;
+      END IF;
+
+      IF position('#{@import_mark}' in coalesce(table_comment, '')) = 0 THEN
+        EXECUTE format(
+          'COMMENT ON TABLE #{q_layouts} IS %L',
+          concat_ws(' ', nullif(table_comment, ''), '#{@import_mark}')
+        );
+      END IF;
+    END
+    $$
+    """
+  end
+
+  # Releases `template_uuid` from every foreign key that does not point at
+  # the layouts table — found by what it IS (this table, this column, any
+  # other target), never by name: core created it as
+  # `fk_newsletters_broadcasts_template`, a host that renamed its tables
+  # still carries `fk_mailing_broadcasts_template`.
+  defp release_template_reference(q_broadcasts, q_layouts) do
+    """
+    DO $$
+    DECLARE
+      r record;
+    BEGIN
+      FOR r IN
+        SELECT c.conname
+        FROM pg_constraint c
+        WHERE c.conrelid = '#{q_broadcasts}'::regclass
+          AND c.contype = 'f'
+          AND c.confrelid <> '#{q_layouts}'::regclass
+          AND c.conkey = ARRAY[(
+            SELECT attnum FROM pg_attribute
+            WHERE attrelid = '#{q_broadcasts}'::regclass AND attname = 'template_uuid'
+          )]::smallint[]
+      LOOP
+        EXECUTE format('ALTER TABLE #{q_broadcasts} DROP CONSTRAINT %I', r.conname);
+      END LOOP;
+    END
+    $$
+    """
+  end
+
+  # A `template_uuid` with no layout behind it — after the copy above, only
+  # a uuid that exists nowhere (a row deleted on a host without the old FK)
+  # — is cleared, and each one is reported as a NOTICE in the migration log
+  # with the uuid it held. There is nothing left to point a foreign key at,
+  # and the worker would render such a broadcast with the standard layout
+  # anyway.
+  defp clear_unknown_templates(q_broadcasts, q_layouts) do
+    """
+    DO $$
+    DECLARE
+      r record;
+    BEGIN
+      FOR r IN
+        SELECT b.uuid AS broadcast_uuid, b.template_uuid
+        FROM #{q_broadcasts} b
+        WHERE b.template_uuid IS NOT NULL
+          AND NOT EXISTS (SELECT 1 FROM #{q_layouts} l WHERE l.uuid = b.template_uuid)
+      LOOP
+        RAISE NOTICE 'phoenix_kit_newsletters V2: broadcast % pointed at template %, which is not a newsletters layout; template_uuid cleared',
+          r.broadcast_uuid, r.template_uuid;
+      END LOOP;
+
+      UPDATE #{q_broadcasts} b
+      SET template_uuid = NULL
+      WHERE b.template_uuid IS NOT NULL
+        AND NOT EXISTS (SELECT 1 FROM #{q_layouts} l WHERE l.uuid = b.template_uuid);
+    END
+    $$
+    """
   end
 
   # Semantic: "does this table already have ANY primary key", not "does a

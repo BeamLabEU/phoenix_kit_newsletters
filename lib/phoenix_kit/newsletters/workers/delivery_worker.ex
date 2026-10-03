@@ -33,9 +33,6 @@ defmodule PhoenixKit.Newsletters.Workers.DeliveryWorker do
 
   import Ecto.Query
 
-  # Optional soft dependency — use module atom to avoid compile-time warnings
-  @email_template_mod PhoenixKit.Modules.Emails.Template
-
   alias PhoenixKit.Email.ProviderOptions
   alias PhoenixKit.Email.SendProfile
   alias PhoenixKit.Email.SendProfiles
@@ -46,7 +43,10 @@ defmodule PhoenixKit.Newsletters.Workers.DeliveryWorker do
   alias PhoenixKit.Newsletters.Broadcast
   alias PhoenixKit.Newsletters.CRMSource
   alias PhoenixKit.Newsletters.Delivery
+  alias PhoenixKit.Newsletters.Layout
   alias PhoenixKit.Newsletters.PreferenceToken
+  alias PhoenixKit.Newsletters.RecipientLanguage
+  alias PhoenixKit.Newsletters.Render
   alias PhoenixKit.Utils.Date, as: UtilsDate
   alias PhoenixKit.Utils.Routes
 
@@ -70,7 +70,7 @@ defmodule PhoenixKit.Newsletters.Workers.DeliveryWorker do
          {:ok, recipient} <- get_recipient(delivery),
          {unsubscribe_url, list_unsubscribe_url} = build_unsubscribe_url(recipient, broadcast),
          preferences_url = build_preferences_url(recipient, broadcast),
-         {:ok, html_body, text_body} <-
+         {:ok, subject, html_body, text_body} <-
            render_email(broadcast, recipient, unsubscribe_url, preferences_url),
          # Resolved as late as possible — right before the email is actually
          # built and sent, not earlier in the chain — so a job that fails an
@@ -81,7 +81,7 @@ defmodule PhoenixKit.Newsletters.Workers.DeliveryWorker do
          {:ok, _still_sendable} <- recheck_broadcast_sendable(broadcast_uuid),
          {:ok, result} <-
            send_email(
-             broadcast,
+             %{broadcast | subject: subject},
              recipient,
              html_body,
              text_body,
@@ -274,31 +274,34 @@ defmodule PhoenixKit.Newsletters.Workers.DeliveryWorker do
 
   defp get_recipient(%Delivery{}), do: {:error, :no_recipient}
 
+  # Everything in the reader's language: the layout's translation, its
+  # subject pattern and core's chrome (see Render's moduledoc). The text
+  # part is never wrapped.
   defp render_email(broadcast, recipient, unsubscribe_url, preferences_url) do
     variables = build_variables(recipient, unsubscribe_url, preferences_url)
+    locale = RecipientLanguage.for_recipient(recipient, broadcast)
+    layout = load_layout(broadcast)
 
-    html = compose_html(broadcast.html_body || "", template_html(broadcast), variables)
-    text = substitute_variables(broadcast.text_body || "", variables)
+    subject = Render.subject(broadcast.subject, layout, locale, variables)
 
-    {:ok, html, text}
+    html =
+      compose_html(broadcast.html_body || "", layout, variables, locale: locale, subject: subject)
+
+    text = Render.text(broadcast.text_body, variables)
+
+    {:ok, subject, html, text}
   end
 
   @doc false
-  # Template first, variables second — the {{content}} wrapper template
-  # carries its own variables (an {{unsubscribe_url}} footer link being
-  # the load-bearing one), and substituting before wrapping left every
-  # template-side tag as a literal in the sent email. The body's own tags
-  # still resolve identically: they're part of the wrapped whole. Pure and
-  # public (@doc false) so the ordering is unit-testable without the
-  # optional Emails.Template dependency being loadable in this package's
-  # own test env — same rationale as `extract_message_id/1` below.
-  def compose_html(body_html, nil, variables), do: substitute_variables(body_html, variables)
-
-  def compose_html(body_html, wrapper_html, variables) when is_binary(wrapper_html) do
-    wrapper_html
-    |> String.replace("{{content}}", body_html)
-    |> substitute_variables(variables)
-  end
+  # Layout first, variables second — the layout carries its own variables
+  # (an {{unsubscribe_url}} footer link being the load-bearing one), and
+  # substituting before wrapping left every layout-side tag as a literal in
+  # the sent email. The body's own tags still resolve identically: they're
+  # part of the wrapped whole. `layout` is a Layout, a layout's HTML, or nil
+  # (core's standard layout). Public (@doc false) so the ordering is
+  # unit-testable — same rationale as `extract_message_id/1` below.
+  def compose_html(body_html, layout, variables, opts \\ []),
+    do: Render.html(body_html, layout, variables, opts)
 
   defp build_variables(recipient, unsubscribe_url, preferences_url) do
     %{
@@ -400,37 +403,11 @@ defmodule PhoenixKit.Newsletters.Workers.DeliveryWorker do
 
   defp preferences_page_url(token), do: Routes.url("/newsletters/preferences?token=#{token}")
 
-  # Single pass over the whole string, replacing each {{key}} from the
-  # map in place. The old per-key Enum.reduce re-scanned the entire
-  # string after every replacement, so a VALUE containing a literal
-  # "{{other_key}}" (a mischievous username, say) got substituted by a
-  # later pass — with the operator-authored wrapper template now sharing
-  # this pass (compose_html/3), that re-substitution class is closed
-  # structurally. An unknown {{tag}} stays literal, as before.
-  defp substitute_variables(content, variables) do
-    Regex.replace(~r/\{\{(\w+)\}\}/, content, fn whole, key ->
-      case Map.fetch(variables, key) do
-        {:ok, value} -> to_string(value)
-        :error -> whole
-      end
-    end)
-  end
-
-  # The broadcast's wrapper template html, or nil when there is no
-  # template, the row is gone, or the optional Emails.Template dependency
-  # isn't loaded. Fetch only — wrapping happens in compose_html/3.
-  defp template_html(%{template_uuid: nil}), do: nil
-
-  defp template_html(%{template_uuid: template_uuid}) do
-    if Code.ensure_loaded?(PhoenixKit.Modules.Emails.Template) do
-      case repo().get(@email_template_mod, template_uuid) do
-        nil -> nil
-        tmpl -> soft_call(@email_template_mod, :get_translation, [tmpl.html_body, "en"])
-      end
-    else
-      nil
-    end
-  end
+  # The broadcast's layout, or nil when it has none or the row is gone.
+  # Status is not checked: archiving a layout takes it out of the editor's
+  # picker, it does not change how a broadcast already using it looks.
+  defp load_layout(%{template_uuid: nil}), do: nil
+  defp load_layout(%{template_uuid: uuid}), do: repo().get(Layout, uuid)
 
   @doc false
   # What `{:ok, result}` looks like depends on the Swoosh adapter behind
@@ -887,8 +864,4 @@ defmodule PhoenixKit.Newsletters.Workers.DeliveryWorker do
   end
 
   defp repo, do: PhoenixKit.RepoHelper.repo()
-
-  # Intentional apply/3 — calls optional soft-dependency modules to avoid compile-time warnings
-  # credo:disable-for-next-line Credo.Check.Refactor.Apply
-  defp soft_call(mod, fun, args), do: apply(mod, fun, args)
 end

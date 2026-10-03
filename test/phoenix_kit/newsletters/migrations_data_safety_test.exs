@@ -61,11 +61,11 @@ defmodule PhoenixKitNewsletters.MigrationsDataSafetyTest do
     def down, do: :ok
   end
 
-  defmodule RunUpToOne do
+  defmodule RunUpToCurrent do
     @moduledoc false
     use Ecto.Migration
 
-    def up, do: Migrations.up(prefix: "public", version: 1)
+    def up, do: Migrations.up(prefix: "public", version: Migrations.current_version())
     def down, do: :ok
   end
 
@@ -131,7 +131,7 @@ defmodule PhoenixKitNewsletters.MigrationsDataSafetyTest do
            "the map shape lost :version and rolled the chain further back than asked"
   end
 
-  test "a real up(version: 1) run is idempotent and leaves seeded rows untouched",
+  test "a real up/1 run to the current version is idempotent and leaves seeded rows untouched",
        %{broadcast: broadcast, delivery: delivery} do
     # up/1 re-reads the installed version, calls ensure_extension!/1 (twice
     # — pgcrypto and citext) and ensure_uuid_v7_function/1, then runs the
@@ -146,15 +146,15 @@ defmodule PhoenixKitNewsletters.MigrationsDataSafetyTest do
 
     Repo.query!("COMMENT ON TABLE phoenix_kit_newsletters_broadcasts IS NULL")
 
-    run_migration(RunUpToOne)
+    run_migration(RunUpToCurrent)
 
-    assert Migrations.migrated_version_runtime(prefix: "public") == 1
+    assert Migrations.migrated_version_runtime(prefix: "public") == Migrations.current_version()
 
     assert count("phoenix_kit_newsletters_broadcasts") == broadcast_count,
-           "a real up(version: 1) run changed the row count in phoenix_kit_newsletters_broadcasts"
+           "a real up/1 run changed the row count in phoenix_kit_newsletters_broadcasts"
 
     assert count("phoenix_kit_newsletters_deliveries") == delivery_count,
-           "a real up(version: 1) run changed the row count in phoenix_kit_newsletters_deliveries"
+           "a real up/1 run changed the row count in phoenix_kit_newsletters_deliveries"
 
     assert Repo.get!(Broadcast, broadcast.uuid).subject == broadcast.subject
     assert Repo.get!(Delivery, delivery.uuid).recipient_email == delivery.recipient_email
@@ -163,8 +163,8 @@ defmodule PhoenixKitNewsletters.MigrationsDataSafetyTest do
     # CREATE-IF-NOT-EXISTS/DO-guarded against objects that already exist
     # (core's baseline created them), so running up/1 again must be a no-op,
     # not an error.
-    run_migration(RunUpToOne)
-    assert Migrations.migrated_version_runtime(prefix: "public") == 1
+    run_migration(RunUpToCurrent)
+    assert Migrations.migrated_version_runtime(prefix: "public") == Migrations.current_version()
   end
 
   test "the survival check has teeth: a destructive rollback fails it", %{broadcast: broadcast} do

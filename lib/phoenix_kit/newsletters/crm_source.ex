@@ -279,6 +279,28 @@ defmodule PhoenixKit.Newsletters.CRMSource do
   end
 
   @doc """
+  The language a CRM recipient reads in: the contact's own `locale`, else
+  the list's `locale`, else `nil` (no preference — the caller falls back to
+  the site's). Looked up by the same list membership
+  `get_member_by_email/2` resolves.
+  """
+  @spec recipient_locale(String.t() | nil, String.t()) :: String.t() | nil
+  def recipient_locale(crm_list_uuid, email) do
+    with true <- available?(),
+         %{} = list <- get_list(crm_list_uuid) do
+      member = soft_call(@lists_mod, :get_member_by_email, [list, email])
+      contact = if is_map(member), do: Map.get(member, :contact)
+
+      present_locale(contact) || present_locale(list)
+    else
+      _ -> nil
+    end
+  end
+
+  defp present_locale(%{locale: locale}) when is_binary(locale) and locale != "", do: locale
+  defp present_locale(_record), do: nil
+
+  @doc """
   Unsubscribes a contact from one CRM list (soft: membership status →
   `"removed"`). Idempotent — a contact already removed from the list
   stays `{:ok, member}`; only a contact who was NEVER a member of this

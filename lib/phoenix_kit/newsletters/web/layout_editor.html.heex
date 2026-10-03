@@ -1,0 +1,140 @@
+<PhoenixKitWeb.Components.LayoutWrapper.app_layout
+  flash={@flash}
+  phoenix_kit_current_scope={assigns[:phoenix_kit_current_scope]}
+  page_title={@page_title}
+  page_subtitle={@page_subtitle}
+  page_section={@page_section}
+  page_section_path={@page_section_path}
+  current_path={@url_path}
+  project_title={@project_title}
+>
+<div class="container flex-col mx-auto px-4 py-6">
+  <form id="layout-form" phx-change="validate" phx-submit="save">
+    <div :if={@errors != []} class="alert alert-error mb-4">
+      <.icon name="hero-exclamation-triangle" class="w-5 h-5" />
+      <ul class="text-sm">
+        <li :for={error <- @errors}>{error}</li>
+      </ul>
+    </div>
+
+    <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+      <div class="space-y-4">
+        <fieldset class="fieldset">
+          <label class="label" for="layout-name">{gettext("Name")}</label>
+          <input
+            id="layout-name"
+            type="text"
+            name="name"
+            value={@name}
+            class="input w-full font-mono"
+            placeholder="monthly_layout"
+            phx-debounce="300"
+          />
+          <p class="label text-xs">
+            {gettext("Lowercase letters, numbers and underscores; starts with a letter.")}
+          </p>
+        </fieldset>
+
+        <div role="tablist" class="tabs tabs-border flex-wrap">
+          <button
+            :for={language <- @languages}
+            type="button"
+            role="tab"
+            class={["tab", language == @editor_locale && "tab-active"]}
+            phx-click="switch_language"
+            phx-value-language={language}
+          >
+            {language}
+            <span
+              :if={Map.get(@translations["html_body"], language) not in [nil, ""]}
+              class="badge badge-xs badge-success ml-1"
+            >
+            </span>
+          </button>
+        </div>
+
+        <%!-- Keyed by language so switching tabs replaces the inputs
+             instead of morphing one language's text into another's. --%>
+        <div id={"layout-fields-#{@editor_locale}"} class="space-y-4">
+          <fieldset class="fieldset">
+            <label class="label">{gettext("Display name")}</label>
+            <input
+              type="text"
+              name="fields[display_name]"
+              value={Map.get(@translations["display_name"], @editor_locale, "")}
+              class="input w-full"
+              phx-debounce="300"
+            />
+          </fieldset>
+
+          <fieldset class="fieldset">
+            <label class="label">{gettext("Subject pattern (optional)")}</label>
+            <input
+              type="text"
+              name="fields[subject]"
+              value={Map.get(@translations["subject"], @editor_locale, "")}
+              class="input w-full"
+              placeholder="{{subject}}"
+              phx-debounce="300"
+            />
+            <p class="label text-xs">
+              {gettext(
+                "Must contain {{subject}}, the broadcast's own subject. Leave blank to send the broadcast's subject unchanged."
+              )}
+            </p>
+          </fieldset>
+
+          <fieldset class="fieldset">
+            <label class="label">{gettext("HTML")}</label>
+            <textarea
+              name="fields[html_body]"
+              class="textarea w-full font-mono text-xs"
+              rows="18"
+              phx-debounce="500"
+            >{Map.get(@translations["html_body"], @editor_locale, "")}</textarea>
+            <p class="label text-xs whitespace-normal">
+              {gettext(
+                "{{{content}}} is the broadcast. Also available: {{{header}}}, {{{footer}}}, {{logo_url}}, {{accent_color}}, {{site_name}}, {{site_url}}, {{subject}}, {{name}}, {{email}}, {{unsubscribe_url}}, {{preferences_url}}."
+              )}
+            </p>
+          </fieldset>
+
+          <fieldset class="fieldset">
+            <label class="label">{gettext("Text (kept for reference)")}</label>
+            <textarea
+              name="fields[text_body]"
+              class="textarea w-full font-mono text-xs"
+              rows="5"
+              phx-debounce="500"
+            >{Map.get(@translations["text_body"], @editor_locale, "")}</textarea>
+          </fieldset>
+        </div>
+
+        <div class="flex gap-2">
+          <button type="submit" class="btn btn-primary">{gettext("Save layout")}</button>
+          <.pk_link navigate={Paths.layouts_index()} class="btn btn-ghost">
+            {gettext("Cancel")}
+          </.pk_link>
+        </div>
+      </div>
+
+      <div>
+        <label class="label">{gettext("Preview")} · {@editor_locale}</label>
+        <div
+          class="border border-base-300 rounded-lg overflow-hidden bg-white"
+          style="height: 640px;"
+        >
+          <%= if @preview_html != "" do %>
+            <iframe srcdoc={@preview_html} class="w-full h-full border-0" sandbox="allow-same-origin">
+            </iframe>
+          <% else %>
+            <div class="flex items-center justify-center h-full text-base-content/40">
+              <p class="text-sm">{gettext("No HTML in this language yet")}</p>
+            </div>
+          <% end %>
+        </div>
+      </div>
+    </div>
+  </form>
+</div>
+</PhoenixKitWeb.Components.LayoutWrapper.app_layout>

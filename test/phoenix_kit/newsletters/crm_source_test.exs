@@ -374,6 +374,36 @@ defmodule PhoenixKit.Newsletters.CRMSourceTest do
     end
   end
 
+  describe "recipient_locale/2 — contact first, then the list" do
+    test "the contact's own locale wins over the list's" do
+      {:ok, list} =
+        Lists.create_list(%{name: "fr list #{System.unique_integer([:positive])}", locale: "fr"})
+
+      contact = add_contact(%{locale: "de"})
+      add_member(list, contact)
+
+      assert CRMSource.recipient_locale(list.uuid, contact.email) == "de"
+    end
+
+    test "without one, the list's locale" do
+      {:ok, list} =
+        Lists.create_list(%{name: "fr list #{System.unique_integer([:positive])}", locale: "fr"})
+
+      contact = add_contact()
+      add_member(list, contact)
+
+      assert CRMSource.recipient_locale(list.uuid, contact.email) == "fr"
+    end
+
+    test "neither: nil (the caller falls back to the site's language)", %{list: list} do
+      contact = add_contact()
+      add_member(list, contact)
+
+      assert CRMSource.recipient_locale(list.uuid, contact.email) == nil
+      assert CRMSource.recipient_locale(Ecto.UUID.generate(), contact.email) == nil
+    end
+  end
+
   describe "list_lists/0 — picker offers only subscribable lists" do
     test "a subscribable list appears, a non-subscribable one does not" do
       {:ok, sub} =
