@@ -46,3 +46,13 @@ config :phoenix_kit, PhoenixKit.Mailer, adapter: Swoosh.Adapters.Test
 # running process, so point :endpoint at one instead of a module.
 config :phoenix_kit,
   endpoint: "test_endpoint_secret_key_base_at_least_64_bytes_long_for_newsletters_tests"
+
+# A real (never listening) endpoint for the dead-render tests: they drive
+# requests through Phoenix.Router and Phoenix.LiveView.Controller, the path
+# that assembles a LiveView's socket assigns into Phoenix.Controller.render.
+config :phoenix_kit_newsletters, PhoenixKitNewsletters.Test.DeadRenderEndpoint,
+  server: false,
+  render_errors: [formats: [html: PhoenixKitNewsletters.Test.DeadRenderErrorHTML], layout: false],
+  secret_key_base:
+    "test_secret_key_base_at_least_64_bytes_long_for_phoenix_kit_newsletters_dead_render",
+  live_view: [signing_salt: "newsletters_test_live_view"]

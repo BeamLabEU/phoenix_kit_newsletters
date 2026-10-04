@@ -25,6 +25,9 @@ repo_available =
     # phoenix_kit's own test_helper.exs, which starts this for the same
     # reason.
     {:ok, _pid} = PhoenixKit.PubSub.Manager.start_link([])
+
+    # Endpoint behind the dead-render tests (test/support/dead_render_endpoint.ex).
+    {:ok, _pid} = PhoenixKitNewsletters.Test.DeadRenderEndpoint.start_link()
     true
   rescue
     e ->
