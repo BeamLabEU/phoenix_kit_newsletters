@@ -20,6 +20,7 @@ defmodule PhoenixKit.Newsletters.Workers.DeliveryWorkerTest do
 
   import Swoosh.TestAssertions
 
+  alias PhoenixKit.Email.Branding
   alias PhoenixKit.Email.SendProfiles
   alias PhoenixKit.Integrations
   alias PhoenixKit.Modules.Storage
@@ -27,7 +28,9 @@ defmodule PhoenixKit.Newsletters.Workers.DeliveryWorkerTest do
   alias PhoenixKit.Newsletters
   alias PhoenixKit.Newsletters.Broadcast
   alias PhoenixKit.Newsletters.Delivery
+  alias PhoenixKit.Newsletters.Layouts
   alias PhoenixKit.Newsletters.Workers.DeliveryWorker
+  alias PhoenixKit.Settings
   alias PhoenixKit.Users.Auth.User
   alias PhoenixKitCRM.Contacts, as: CRMContacts
   alias PhoenixKitCRM.Lists, as: CRMLists
@@ -457,8 +460,8 @@ defmodule PhoenixKit.Newsletters.Workers.DeliveryWorkerTest do
     end
   end
 
-  describe "compose_html/3 — {{content}} wrapper ordering" do
-    test "body lands inside the wrapper and template-side variables resolve" do
+  describe "compose_html/4 — layout ordering and escaping" do
+    test "body lands inside the layout and layout-side variables resolve" do
       wrapper =
         ~s(<div class="wrap">{{content}}<footer><a href="{{unsubscribe_url}}">Unsubscribe</a></footer></div>)
 
@@ -467,7 +470,7 @@ defmodule PhoenixKit.Newsletters.Workers.DeliveryWorkerTest do
       html = DeliveryWorker.compose_html("<p>Hello {{name}}</p>", wrapper, vars)
 
       # The regression this pins: substitution used to run BEFORE the
-      # wrap, leaving every template-side tag a literal in the sent mail.
+      # wrap, leaving every layout-side tag a literal in the sent mail.
       assert html =~ ~s(<div class="wrap"><p>Hello Ada</p>)
       assert html =~ ~s(href="https://x/unsub?t=1")
       refute html =~ "{{content}}"
@@ -475,21 +478,48 @@ defmodule PhoenixKit.Newsletters.Workers.DeliveryWorkerTest do
       refute html =~ "{{name}}"
     end
 
+    test "{{{content}}} places the body too" do
+      html = DeliveryWorker.compose_html("<p>Body</p>", "<main>{{{content}}}</main>", %{})
+      assert html == "<main><p>Body</p></main>"
+    end
+
     test "a variable VALUE containing another {{tag}} is not re-substituted" do
       vars = %{"name" => "{{unsubscribe_url}}", "unsubscribe_url" => "https://x/u"}
 
-      html = DeliveryWorker.compose_html("<p>{{name}}</p>", nil, vars)
+      html = DeliveryWorker.compose_html("<p>{{name}}</p>", "{{content}}", vars)
 
       # Single-pass substitution: the mischievous value lands verbatim.
       assert html == "<p>{{unsubscribe_url}}</p>"
     end
 
-    test "an unknown {{tag}} stays literal" do
-      assert DeliveryWorker.compose_html("Hi {{nope}}", nil, %{"name" => "Ada"}) == "Hi {{nope}}"
+    test "{{variable}} values are HTML-escaped, {{{variable}}} are not" do
+      vars = %{"name" => "<b>Ada & Co</b>"}
+
+      assert DeliveryWorker.compose_html("<p>{{name}}</p>", "{{{content}}}", vars) ==
+               "<p>&lt;b&gt;Ada &amp; Co&lt;/b&gt;</p>"
+
+      assert DeliveryWorker.compose_html("<p>{{{name}}}</p>", "{{{content}}}", vars) ==
+               "<p><b>Ada & Co</b></p>"
     end
 
-    test "no wrapper (nil) — body variables still resolve" do
-      assert DeliveryWorker.compose_html("Hi {{name}}", nil, %{"name" => "Ada"}) == "Hi Ada"
+    test "an unknown {{tag}} stays literal" do
+      assert DeliveryWorker.compose_html("Hi {{nope}}", "{{content}}", %{"name" => "Ada"}) ==
+               "Hi {{nope}}"
+    end
+
+    test "no layout (nil) — the body goes into core's standard layout, variables resolved" do
+      html = DeliveryWorker.compose_html("<p>Hi {{name}}</p>", nil, %{"name" => "Ada"})
+
+      assert html =~ "<!DOCTYPE html>"
+      assert html =~ "<p>Hi Ada</p>"
+      refute html =~ "{{"
+    end
+
+    test "a layout that does not place the body is not used — the body is never dropped" do
+      html = DeliveryWorker.compose_html("<p>Body</p>", "<p>No placeholder here</p>", %{})
+
+      assert html =~ "<p>Body</p>"
+      refute html =~ "No placeholder here"
     end
   end
 
@@ -1140,6 +1170,146 @@ defmodule PhoenixKit.Newsletters.Workers.DeliveryWorkerTest do
       assert DeliveryWorker.extract_message_id(%{"MessageId" => "x"}) == nil
       assert DeliveryWorker.extract_message_id(:ok) == nil
       assert DeliveryWorker.extract_message_id(nil) == nil
+    end
+  end
+
+  describe "perform/1 — the layout in the reader's language, with core's chrome" do
+    @describetag :requires_v158
+    setup :set_swoosh_global
+
+    setup do
+      PhoenixKit.Settings.update_setting("from_name", "Acme")
+      PhoenixKit.Settings.update_setting("from_email", "news@example.com")
+
+      wrapper = fn tag ->
+        ~s(<html><body data-accent="{{accent_color}}" data-logo="{{logo_url}}">) <>
+          ~s(<header>{{{header}}}</header><p>#{tag}</p>{{{content}}}<footer>{{{footer}}}</footer>) <>
+          ~s(</body></html>)
+      end
+
+      {:ok, layout} =
+        Layouts.create_layout(%{
+          "name" => "welcome_layout",
+          "html_body" => %{"en" => wrapper.("ENGLISH"), "de" => wrapper.("DEUTSCH")},
+          "subject" => %{"de" => "[DE] {{subject}}"}
+        })
+
+      {:ok, layout: layout}
+    end
+
+    defp create_user_in(locale) do
+      {:ok, user} =
+        %User{}
+        |> User.guest_user_changeset(%{
+          email: "reader-#{System.unique_integer([:positive])}@example.com"
+        })
+        |> Ecto.Changeset.put_change(:custom_fields, %{"preferred_locale" => locale})
+        |> Repo.insert()
+
+      user
+    end
+
+    defp send_to(broadcast, delivery) do
+      job = %Oban.Job{
+        args: %{"delivery_uuid" => delivery.uuid, "broadcast_uuid" => broadcast.uuid}
+      }
+
+      assert :ok = DeliveryWorker.perform(job)
+    end
+
+    test "a reader in de gets the German layout and subject", %{layout: layout} do
+      user = create_user_in("de-AT")
+      broadcast = create_broadcast(%{subject: "Hello", template_uuid: layout.uuid})
+      send_to(broadcast, create_delivery(broadcast, user))
+
+      assert_email_sent(fn email ->
+        assert email.subject == "[DE] Hello"
+        assert email.html_body =~ "DEUTSCH"
+        refute email.html_body =~ "ENGLISH"
+        assert email.html_body =~ "<p>Body</p>"
+      end)
+    end
+
+    test "a reader in a language the layout lacks falls back", %{layout: layout} do
+      user = create_user_in("pt-BR")
+      broadcast = create_broadcast(%{subject: "Hello", template_uuid: layout.uuid})
+      send_to(broadcast, create_delivery(broadcast, user))
+
+      assert_email_sent(fn email ->
+        # No pt: the site's content language (en in this suite).
+        assert email.subject == "Hello"
+        assert email.html_body =~ "ENGLISH"
+      end)
+    end
+
+    test "header, footer, logo and accent colour come from core", %{layout: layout} do
+      user = create_user_in("en")
+      broadcast = create_broadcast(%{subject: "Hello", template_uuid: layout.uuid})
+      send_to(broadcast, create_delivery(broadcast, user))
+
+      site = Settings.get_project_title()
+      branding = Branding.variables()
+
+      assert_email_sent(fn email ->
+        refute email.html_body =~ "{{"
+        assert email.html_body =~ ~s(data-accent="#{branding["accent_color"]}")
+        assert email.html_body =~ ~s(data-logo="#{branding["logo_url"]}")
+
+        assert email.html_body =~
+                 "<header>#{Phoenix.HTML.html_escape(site) |> Phoenix.HTML.safe_to_string()}"
+
+        assert email.html_body =~ ~r{<footer>.+</footer>}s
+      end)
+    end
+
+    test "without a layout the broadcast goes out in core's standard layout" do
+      user = create_user_in("en")
+      broadcast = create_broadcast(%{subject: "Plain", html_body: "<p>Only body</p>"})
+      send_to(broadcast, create_delivery(broadcast, user))
+
+      assert_email_sent(fn email ->
+        assert email.html_body =~ "<!DOCTYPE html>"
+        assert email.html_body =~ "<title>Plain</title>"
+        assert email.html_body =~ "<p>Only body</p>"
+      end)
+    end
+
+    test "the text part is never wrapped", %{layout: layout} do
+      user = create_user_in("de")
+      broadcast = create_broadcast(%{template_uuid: layout.uuid, text_body: "Hi {{email}}"})
+      send_to(broadcast, create_delivery(broadcast, user))
+
+      assert_email_sent(fn email -> assert email.text_body == "Hi #{user.email}" end)
+    end
+
+    test "a CRM contact in de gets the German layout", %{layout: layout} do
+      {:ok, crm_list} =
+        CRMLists.create_list(%{name: "Locale list #{System.unique_integer([:positive])}"})
+
+      {:ok, contact} =
+        CRMContacts.create_contact(%{
+          name: "Leser",
+          email: "leser-#{System.unique_integer([:positive])}@example.com",
+          locale: "de"
+        })
+
+      {:ok, _member} = CRMLists.add_contact_to_list(contact, crm_list, source: "manual")
+
+      broadcast =
+        create_broadcast(%{
+          source_type: "crm_list",
+          crm_list_uuid: crm_list.uuid,
+          template_uuid: layout.uuid
+        })
+
+      {:ok, delivery} =
+        %Delivery{}
+        |> Delivery.changeset(%{broadcast_uuid: broadcast.uuid, recipient_email: contact.email})
+        |> Repo.insert()
+
+      send_to(broadcast, delivery)
+
+      assert_email_sent(fn email -> assert email.html_body =~ "DEUTSCH" end)
     end
   end
 end

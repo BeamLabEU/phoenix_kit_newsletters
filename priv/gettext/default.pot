@@ -12,9 +12,10 @@ msgid ""
 msgstr ""
 
 ## --- Sidebar tab labels (Tab.new! literals) ---
-#: lib/phoenix_kit/newsletters/web/broadcast_details.ex:42
-#: lib/phoenix_kit/newsletters/web/broadcast_editor.ex:44
+#: lib/phoenix_kit/newsletters/web/broadcast_details.ex:40
+#: lib/phoenix_kit/newsletters/web/broadcast_editor.ex:52
 #: lib/phoenix_kit/newsletters/web/broadcasts.ex:26
+#: lib/phoenix_kit/newsletters/web/layouts_index.ex:28
 #, elixir-autogen
 msgid "Newsletters"
 msgstr ""
@@ -23,14 +24,31 @@ msgstr ""
 msgid "Broadcasts"
 msgstr ""
 
-#: lib/phoenix_kit/newsletters/web/broadcast_editor.ex:39
-#: lib/phoenix_kit/newsletters/web/broadcasts.html.heex:72
+#: lib/phoenix_kit/newsletters/web/broadcast_editor.ex:47
+#: lib/phoenix_kit/newsletters/web/broadcasts.html.heex:28
+#: lib/phoenix_kit/newsletters/web/broadcasts.html.heex:70
 #, elixir-autogen
 msgid "New broadcast"
 msgstr ""
 
 #: lib/phoenix_kit/newsletters/newsletters.ex
 msgid "Edit broadcast"
+msgstr ""
+
+#: lib/phoenix_kit/newsletters/web/layout_editor.ex:33
+#: lib/phoenix_kit/newsletters/web/layouts_index.ex:26
+#, elixir-autogen
+msgid "Layouts"
+msgstr ""
+
+#: lib/phoenix_kit/newsletters/web/layout_editor.ex:31
+#: lib/phoenix_kit/newsletters/web/layouts_index.html.heex:31
+#, elixir-autogen
+msgid "New layout"
+msgstr ""
+
+#: lib/phoenix_kit/newsletters/newsletters.ex
+msgid "Edit layout"
 msgstr ""
 
 #: lib/phoenix_kit/newsletters/newsletters.ex
@@ -46,16 +64,19 @@ msgid "Edit send profile"
 msgstr ""
 
 ## --- Common admin UI ---
-#: lib/phoenix_kit/newsletters/web/broadcast_details.ex:63
-#: lib/phoenix_kit/newsletters/web/broadcast_editor.ex:80
+#: lib/phoenix_kit/newsletters/web/broadcast_details.ex:62
+#: lib/phoenix_kit/newsletters/web/broadcast_editor.ex:91
 #: lib/phoenix_kit/newsletters/web/broadcasts.ex:36
+#: lib/phoenix_kit/newsletters/web/layout_editor.ex:48
+#: lib/phoenix_kit/newsletters/web/layouts_index.ex:38
 #: lib/phoenix_kit/newsletters/web/preference_center_live.ex:42
 #, elixir-autogen
 msgid "Newsletters module is not enabled"
 msgstr ""
 
 #: lib/phoenix_kit/newsletters/web/broadcast_details.html.heex:19
-#: lib/phoenix_kit/newsletters/web/broadcast_editor.html.heex:234
+#: lib/phoenix_kit/newsletters/web/broadcast_editor.html.heex:237
+#: lib/phoenix_kit/newsletters/web/layout_editor.html.heex:116
 #, elixir-autogen
 msgid "Cancel"
 msgstr ""
@@ -66,7 +87,9 @@ msgid "Loading..."
 msgstr ""
 
 #: lib/phoenix_kit/newsletters/web/broadcast_details.html.heex:40
-#: lib/phoenix_kit/newsletters/web/broadcast_editor.ex:96
+#: lib/phoenix_kit/newsletters/web/broadcast_editor.ex:107
+#: lib/phoenix_kit/newsletters/web/layout_editor.ex:67
+#: lib/phoenix_kit/newsletters/web/layouts_index.html.heex:82
 #, elixir-autogen
 msgid "Edit"
 msgstr ""
@@ -78,90 +101,91 @@ msgstr ""
 
 #: lib/phoenix_kit/newsletters/web/broadcast_details.html.heex:79
 #: lib/phoenix_kit/newsletters/web/broadcast_details.html.heex:235
-#: lib/phoenix_kit/newsletters/web/broadcasts.html.heex:97
+#: lib/phoenix_kit/newsletters/web/broadcasts.html.heex:95
+#: lib/phoenix_kit/newsletters/web/layouts_index.html.heex:55
 #, elixir-autogen
 msgid "Status"
 msgstr ""
 
 ## --- Broadcast statuses / delivery statuses ---
-#: lib/phoenix_kit/newsletters/web/broadcast_details.ex:241
-#: lib/phoenix_kit/newsletters/web/broadcast_editor.ex:499
-#: lib/phoenix_kit/newsletters/web/broadcasts.ex:98
-#: lib/phoenix_kit/newsletters/web/broadcasts.html.heex:53
+#: lib/phoenix_kit/newsletters/web/broadcast_details.ex:240
+#: lib/phoenix_kit/newsletters/web/broadcast_editor.ex:548
+#: lib/phoenix_kit/newsletters/web/broadcasts.ex:93
+#: lib/phoenix_kit/newsletters/web/broadcasts.ex:127
 #, elixir-autogen
 msgid "Draft"
 msgstr ""
 
-#: lib/phoenix_kit/newsletters/web/broadcast_details.ex:242
-#: lib/phoenix_kit/newsletters/web/broadcast_editor.ex:500
-#: lib/phoenix_kit/newsletters/web/broadcasts.ex:99
-#: lib/phoenix_kit/newsletters/web/broadcasts.html.heex:55
+#: lib/phoenix_kit/newsletters/web/broadcast_details.ex:241
+#: lib/phoenix_kit/newsletters/web/broadcast_editor.ex:549
+#: lib/phoenix_kit/newsletters/web/broadcasts.ex:95
+#: lib/phoenix_kit/newsletters/web/broadcasts.ex:128
 #, elixir-autogen
 msgid "Scheduled"
 msgstr ""
 
-#: lib/phoenix_kit/newsletters/web/broadcast_details.ex:243
-#: lib/phoenix_kit/newsletters/web/broadcast_editor.ex:501
-#: lib/phoenix_kit/newsletters/web/broadcasts.ex:100
-#: lib/phoenix_kit/newsletters/web/broadcasts.html.heex:58
+#: lib/phoenix_kit/newsletters/web/broadcast_details.ex:242
+#: lib/phoenix_kit/newsletters/web/broadcast_editor.ex:550
+#: lib/phoenix_kit/newsletters/web/broadcasts.ex:98
+#: lib/phoenix_kit/newsletters/web/broadcasts.ex:129
 #, elixir-autogen
 msgid "Sending"
 msgstr ""
 
-#: lib/phoenix_kit/newsletters/web/broadcast_details.ex:244
-#: lib/phoenix_kit/newsletters/web/broadcast_details.ex:252
+#: lib/phoenix_kit/newsletters/web/broadcast_details.ex:243
+#: lib/phoenix_kit/newsletters/web/broadcast_details.ex:251
 #: lib/phoenix_kit/newsletters/web/broadcast_details.html.heex:187
-#: lib/phoenix_kit/newsletters/web/broadcast_editor.ex:502
-#: lib/phoenix_kit/newsletters/web/broadcasts.ex:101
-#: lib/phoenix_kit/newsletters/web/broadcasts.html.heex:36
-#: lib/phoenix_kit/newsletters/web/broadcasts.html.heex:60
-#: lib/phoenix_kit/newsletters/web/broadcasts.html.heex:98
+#: lib/phoenix_kit/newsletters/web/broadcast_editor.ex:551
+#: lib/phoenix_kit/newsletters/web/broadcasts.ex:100
+#: lib/phoenix_kit/newsletters/web/broadcasts.ex:130
+#: lib/phoenix_kit/newsletters/web/broadcasts.html.heex:52
+#: lib/phoenix_kit/newsletters/web/broadcasts.html.heex:96
 #, elixir-autogen
 msgid "Sent"
 msgstr ""
 
-#: lib/phoenix_kit/newsletters/web/broadcast_details.ex:245
-#: lib/phoenix_kit/newsletters/web/broadcast_editor.ex:503
+#: lib/phoenix_kit/newsletters/web/broadcast_details.ex:244
+#: lib/phoenix_kit/newsletters/web/broadcast_editor.ex:552
 #: lib/phoenix_kit/newsletters/web/broadcasts.ex:102
-#: lib/phoenix_kit/newsletters/web/broadcasts.html.heex:62
+#: lib/phoenix_kit/newsletters/web/broadcasts.ex:131
 #, elixir-autogen
 msgid "Cancelled"
 msgstr ""
 
-#: lib/phoenix_kit/newsletters/web/broadcast_details.ex:251
+#: lib/phoenix_kit/newsletters/web/broadcast_details.ex:250
 #, elixir-autogen
 msgid "Pending"
 msgstr ""
 
-#: lib/phoenix_kit/newsletters/web/broadcast_details.ex:253
+#: lib/phoenix_kit/newsletters/web/broadcast_details.ex:252
 #: lib/phoenix_kit/newsletters/web/broadcast_details.html.heex:191
-#: lib/phoenix_kit/newsletters/web/broadcasts.html.heex:37
-#: lib/phoenix_kit/newsletters/web/broadcasts.html.heex:100
+#: lib/phoenix_kit/newsletters/web/broadcasts.html.heex:53
+#: lib/phoenix_kit/newsletters/web/broadcasts.html.heex:98
 #, elixir-autogen
 msgid "Delivered"
 msgstr ""
 
-#: lib/phoenix_kit/newsletters/web/broadcast_details.ex:254
+#: lib/phoenix_kit/newsletters/web/broadcast_details.ex:253
 #: lib/phoenix_kit/newsletters/web/broadcast_details.html.heex:197
-#: lib/phoenix_kit/newsletters/web/broadcasts.html.heex:38
-#: lib/phoenix_kit/newsletters/web/broadcasts.html.heex:102
+#: lib/phoenix_kit/newsletters/web/broadcasts.html.heex:54
+#: lib/phoenix_kit/newsletters/web/broadcasts.html.heex:100
 #, elixir-autogen
 msgid "Opened"
 msgstr ""
 
-#: lib/phoenix_kit/newsletters/web/broadcast_details.ex:255
+#: lib/phoenix_kit/newsletters/web/broadcast_details.ex:254
 #: lib/phoenix_kit/newsletters/web/broadcast_details.html.heex:203
-#: lib/phoenix_kit/newsletters/web/broadcasts.html.heex:39
-#: lib/phoenix_kit/newsletters/web/broadcasts.html.heex:103
+#: lib/phoenix_kit/newsletters/web/broadcasts.html.heex:55
+#: lib/phoenix_kit/newsletters/web/broadcasts.html.heex:101
 #, elixir-autogen
 msgid "Bounced"
 msgstr ""
 
-#: lib/phoenix_kit/newsletters/web/broadcast_details.ex:246
-#: lib/phoenix_kit/newsletters/web/broadcast_details.ex:256
+#: lib/phoenix_kit/newsletters/web/broadcast_details.ex:245
+#: lib/phoenix_kit/newsletters/web/broadcast_details.ex:255
 #: lib/phoenix_kit/newsletters/web/broadcast_details.html.heex:209
-#: lib/phoenix_kit/newsletters/web/broadcasts.ex:103
-#: lib/phoenix_kit/newsletters/web/broadcasts.html.heex:65
+#: lib/phoenix_kit/newsletters/web/broadcasts.ex:105
+#: lib/phoenix_kit/newsletters/web/broadcasts.ex:132
 #, elixir-autogen
 msgid "Failed"
 msgstr ""
@@ -172,7 +196,8 @@ msgstr ""
 msgid "Create and manage email broadcasts"
 msgstr ""
 
-#: lib/phoenix_kit/newsletters/web/broadcasts.html.heex:52
+#: lib/phoenix_kit/newsletters/web/broadcasts.ex:92
+#: lib/phoenix_kit/newsletters/web/layouts_index.html.heex:21
 #, elixir-autogen
 msgid "All statuses"
 msgstr ""
@@ -188,7 +213,8 @@ msgid "Create your first broadcast to get started."
 msgstr ""
 
 #: lib/phoenix_kit/newsletters/web/broadcast_editor.html.heex:19
-#: lib/phoenix_kit/newsletters/web/broadcasts.html.heex:95
+#: lib/phoenix_kit/newsletters/web/broadcasts.html.heex:93
+#: lib/phoenix_kit/newsletters/web/layout_editor.ex:228
 #, elixir-autogen
 msgid "Subject"
 msgstr ""
@@ -196,22 +222,22 @@ msgstr ""
 #: lib/phoenix_kit/newsletters/web/broadcast_details.html.heex:118
 #: lib/phoenix_kit/newsletters/web/broadcast_details.html.heex:236
 #: lib/phoenix_kit/newsletters/web/broadcast_details.html.heex:288
-#: lib/phoenix_kit/newsletters/web/broadcasts.html.heex:44
-#: lib/phoenix_kit/newsletters/web/broadcasts.html.heex:105
+#: lib/phoenix_kit/newsletters/web/broadcasts.html.heex:60
+#: lib/phoenix_kit/newsletters/web/broadcasts.html.heex:103
 #, elixir-autogen
 msgid "Sent at"
 msgstr ""
 
 ## --- Broadcast editor page ---
-#: lib/phoenix_kit/newsletters/web/broadcast_details.ex:188
-#: lib/phoenix_kit/newsletters/web/broadcast_details.ex:214
-#: lib/phoenix_kit/newsletters/web/broadcast_editor.ex:126
+#: lib/phoenix_kit/newsletters/web/broadcast_details.ex:187
+#: lib/phoenix_kit/newsletters/web/broadcast_details.ex:213
+#: lib/phoenix_kit/newsletters/web/broadcast_editor.ex:143
 #, elixir-autogen
 msgid "Broadcast not found"
 msgstr ""
 
-#: lib/phoenix_kit/newsletters/web/broadcast_details.ex:171
-#: lib/phoenix_kit/newsletters/web/broadcast_editor.ex:202
+#: lib/phoenix_kit/newsletters/web/broadcast_details.ex:170
+#: lib/phoenix_kit/newsletters/web/broadcast_editor.ex:233
 #, elixir-autogen
 msgid "Broadcast is being sent"
 msgstr ""
@@ -231,27 +257,27 @@ msgstr ""
 msgid "Cannot send a broadcast with status %{status}."
 msgstr ""
 
-#: lib/phoenix_kit/newsletters/web/broadcast_editor.ex:211
+#: lib/phoenix_kit/newsletters/web/broadcast_editor.ex:242
 #, elixir-autogen
 msgid "Failed to save: %{reason}"
 msgstr ""
 
-#: lib/phoenix_kit/newsletters/web/broadcast_editor.ex:221
+#: lib/phoenix_kit/newsletters/web/broadcast_editor.ex:252
 #, elixir-autogen
 msgid "Please select a schedule date and time"
 msgstr ""
 
-#: lib/phoenix_kit/newsletters/web/broadcast_editor.ex:464
+#: lib/phoenix_kit/newsletters/web/broadcast_editor.ex:513
 #, elixir-autogen
 msgid "Broadcast saved as %{status}"
 msgstr ""
 
-#: lib/phoenix_kit/newsletters/web/broadcast_editor.ex:477
+#: lib/phoenix_kit/newsletters/web/broadcast_editor.ex:526
 #, elixir-autogen
 msgid "Validation failed: %{errors}"
 msgstr ""
 
-#: lib/phoenix_kit/newsletters/web/broadcast_editor.ex:42
+#: lib/phoenix_kit/newsletters/web/broadcast_editor.ex:50
 #, elixir-autogen
 msgid "Compose and send a broadcast email to your newsletter list"
 msgstr ""
@@ -266,80 +292,71 @@ msgstr ""
 msgid "Select a list..."
 msgstr ""
 
-#: lib/phoenix_kit/newsletters/web/broadcast_editor.html.heex:150
-#, elixir-autogen
-msgid "Email template"
-msgstr ""
-
-#: lib/phoenix_kit/newsletters/web/broadcast_editor.html.heex:153
-#, elixir-autogen
-msgid "No template (plain markdown)"
-msgstr ""
-
-#: lib/phoenix_kit/newsletters/web/broadcast_editor.html.heex:218
+#: lib/phoenix_kit/newsletters/web/broadcast_editor.html.heex:221
 #, elixir-autogen
 msgid "Content (Markdown)"
 msgstr ""
 
-#: lib/phoenix_kit/newsletters/web/broadcast_editor.html.heex:227
+#: lib/phoenix_kit/newsletters/web/broadcast_editor.html.heex:230
 #, elixir-autogen
 msgid "Write your broadcast content in Markdown..."
 msgstr ""
 
-#: lib/phoenix_kit/newsletters/web/broadcast_editor.html.heex:246
+#: lib/phoenix_kit/newsletters/web/broadcast_editor.html.heex:249
 #, elixir-autogen
 msgid "Save draft"
 msgstr ""
 
-#: lib/phoenix_kit/newsletters/web/broadcast_editor.html.heex:260
+#: lib/phoenix_kit/newsletters/web/broadcast_editor.html.heex:263
 #, elixir-autogen
 msgid "Send now"
 msgstr ""
 
-#: lib/phoenix_kit/newsletters/web/broadcast_editor.html.heex:281
+#: lib/phoenix_kit/newsletters/web/broadcast_editor.html.heex:284
 #, elixir-autogen
 msgid "Schedule"
 msgstr ""
 
-#: lib/phoenix_kit/newsletters/web/broadcast_editor.html.heex:296
+#: lib/phoenix_kit/newsletters/web/broadcast_editor.html.heex:300
+#: lib/phoenix_kit/newsletters/web/layout_editor.html.heex:122
 #, elixir-autogen
 msgid "Preview"
 msgstr ""
 
-#: lib/phoenix_kit/newsletters/web/broadcast_editor.html.heex:312
+#: lib/phoenix_kit/newsletters/web/broadcast_editor.html.heex:329
 #, elixir-autogen
 msgid "Preview will appear here as you type"
 msgstr ""
 
 ## --- Broadcast details page ---
-#: lib/phoenix_kit/newsletters/web/broadcast_details.ex:96
+#: lib/phoenix_kit/newsletters/web/broadcast_details.ex:95
 #: lib/phoenix_kit/newsletters/web/broadcast_details.html.heex:51
 #, elixir-autogen
 msgid "Cancel broadcast"
 msgstr ""
 
-#: lib/phoenix_kit/newsletters/web/broadcast_details.ex:99
+#: lib/phoenix_kit/newsletters/web/broadcast_details.ex:98
 #, elixir-autogen
 msgid "This will stop any remaining deliveries for this broadcast."
 msgstr ""
 
-#: lib/phoenix_kit/newsletters/web/broadcast_details.ex:109
+#: lib/phoenix_kit/newsletters/web/broadcast_details.ex:108
 #: lib/phoenix_kit/newsletters/web/broadcast_details.html.heex:62
 #, elixir-autogen
 msgid "Retry send"
 msgstr ""
 
-#: lib/phoenix_kit/newsletters/web/broadcast_details.ex:112
+#: lib/phoenix_kit/newsletters/web/broadcast_details.ex:111
 #, elixir-autogen
 msgid "This will retry sending the broadcast from the beginning."
 msgstr ""
 
-#: lib/phoenix_kit/newsletters/web/broadcast_details.ex:135
+#: lib/phoenix_kit/newsletters/web/broadcast_details.ex:134
 #, elixir-autogen
 msgid "Broadcast cancelled"
 msgstr ""
 
-#: lib/phoenix_kit/newsletters/web/broadcast_details.ex:138
+#: lib/phoenix_kit/newsletters/web/broadcast_details.ex:137
 #, elixir-autogen
 msgid "Failed to cancel broadcast"
 msgstr ""
@@ -387,7 +404,7 @@ msgstr ""
 msgid "Error"
 msgstr ""
 
-#: lib/phoenix_kit/newsletters/web/broadcast_details.ex:40
+#: lib/phoenix_kit/newsletters/web/broadcast_details.ex:38
 #, elixir-autogen, elixir-format
 msgid "Broadcast details"
 msgstr ""
@@ -397,7 +414,7 @@ msgstr ""
 msgid "Create first broadcast"
 msgstr ""
 
-#: lib/phoenix_kit/newsletters/web/broadcasts.html.heex:89
+#: lib/phoenix_kit/newsletters/web/broadcasts.html.heex:87
 #, elixir-autogen, elixir-format
 msgid "View"
 msgstr ""
@@ -415,7 +432,7 @@ msgstr[1] ""
 msgid "%{total} members: %{sendable} sendable, %{no_email} no email, %{unsendable} unsubscribed/opted-out"
 msgstr ""
 
-#: lib/phoenix_kit/newsletters/web/broadcast_details.ex:257
+#: lib/phoenix_kit/newsletters/web/broadcast_details.ex:256
 #: lib/phoenix_kit/newsletters/web/broadcast_details.html.heex:215
 #, elixir-autogen, elixir-format
 msgid "Blocked"
@@ -428,7 +445,7 @@ msgstr ""
 
 #: lib/phoenix_kit/newsletters/web/broadcast_editor.html.heex:56
 #: lib/phoenix_kit/newsletters/web/broadcast_editor.html.heex:62
-#: lib/phoenix_kit/newsletters/web/broadcasts.ex:111
+#: lib/phoenix_kit/newsletters/web/broadcasts.ex:140
 #, elixir-autogen, elixir-format
 msgid "CRM list"
 msgstr ""
@@ -470,7 +487,7 @@ msgstr ""
 msgid "Please log in to manage your email subscriptions"
 msgstr ""
 
-#: lib/phoenix_kit/newsletters/web/broadcast_editor.ex:230
+#: lib/phoenix_kit/newsletters/web/broadcast_editor.ex:261
 #, elixir-autogen, elixir-format
 msgid "Please select a valid schedule date and time"
 msgstr ""
@@ -485,7 +502,7 @@ msgstr ""
 msgid "Send to"
 msgstr ""
 
-#: lib/phoenix_kit/newsletters/web/broadcast_editor.ex:607
+#: lib/phoenix_kit/newsletters/web/broadcast_editor.ex:646
 #, elixir-autogen, elixir-format
 msgid "Sends at %{local} (%{tz}) · %{utc} UTC"
 msgstr ""
@@ -558,33 +575,33 @@ msgstr ""
 #: lib/phoenix_kit/newsletters/web/broadcast_details.html.heex:94
 #: lib/phoenix_kit/newsletters/web/broadcast_editor.html.heex:43
 #: lib/phoenix_kit/newsletters/web/broadcast_editor.html.heex:111
-#: lib/phoenix_kit/newsletters/web/broadcasts.ex:112
+#: lib/phoenix_kit/newsletters/web/broadcasts.ex:141
 #, elixir-autogen, elixir-format
 msgid "Roles"
 msgstr ""
 
 #: lib/phoenix_kit/newsletters/web/broadcast_details.html.heex:113
-#: lib/phoenix_kit/newsletters/web/broadcasts.html.heex:41
-#: lib/phoenix_kit/newsletters/web/broadcasts.html.heex:104
+#: lib/phoenix_kit/newsletters/web/broadcasts.html.heex:57
+#: lib/phoenix_kit/newsletters/web/broadcasts.html.heex:102
 #, elixir-autogen, elixir-format
 msgid "Scheduled at"
 msgstr ""
 
 #: lib/phoenix_kit/newsletters/web/broadcast_details.html.heex:75
 #: lib/phoenix_kit/newsletters/web/broadcast_details.html.heex:225
-#: lib/phoenix_kit/newsletters/web/broadcasts.html.heex:23
+#: lib/phoenix_kit/newsletters/web/broadcasts.html.heex:38
 #, elixir-autogen, elixir-format
 msgid "Times shown in %{tz}"
 msgstr ""
 
 #: lib/phoenix_kit/newsletters/web/broadcast_details.html.heex:85
-#: lib/phoenix_kit/newsletters/web/broadcasts.html.heex:35
-#: lib/phoenix_kit/newsletters/web/broadcasts.html.heex:96
+#: lib/phoenix_kit/newsletters/web/broadcasts.html.heex:51
+#: lib/phoenix_kit/newsletters/web/broadcasts.html.heex:94
 #, elixir-autogen, elixir-format
 msgid "Source"
 msgstr ""
 
-#: lib/phoenix_kit/newsletters/web/broadcasts.ex:115
+#: lib/phoenix_kit/newsletters/web/broadcasts.ex:144
 #, elixir-autogen, elixir-format
 msgid "Legacy list"
 msgstr ""
@@ -594,29 +611,328 @@ msgstr ""
 msgid "%{name} (no longer selectable)"
 msgstr ""
 
-#: lib/phoenix_kit/newsletters/web/broadcast_editor.html.heex:204
+#: lib/phoenix_kit/newsletters/web/broadcast_editor.html.heex:207
 #, elixir-autogen, elixir-format
 msgid "Add files"
 msgstr ""
 
 #: lib/phoenix_kit/newsletters/web/broadcast_details.html.heex:125
-#: lib/phoenix_kit/newsletters/web/broadcast_editor.html.heex:168
+#: lib/phoenix_kit/newsletters/web/broadcast_editor.html.heex:171
 #, elixir-autogen, elixir-format
 msgid "Attachments"
 msgstr ""
 
-#: lib/phoenix_kit/newsletters/web/broadcast_editor.html.heex:209
+#: lib/phoenix_kit/newsletters/web/broadcast_editor.html.heex:212
 #, elixir-autogen, elixir-format
 msgid "Attachments total %{size} — large attachments can slow delivery."
 msgstr ""
 
-#: lib/phoenix_kit/newsletters/web/broadcast_editor.html.heex:194
+#: lib/phoenix_kit/newsletters/web/broadcast_editor.html.heex:197
 #, elixir-autogen, elixir-format
 msgid "Remove attachment"
 msgstr ""
 
 #: lib/phoenix_kit/newsletters/web/broadcast_details.html.heex:145
-#: lib/phoenix_kit/newsletters/web/broadcast_editor.html.heex:187
+#: lib/phoenix_kit/newsletters/web/broadcast_editor.html.heex:190
 #, elixir-autogen, elixir-format
 msgid "missing file"
+msgstr ""
+
+#: lib/phoenix_kit/newsletters/web/broadcast_editor.ex:614
+#, elixir-autogen, elixir-format
+msgid "%{name} (archived)"
+msgstr ""
+
+#: lib/phoenix_kit/newsletters/newsletters.ex:184
+#, elixir-autogen, elixir-format
+msgid "A broadcast sent without a layout of its own, in the standard layout"
+msgstr ""
+
+#: lib/phoenix_kit/newsletters/web/layouts_index.html.heex:37
+#, elixir-autogen, elixir-format
+msgid "A broadcast without a layout is sent inside the site's standard email layout. A layout places the broadcast with {{{content}}} and can place the site's {{{header}}} and {{{footer}}}."
+msgstr ""
+
+#: lib/phoenix_kit/newsletters/web/layouts_index.ex:115
+#: lib/phoenix_kit/newsletters/web/layouts_index.html.heex:16
+#, elixir-autogen, elixir-format
+msgid "Active"
+msgstr ""
+
+#: lib/phoenix_kit/newsletters/web/layouts_index.html.heex:101
+#, elixir-autogen, elixir-format
+msgid "Archive"
+msgstr ""
+
+#: lib/phoenix_kit/newsletters/web/layouts_index.html.heex:99
+#, elixir-autogen, elixir-format
+msgid "Archive this layout? Broadcasts already using it keep it."
+msgstr ""
+
+#: lib/phoenix_kit/newsletters/web/layouts_index.ex:116
+#: lib/phoenix_kit/newsletters/web/layouts_index.html.heex:18
+#, elixir-autogen, elixir-format
+msgid "Archived"
+msgstr ""
+
+#: lib/phoenix_kit/newsletters/web/layouts_index.html.heex:46
+#, elixir-autogen, elixir-format
+msgid "Broadcasts use the standard email layout until you add one."
+msgstr ""
+
+#: lib/phoenix_kit/newsletters/web/layouts_index.ex:62
+#, elixir-autogen, elixir-format
+msgid "Could not archive the layout"
+msgstr ""
+
+#: lib/phoenix_kit/newsletters/web/layouts_index.ex:80
+#, elixir-autogen, elixir-format
+msgid "Could not restore the layout"
+msgstr ""
+
+#: lib/phoenix_kit/newsletters/web/layouts_index.ex:103
+#, elixir-autogen, elixir-format
+msgid "Could not update the default layout"
+msgstr ""
+
+#: lib/phoenix_kit/newsletters/web/layouts_index.html.heex:74
+#, elixir-autogen, elixir-format
+msgid "Default"
+msgstr ""
+
+#: lib/phoenix_kit/newsletters/web/layouts_index.ex:87
+#, elixir-autogen, elixir-format
+msgid "Default layout updated"
+msgstr ""
+
+#: lib/phoenix_kit/newsletters/web/layout_editor.ex:227
+#: lib/phoenix_kit/newsletters/web/layout_editor.html.heex:60
+#, elixir-autogen, elixir-format
+msgid "Display name"
+msgstr ""
+
+#: lib/phoenix_kit/newsletters/web/layout_editor.ex:229
+#: lib/phoenix_kit/newsletters/web/layout_editor.html.heex:88
+#, elixir-autogen, elixir-format
+msgid "HTML"
+msgstr ""
+
+#: lib/phoenix_kit/newsletters/render.ex:164
+#: lib/phoenix_kit/newsletters/render.ex:170
+#, elixir-autogen, elixir-format
+msgid "Hello {{name}},"
+msgstr ""
+
+#: lib/phoenix_kit/newsletters/web/broadcast_editor.html.heex:302
+#, elixir-autogen, elixir-format
+msgid "Language"
+msgstr ""
+
+#: lib/phoenix_kit/newsletters/web/layouts_index.html.heex:54
+#, elixir-autogen, elixir-format
+msgid "Languages"
+msgstr ""
+
+#: lib/phoenix_kit/newsletters/web/broadcast_editor.html.heex:149
+#, elixir-autogen, elixir-format
+msgid "Layout"
+msgstr ""
+
+#: lib/phoenix_kit/newsletters/web/layouts_index.ex:60
+#, elixir-autogen, elixir-format
+msgid "Layout archived"
+msgstr ""
+
+#: lib/phoenix_kit/newsletters/web/layout_editor.ex:59
+#, elixir-autogen, elixir-format
+msgid "Layout not found"
+msgstr ""
+
+#: lib/phoenix_kit/newsletters/web/layouts_index.ex:69
+#, elixir-autogen, elixir-format
+msgid "Layout restored"
+msgstr ""
+
+#: lib/phoenix_kit/newsletters/web/layout_editor.ex:128
+#, elixir-autogen, elixir-format
+msgid "Layout saved"
+msgstr ""
+
+#: lib/phoenix_kit/newsletters/web/layout_editor.html.heex:34
+#, elixir-autogen, elixir-format
+msgid "Lowercase letters, numbers and underscores; starts with a letter."
+msgstr ""
+
+#: lib/phoenix_kit/newsletters/web/layouts_index.html.heex:91
+#, elixir-autogen, elixir-format
+msgid "Make default"
+msgstr ""
+
+#: lib/phoenix_kit/newsletters/web/broadcast_editor.html.heex:164
+#, elixir-autogen, elixir-format
+msgid "Manage layouts"
+msgstr ""
+
+#: lib/phoenix_kit/newsletters/web/layout_editor.html.heex:81
+#, elixir-autogen, elixir-format
+msgid "Must contain {{subject}}, the broadcast's own subject. Leave blank to send the broadcast's subject unchanged."
+msgstr ""
+
+#: lib/phoenix_kit/newsletters/web/layout_editor.ex:226
+#: lib/phoenix_kit/newsletters/web/layout_editor.html.heex:23
+#: lib/phoenix_kit/newsletters/web/layouts_index.html.heex:53
+#, elixir-autogen, elixir-format
+msgid "Name"
+msgstr ""
+
+#: lib/phoenix_kit/newsletters/web/layouts_index.ex:99
+#, elixir-autogen, elixir-format
+msgid "New broadcasts now start with the standard layout"
+msgstr ""
+
+#: lib/phoenix_kit/newsletters/newsletters.ex:182
+#, elixir-autogen, elixir-format
+msgid "Newsletter broadcast"
+msgstr ""
+
+#: lib/phoenix_kit/newsletters/web/layout_editor.html.heex:132
+#, elixir-autogen, elixir-format
+msgid "No HTML in this language yet"
+msgstr ""
+
+#: lib/phoenix_kit/newsletters/web/layouts_index.html.heex:45
+#, elixir-autogen, elixir-format
+msgid "No layouts found"
+msgstr ""
+
+#: lib/phoenix_kit/newsletters/web/layouts_index.ex:90
+#, elixir-autogen, elixir-format
+msgid "Only an active layout can be the default"
+msgstr ""
+
+#: lib/phoenix_kit/newsletters/render.ex:161
+#, elixir-autogen, elixir-format
+msgid "Our latest news"
+msgstr ""
+
+#: lib/phoenix_kit/newsletters/web/layouts_index.html.heex:110
+#, elixir-autogen, elixir-format
+msgid "Restore"
+msgstr ""
+
+#: lib/phoenix_kit/newsletters/web/layout_editor.ex:189
+#, elixir-autogen, elixir-format
+msgid "Sample broadcast"
+msgstr ""
+
+#: lib/phoenix_kit/newsletters/web/layout_editor.ex:169
+#, elixir-autogen, elixir-format
+msgid "Sample subject"
+msgstr ""
+
+#: lib/phoenix_kit/newsletters/web/layout_editor.html.heex:114
+#, elixir-autogen, elixir-format
+msgid "Save layout"
+msgstr ""
+
+#: lib/phoenix_kit/newsletters/web/broadcast_editor.html.heex:152
+#, elixir-autogen, elixir-format
+msgid "Standard email layout"
+msgstr ""
+
+#: lib/phoenix_kit/newsletters/web/layout_editor.html.heex:71
+#, elixir-autogen, elixir-format
+msgid "Subject pattern (optional)"
+msgstr ""
+
+#: lib/phoenix_kit/newsletters/web/layout_editor.ex:230
+#, elixir-autogen, elixir-format
+msgid "Text"
+msgstr ""
+
+#: lib/phoenix_kit/newsletters/web/layout_editor.html.heex:103
+#, elixir-autogen, elixir-format
+msgid "Text (kept for reference)"
+msgstr ""
+
+#: lib/phoenix_kit/newsletters/web/layouts_index.ex:27
+#, elixir-autogen, elixir-format
+msgid "The HTML your broadcasts are sent inside"
+msgstr ""
+
+#: lib/phoenix_kit/newsletters/render.ex:166
+#: lib/phoenix_kit/newsletters/render.ex:172
+#: lib/phoenix_kit/newsletters/web/layout_editor.ex:191
+#, elixir-autogen, elixir-format
+msgid "This is where the broadcast's own text goes."
+msgstr ""
+
+#: lib/phoenix_kit/newsletters/render.ex:168
+#, elixir-autogen, elixir-format
+msgid "Unsubscribe"
+msgstr ""
+
+#: lib/phoenix_kit/newsletters/web/layouts_index.html.heex:28
+#, elixir-autogen, elixir-format
+msgid "Use the standard layout by default"
+msgstr ""
+
+#: lib/phoenix_kit/newsletters/web/layout_editor.html.heex:96
+#, elixir-autogen, elixir-format
+msgid "{{{content}}} is the broadcast. Also available: {{{header}}}, {{{footer}}}, {{logo_url}}, {{accent_color}}, {{site_name}}, {{site_url}}, {{subject}}, {{name}}, {{email}}, {{unsubscribe_url}}, {{preferences_url}}."
+msgstr ""
+
+#: lib/phoenix_kit/newsletters/web/layouts_index.ex:76
+#, elixir-autogen, elixir-format
+msgid "A system email carried over for old broadcasts stays archived"
+msgstr ""
+
+#: lib/phoenix_kit/newsletters/web/layouts_index.html.heex:77
+#, elixir-autogen, elixir-format
+msgid "System email"
+msgstr ""
+
+#: lib/phoenix_kit/newsletters/layout.ex:334
+#, elixir-autogen, elixir-format
+msgid "a carried-over system email stays archived"
+msgstr ""
+
+#: lib/phoenix_kit/newsletters/layout.ex:277
+#, elixir-autogen, elixir-format
+msgid "can't be blank"
+msgstr ""
+
+#: lib/phoenix_kit/newsletters/layout.ex:322
+#, elixir-autogen, elixir-format
+msgid "must contain {{subject}} (missing in %{language})"
+msgstr ""
+
+#: lib/phoenix_kit/newsletters/layout.ex:242
+#, elixir-autogen, elixir-format
+msgid "must map each language to text"
+msgstr ""
+
+#: lib/phoenix_kit/newsletters/layout.ex:287
+#, elixir-autogen, elixir-format
+msgid "must place the broadcast with {{{content}}} (missing in %{language})"
+msgstr ""
+
+#: lib/phoenix_kit/newsletters/layout.ex:104
+#, elixir-autogen, elixir-format
+msgid "must start with a letter and contain only lowercase letters, numbers, and underscores"
+msgstr ""
+
+#: lib/phoenix_kit/newsletters/web/broadcasts.html.heex:34
+#, elixir-autogen, elixir-format
+msgid "Choose another status to see more broadcasts."
+msgstr ""
+
+#: lib/phoenix_kit/newsletters/web/broadcasts.html.heex:33
+#, elixir-autogen, elixir-format
+msgid "No broadcasts with this status"
+msgstr ""
+
+#: lib/phoenix_kit/newsletters/layout.ex:298
+#, elixir-autogen, elixir-format
+msgid "at least one language must place the broadcast with {{{content}}}"
 msgstr ""

@@ -31,7 +31,6 @@ defmodule PhoenixKit.Newsletters.Broadcast do
     field(:delivered_count, :integer, default: 0)
     field(:opened_count, :integer, default: 0)
     field(:bounced_count, :integer, default: 0)
-    field(:template_uuid, UUIDv7)
     field(:created_by_user_uuid, UUIDv7)
     field(:send_profile_uuid, UUIDv7)
     # "crm_list" (default) sends to `crm_list_uuid` — a bare UUID,
@@ -70,9 +69,14 @@ defmodule PhoenixKit.Newsletters.Broadcast do
     # (keeping the first occurrence, so order is otherwise untouched).
     field(:attachments, {:array, :string}, default: [])
 
-    # belongs_to :template removed — Emails module is an optional soft dependency.
-    # template_uuid field kept for DB compatibility.
-    # Use Newsletters.get_broadcast_with_template!/1 for optional template loading.
+    # The layout the broadcast is sent inside (`nil` = core's standard
+    # email layout). A real FK to this package's own layouts table since
+    # migration V2; it pointed at core's email-templates table before.
+    belongs_to(:template, PhoenixKit.Newsletters.Layout,
+      foreign_key: :template_uuid,
+      references: :uuid,
+      type: UUIDv7
+    )
 
     belongs_to(:created_by, PhoenixKit.Users.Auth.User,
       foreign_key: :created_by_user_uuid,
@@ -125,6 +129,7 @@ defmodule PhoenixKit.Newsletters.Broadcast do
     |> validate_inclusion(:source_type, @valid_source_types)
     |> validate_source_reference()
     |> validate_attachments()
+    |> foreign_key_constraint(:template_uuid, name: :fk_newsletters_broadcasts_template)
   end
 
   @max_attachments 10

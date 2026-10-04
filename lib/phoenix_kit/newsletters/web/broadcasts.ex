@@ -81,6 +81,35 @@ defmodule PhoenixKit.Newsletters.Web.Broadcasts do
     {:noreply, push_navigate(socket, to: Routes.path("/admin/newsletters/broadcasts/#{uuid}"))}
   end
 
+  attr(:status_filter, :string, required: true)
+
+  # Inside a form: the LiveView client refuses phx-change on a bare input.
+  defp status_filter(assigns) do
+    ~H"""
+    <form id="broadcasts-status-filter" phx-change="filter_status">
+      <label class="select select-sm">
+        <select name="status">
+          <option value="" selected={@status_filter == ""}>{gettext("All statuses")}</option>
+          <option value="draft" selected={@status_filter == "draft"}>{gettext("Draft")}</option>
+          <option value="scheduled" selected={@status_filter == "scheduled"}>
+            {gettext("Scheduled")}
+          </option>
+          <option value="sending" selected={@status_filter == "sending"}>
+            {gettext("Sending")}
+          </option>
+          <option value="sent" selected={@status_filter == "sent"}>{gettext("Sent")}</option>
+          <option value="cancelled" selected={@status_filter == "cancelled"}>
+            {gettext("Cancelled")}
+          </option>
+          <option value="failed" selected={@status_filter == "failed"}>
+            {gettext("Failed")}
+          </option>
+        </select>
+      </label>
+    </form>
+    """
+  end
+
   defp status_badge_class(status) do
     case status do
       "draft" -> "badge-ghost"

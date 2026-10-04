@@ -18,15 +18,13 @@ defmodule PhoenixKit.Newsletters.Web.BroadcastDetails do
   alias PhoenixKit.Newsletters.Broadcast
   alias PhoenixKit.Newsletters.Broadcaster
   alias PhoenixKit.Newsletters.CRMSource
+  alias PhoenixKit.Newsletters.Layout
   alias PhoenixKit.Newsletters.UserGroupSource
   alias PhoenixKit.Newsletters.Web.SendError
   alias PhoenixKit.Newsletters.Web.Timezone
   alias PhoenixKit.Settings
   alias PhoenixKit.Utils.Format
   alias PhoenixKit.Utils.Routes
-
-  # Optional soft dependency — use module atom to avoid compile-time warnings
-  @email_template_mod PhoenixKit.Modules.Emails.Template
 
   @impl true
   def mount(_params, _session, socket) do
@@ -42,6 +40,7 @@ defmodule PhoenixKit.Newsletters.Web.BroadcastDetails do
         |> assign(:page_section, gettext("Newsletters"))
         |> assign(:page_section_path, Routes.path("/admin/newsletters/broadcasts"))
         |> assign(:project_title, Settings.get_project_title())
+        |> assign_new(:current_locale, fn -> nil end)
         |> assign(:broadcast, nil)
         |> assign(:deliveries, [])
         |> assign(:delivery_stats, %{})
@@ -307,16 +306,5 @@ defmodule PhoenixKit.Newsletters.Web.BroadcastDetails do
     Map.get(stats, key, 0)
   end
 
-  defp template_display_name(template) do
-    if Code.ensure_loaded?(@email_template_mod) do
-      soft_call(@email_template_mod, :get_translation, [template.display_name, "en"]) ||
-        template.name
-    else
-      template.name
-    end
-  end
-
-  # Intentional apply/3 — calls optional soft-dependency modules to avoid compile-time warnings
-  # credo:disable-for-next-line Credo.Check.Refactor.Apply
-  defp soft_call(mod, fun, args), do: apply(mod, fun, args)
+  defp template_display_name(template, locale), do: Layout.display_name(template, locale)
 end

@@ -9,14 +9,22 @@ defmodule PhoenixKit.Newsletters.Web.BroadcastEditor do
   import PhoenixKitWeb.Components.Core.Icon
   import PhoenixKitWeb.Components.Core.PkLink
 
-  # Optional soft dependencies — guarded by Code.ensure_loaded? at runtime
-  # Use module atoms directly (not alias) to avoid compile-time warnings
-  @email_templates_mod PhoenixKit.Modules.Emails.Templates
-  @email_template_mod PhoenixKit.Modules.Emails.Template
-
   alias PhoenixKit.Modules.Storage
   alias PhoenixKit.Newsletters
-  alias PhoenixKit.Newsletters.{Broadcast, Broadcaster, Content, CRMSource, UserGroupSource}
+
+  alias PhoenixKit.Newsletters.{
+    Broadcast,
+    Broadcaster,
+    Content,
+    CRMSource,
+    Layout,
+    Layouts,
+    Render,
+    UserGroupSource
+  }
+
+  alias PhoenixKit.Newsletters.Paths
+  alias PhoenixKit.Newsletters.Web.LanguageOptions
   alias PhoenixKit.Newsletters.Web.SendError
   alias PhoenixKit.Newsletters.Web.Timezone
   alias PhoenixKit.Settings
@@ -45,6 +53,7 @@ defmodule PhoenixKit.Newsletters.Web.BroadcastEditor do
         |> assign(:page_section_path, Routes.path("/admin/newsletters/broadcasts"))
         |> assign(:page_crumbs, [])
         |> assign(:project_title, Settings.get_project_title())
+        |> assign_new(:current_locale, fn -> nil end)
         |> assign(:templates, [])
         |> assign(:broadcast, nil)
         |> assign(:subject, "")
@@ -58,6 +67,8 @@ defmodule PhoenixKit.Newsletters.Web.BroadcastEditor do
         |> assign(:crm_list_archived?, false)
         |> assign(:stranded_crm_list, nil)
         |> assign(:template_uuid, "")
+        |> assign(:preview_locale, nil)
+        |> assign(:preview_languages, [])
         |> assign(:markdown_content, "")
         |> assign(:preview_html, "")
         |> assign(:scheduled_at, "")
@@ -85,9 +96,9 @@ defmodule PhoenixKit.Newsletters.Web.BroadcastEditor do
   @impl true
   def handle_params(%{"id" => id}, _url, %{assigns: %{live_action: :edit}} = socket) do
     crm_lists = CRMSource.list_lists()
-    templates = load_templates()
     broadcast = Newsletters.get_broadcast!(id)
-    socket = assign_tz(socket)
+    templates = load_templates(broadcast.template_uuid)
+    socket = socket |> assign_tz() |> assign_preview_languages()
 
     {:noreply,
      socket
@@ -110,7 +121,13 @@ defmodule PhoenixKit.Newsletters.Web.BroadcastEditor do
      |> assign(:markdown_content, broadcast.markdown_body || "")
      |> assign(
        :preview_html,
-       render_preview(broadcast.markdown_body, broadcast.template_uuid, templates)
+       render_preview(
+         broadcast.markdown_body,
+         broadcast.template_uuid,
+         templates,
+         socket.assigns.preview_locale,
+         broadcast.subject
+       )
      )
      |> assign(
        :scheduled_at,
@@ -129,12 +146,13 @@ defmodule PhoenixKit.Newsletters.Web.BroadcastEditor do
 
   def handle_params(_params, _url, socket) do
     crm_lists = CRMSource.list_lists()
-    templates = load_templates()
-    default_template_uuid = default_template_uuid()
+    templates = load_templates(nil)
+    default_template_uuid = Layouts.default_layout_uuid()
 
     {:noreply,
      socket
      |> assign_tz()
+     |> assign_preview_languages()
      |> assign(:crm_lists, crm_lists)
      |> assign(:templates, templates)
      |> assign(:available_roles, UserGroupSource.list_roles())
@@ -149,9 +167,21 @@ defmodule PhoenixKit.Newsletters.Web.BroadcastEditor do
     role_uuids = resolve_role_uuids(source_type, params)
     template_uuid = params["template_uuid"] || socket.assigns.template_uuid
     scheduled_at = params["scheduled_at"] || socket.assigns.scheduled_at
+    # Only a language the picker offers: every new value would otherwise be
+    # a new locale key in core's override-lookup cache.
+    preview_locale =
+      if params["preview_locale"] in socket.assigns.preview_languages,
+        do: params["preview_locale"],
+        else: socket.assigns.preview_locale
 
     preview_html =
-      render_preview(socket.assigns.markdown_content, template_uuid, socket.assigns.templates)
+      render_preview(
+        socket.assigns.markdown_content,
+        template_uuid,
+        socket.assigns.templates,
+        preview_locale,
+        subject
+      )
 
     {:noreply,
      socket
@@ -161,6 +191,7 @@ defmodule PhoenixKit.Newsletters.Web.BroadcastEditor do
      |> assign(:role_uuids, role_uuids)
      |> assign(:template_uuid, template_uuid)
      |> assign(:scheduled_at, scheduled_at)
+     |> assign(:preview_locale, preview_locale)
      |> assign(:preview_html, preview_html)
      |> assign_preflight()}
   end
@@ -247,7 +278,14 @@ defmodule PhoenixKit.Newsletters.Web.BroadcastEditor do
 
   @impl true
   def handle_info({:editor_content_changed, %{content: content}}, socket) do
-    preview_html = render_preview(content, socket.assigns.template_uuid, socket.assigns.templates)
+    preview_html =
+      render_preview(
+        content,
+        socket.assigns.template_uuid,
+        socket.assigns.templates,
+        socket.assigns.preview_locale,
+        socket.assigns.subject
+      )
 
     {:noreply,
      socket
@@ -279,21 +317,32 @@ defmodule PhoenixKit.Newsletters.Web.BroadcastEditor do
 
   # --- Private ---
 
-  # Guard: Emails.Templates is an optional dependency — only call if loaded
-  defp load_templates do
-    if Code.ensure_loaded?(@email_templates_mod) do
-      soft_call(@email_templates_mod, :list_templates, [%{status: "active"}])
-    else
-      []
+  # The active layouts, plus the broadcast's own when it has been archived
+  # since — otherwise the select would silently show "standard layout" and
+  # the next save would clear the broadcast's choice.
+  defp load_templates(current_uuid) do
+    active = Layouts.list_layouts(status: "active")
+
+    case current_uuid && Enum.find(active, &(&1.uuid == current_uuid)) do
+      nil ->
+        case current_uuid && Layouts.get_layout(current_uuid) do
+          %Layout{} = archived -> active ++ [archived]
+          _ -> active
+        end
+
+      _found ->
+        active
     end
   end
 
-  defp default_template_uuid do
-    if Code.ensure_loaded?(@email_templates_mod) do
-      PhoenixKit.Settings.get_setting("newsletters_default_template")
-    else
-      nil
-    end
+  # The preview's language picker: the site's languages, the preview
+  # starting in the site's content language.
+  defp assign_preview_languages(socket) do
+    languages = LanguageOptions.site_languages()
+
+    socket
+    |> assign(:preview_languages, languages)
+    |> assign(:preview_locale, socket.assigns.preview_locale || List.first(languages))
   end
 
   defp update_assigns_from_params(socket, params) do
@@ -542,37 +591,27 @@ defmodule PhoenixKit.Newsletters.Web.BroadcastEditor do
     end
   end
 
-  defp render_preview(markdown, template_uuid, templates) do
-    markdown
-    |> Content.render_markdown()
-    |> inject_into_template(template_uuid, templates)
-  end
+  # The email as a reader of `locale` gets it — the same Render a send
+  # uses — with the recipient's own placeholders ({{name}},
+  # {{unsubscribe_url}}) left visible, since there is no recipient yet.
+  # Empty until there is a body, so the "appears as you type" hint shows.
+  @doc false
+  def render_preview(markdown, template_uuid, templates, locale, subject) do
+    if is_binary(markdown) and String.trim(markdown) != "" do
+      layout = Enum.find(templates, &(&1.uuid == template_uuid))
+      subject = Render.subject(subject || "", layout, locale)
 
-  defp inject_into_template(html, template_uuid, templates)
-       when is_binary(template_uuid) and template_uuid != "" do
-    if Code.ensure_loaded?(PhoenixKit.Modules.Emails.Template) do
-      apply_template_if_found(html, template_uuid, templates)
+      markdown
+      |> Content.render_markdown()
+      |> Render.html(layout, %{}, locale: locale, subject: subject)
     else
-      html
+      ""
     end
   end
 
-  defp inject_into_template(html, _, _), do: html
-
-  defp template_display_name(template) do
-    soft_call(@email_template_mod, :get_translation, [template.display_name, "en"]) ||
-      template.name
-  end
-
-  defp apply_template_if_found(html, template_uuid, templates) do
-    case Enum.find(templates, fn t -> t.uuid == template_uuid end) do
-      nil ->
-        html
-
-      tmpl ->
-        html_body = soft_call(@email_template_mod, :get_translation, [tmpl.html_body, "en"])
-        String.replace(html_body, "{{content}}", html)
-    end
+  defp template_display_name(template, locale) do
+    name = Layout.display_name(template, locale)
+    if template.status == "archived", do: gettext("%{name} (archived)", name: name), else: name
   end
 
   # Resolves and assigns the viewer's timezone from handle_params (not
@@ -613,8 +652,4 @@ defmodule PhoenixKit.Newsletters.Web.BroadcastEditor do
       _ -> nil
     end
   end
-
-  # Intentional apply/3 — calls optional soft-dependency modules to avoid compile-time warnings
-  # credo:disable-for-next-line Credo.Check.Refactor.Apply
-  defp soft_call(mod, fun, args), do: apply(mod, fun, args)
 end

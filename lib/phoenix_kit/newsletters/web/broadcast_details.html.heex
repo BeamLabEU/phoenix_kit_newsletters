@@ -103,8 +103,8 @@
             <div>
               <p class="text-base-content/60 text-xs font-medium uppercase mb-1">{gettext("Template")}</p>
               <p class="font-medium">
-                {if Map.get(@broadcast, :template),
-                  do: template_display_name(@broadcast.template),
+                {if @broadcast.template,
+                  do: template_display_name(@broadcast.template, @current_locale),
                   else: "-"}
               </p>
             </div>
