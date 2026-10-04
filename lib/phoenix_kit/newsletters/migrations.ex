@@ -263,22 +263,25 @@ defmodule PhoenixKitNewsletters.Migrations do
     5. `fk_newsletters_broadcasts_template` → layouts `ON DELETE SET NULL` —
        core's own name for the old FK.
 
-  ### Release order — V2 changes a shape core still audits
+  ### Merge order — V2 changes a shape core still audits
 
   This is the Phase 1 case above: V2 re-targets an FK that core's
-  `ExpectedSchema` manifest (2.49 and earlier) still declares with the
-  email-templates target. Core's change that drops it from the manifest
-  (BeamLabEU/phoenix_kit#896) must be RELEASED first, and this package's
-  `:phoenix_kit` floor raised to that release before V2 ships — merge and
-  release after core ships it. Until then, on a host that ran V2:
+  `ExpectedSchema` manifest (2.51 and earlier) still declares with the
+  email-templates target. Merge BeamLabEU/phoenix_kit#896 before this — it
+  drops that FK from core's manifest. Until a core release carries it, on a
+  host that ran V2:
 
-    * `mix phoenix_kit.doctor` warns about `fk_newsletters_broadcasts_template`
-      (`wrong_shape`, foreign table);
+    * `mix phoenix_kit.doctor` reports the FK as wrong-shaped (a warning
+      summarising `repair`'s finding: `wrong_shape`, foreign table);
     * `mix phoenix_kit.repair` reports the same finding as an error and exits
       non-zero — it does not re-add an FK to the old table, because the
-      canonical name is present;
-    * `mix phoenix_kit.repair --adopt` does not stamp core's floor while
-      that finding stands.
+      canonical name is present — and `repair --adopt` does not stamp core's
+      floor while it stands;
+    * `mix phoenix_kit.update`, sending, the editors and this migration itself
+      are unaffected: none of them reads the manifest.
+
+  When releasing, raise the `:phoenix_kit` floor to the core release that
+  carries #896.
 
   At target 2, V1's own guard for the old FK is not emitted (it is
   superseded), so a run up to V2 — from 0, from 1, or repeated — never

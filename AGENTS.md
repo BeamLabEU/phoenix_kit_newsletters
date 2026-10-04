@@ -20,8 +20,8 @@ work goes through Oban workers.
 
 - **Depends on:** `phoenix_kit` `~> 2.48` (Hex; 2.48 has
   `PhoenixKit.Email.Layout.render_parts/2`, the header/footer a layout
-  places — see "Release order" under Database & migrations for the floor
-  this must reach before release); `phoenix_kit_templates ~> 0.2.2`
+  places — see "Merge order" under Database & migrations for the floor
+  to raise when releasing); `phoenix_kit_templates ~> 0.2.2`
   (`Templates.Substitution` is called directly); `phoenix_live_view ~> 1.1`, `oban ~> 2.20`, `mdex ~> 0.13`,
   `uuidv7 ~> 1.0`, `gettext ~> 1.0`. Optional at runtime, guarded with
   `Code.ensure_loaded?/1`: `phoenix_kit_crm` (`PhoenixKitCRM.*`,
@@ -421,14 +421,16 @@ uuid existing nowhere (logged as a NOTICE per broadcast), and adds
 target 2 V1's own template FK guard is not emitted, so a run up to V2 never
 touches the email-templates table except through `to_regclass`.
 
-Release order: core's `ExpectedSchema` (2.49 and earlier) still declares
-`fk_newsletters_broadcasts_template` with the email-templates target. The
-version carrying V2 is merged and released only AFTER core ships the change
-that drops it from the manifest (BeamLabEU/phoenix_kit#896), with the
-`:phoenix_kit` floor raised to that release. Before that, on a host that
-ran V2, `doctor` warns, `repair` exits non-zero on the `wrong_shape`, and
-`repair --adopt` does not stamp core's floor (the canonical name keeps
-`repair` from re-adding the old FK). Any later shape change likewise needs a
+Merge order: merge BeamLabEU/phoenix_kit#896 before the version carrying V2.
+It drops `fk_newsletters_broadcasts_template` (still declared with the
+email-templates target in core 2.51 and earlier) from core's `ExpectedSchema`
+manifest. Until a core release carries it, on a host that ran V2 `mix
+phoenix_kit.doctor` reports that FK as wrong-shaped and `mix phoenix_kit.repair`
+exits non-zero on it (`repair --adopt` does not stamp core's floor; the
+canonical name keeps `repair` from re-adding the old FK). `mix
+phoenix_kit.update`, sending, the editors and the migration itself are
+unaffected. When releasing, raise the `:phoenix_kit` floor to the core
+release that carries #896. Any later shape change likewise needs a
 core-side manifest update first, or `mix phoenix_kit.repair` silently
 reverts it. Phase 2 (a
 future core baseline squash that drops these tables from core) is already

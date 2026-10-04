@@ -18,7 +18,7 @@ defmodule PhoenixKitNewsletters.MixProject do
         "Newsletters module for PhoenixKit — email broadcasts and subscription management",
 
       # Dialyzer
-      dialyzer: [plt_add_apps: [:phoenix_kit], ignore_warnings: ".dialyzer_ignore.exs"],
+      dialyzer: [ignore_warnings: ".dialyzer_ignore.exs"],
 
       # Docs
       name: "PhoenixKitNewsletters",
@@ -61,10 +61,10 @@ defmodule PhoenixKitNewsletters.MixProject do
       # Core
       # 2.48 is the first core with `PhoenixKit.Email.Layout.render_parts/2`,
       # the header/footer a broadcast layout places as {{{header}}} and
-      # {{{footer}}}. Raise this to the core release that drops
-      # `fk_newsletters_broadcasts_template` from its `ExpectedSchema`
-      # manifest before this version is released — see
-      # `PhoenixKitNewsletters.Migrations`' moduledoc ("Release order").
+      # {{{footer}}}. When releasing, raise it to the core release that
+      # drops `fk_newsletters_broadcasts_template` from its `ExpectedSchema`
+      # manifest — see `PhoenixKitNewsletters.Migrations`' moduledoc
+      # ("Merge order").
       {:phoenix_kit, "~> 2.48"},
       # `PhoenixKit.Templates.Substitution` is called directly (the one
       # substitution pass a broadcast gets), so it is declared rather than
