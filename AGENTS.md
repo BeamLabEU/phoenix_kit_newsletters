@@ -467,7 +467,7 @@ verbatim — it is core-owned DDL, not something to fix here.
   the page layout (a LiveView assigning its own `:layout` crashes on the
   first browser load). `dead_render_test.exs` therefore GETs every admin
   LiveView through a never-listening endpoint and router
-  (`test/support/dead_render_endpoint.ex`, started by `test_helper.exs`);
+  (`test/support/dead_render_*.ex`, started by `test_helper.exs`);
   add a route there for every new LiveView, and never `assign(:layout, _)`.
 - `config/test.exs` wires `config :phoenix_kit, repo:`, a `secret_key_base`
   (so integration credentials round-trip encrypted), `PhoenixKit.Mailer` to
