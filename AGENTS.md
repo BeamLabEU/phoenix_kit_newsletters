@@ -18,10 +18,10 @@ with its owner, and Oban job processes are too short-lived to own a cache
 shared across jobs). Nothing else belongs in that supervision tree; background
 work goes through Oban workers.
 
-- **Depends on:** `phoenix_kit` `~> 2.48` (Hex; 2.48 has
+- **Depends on:** `phoenix_kit` `~> 2.52` (Hex; 2.48 added
   `PhoenixKit.Email.Layout.render_parts/2`, the header/footer a layout
-  places — see "Merge order" under Database & migrations for the floor
-  to raise when releasing); `phoenix_kit_templates ~> 0.2.2`
+  places, and 2.52 dropped the template FK from core's `ExpectedSchema`
+  manifest — see "Core's manifest" under Database & migrations); `phoenix_kit_templates ~> 0.2.2`
   (`Templates.Substitution` is called directly); `phoenix_live_view ~> 1.1`, `oban ~> 2.20`, `mdex ~> 0.13`,
   `uuidv7 ~> 1.0`, `gettext ~> 1.0`. Optional at runtime, guarded with
   `Code.ensure_loaded?/1`: `phoenix_kit_crm` (`PhoenixKitCRM.*`,
@@ -157,14 +157,15 @@ Repo-local aliases:
 - Activity logging: none.
 - Soft-delete sentinel: none. `delete_broadcast/1` only deletes `"draft"`
   broadcasts; anything else returns `{:error, :cannot_delete_non_draft}`.
-- Soft dependencies: guard every reference to `PhoenixKit.Modules.Emails.*`
-  or `PhoenixKitCRM.*` with `Code.ensure_loaded?/1` and call through
+- Soft dependencies: guard every reference to `PhoenixKitCRM.*` (and to any
+  `PhoenixKit.Modules.Emails.*` module, should one be reintroduced) with
+  `Code.ensure_loaded?/1` and call through
   `apply/3` (`soft_call/3`, credo-disabled on purpose). Ecto's `from`/`join`
   DSL introspects a literal schema module at compile time and a module
   attribute does not avoid that, so `CRMSource` builds CRM schema atoms with
   `Module.concat/1` inside functions. `required_modules/0` returns
-  `["emails"]`; the module still works without Emails installed (template
-  wrapping is skipped).
+  `["emails"]`; broadcast layouts and the standard layout come from this
+  package and core's `PhoenixKit.Email.Layout`, not from the Emails module.
 - UUIDv7 primary keys: `@primary_key {:uuid, UUIDv7, autogenerate: true}` on
   both schemas, `use PhoenixKit.SchemaPrefix` on both
   (`SchemaPrefixConformanceTest` enforces it). A core migration touching these
@@ -172,11 +173,12 @@ Repo-local aliases:
 - Background work is Oban only (`DeliveryWorker`, queue `newsletters_delivery`,
   `max_attempts: 3`, unique on `delivery_uuid` while incomplete). Never spawn a
   bare `Task` for email work.
-- Core pin: keep `{:phoenix_kit, "~> 2.48"}` two-segment.
-  `CorePinConformanceTest` rejects a three-segment `~> 2.48.x` (it excludes
+- Core pin: keep `{:phoenix_kit, "~> 2.52"}` two-segment.
+  `CorePinConformanceTest` rejects a three-segment `~> 2.52.x` (it excludes
   every later core minor and breaks `mix deps.get` for hosts) and a committed
   `path:` dep. Raise the floor only when a new core migration or core API is
-  required (2.48: `Layout.render_parts/2`).
+  required (2.48: `Layout.render_parts/2`; 2.52: manifest without the
+  template FK).
 - Timezones: storage is UTC. Display goes through
   `Web.Timezone.viewer_tz/1` (profile `user_timezone`, then the `time_zone`
   setting, then `"0"`) and core's per-instant helpers; labels come from
@@ -408,7 +410,8 @@ it under the same uuid, plus every system row a broadcast's `template_uuid`
 or the `newsletters_default_template` setting still names (always as
 `archived`: those broadcasts keep it, the picker never offers it) — only
 when that table exists (`to_regclass`; `ON CONFLICT (uuid) DO NOTHING`, a
-taken name gets a `_<8 hex>` suffix, or `_<32 hex>` if that is taken too). The import runs ONCE per install: it
+taken name gets a `_<8 hex>` suffix, then `_<32 hex>`, then a numbered suffix
+until free; each insert checks names chosen earlier in the same import). The import runs ONCE per install: it
 leaves `pknl_layouts:imported` in the layouts table's comment (appended to an
 operator's own; a comment rewritten without it re-enables the import), so a replay
 of the cumulative chain (a later version, a down-then-up) never imports
@@ -421,16 +424,13 @@ uuid existing nowhere (logged as a NOTICE per broadcast), and adds
 target 2 V1's own template FK guard is not emitted, so a run up to V2 never
 touches the email-templates table except through `to_regclass`.
 
-Merge order: merge BeamLabEU/phoenix_kit#896 before the version carrying V2.
-It drops `fk_newsletters_broadcasts_template` (still declared with the
-email-templates target in core 2.51 and earlier) from core's `ExpectedSchema`
-manifest. Until a core release carries it, on a host that ran V2 `mix
-phoenix_kit.doctor` reports that FK as wrong-shaped and `mix phoenix_kit.repair`
-exits non-zero on it (`repair --adopt` does not stamp core's floor; the
-canonical name keeps `repair` from re-adding the old FK). `mix
-phoenix_kit.update`, sending, the editors and the migration itself are
-unaffected. When releasing, raise the `:phoenix_kit` floor to the core
-release that carries #896. Any later shape change likewise needs a
+Core's manifest: core 2.52 (BeamLabEU/phoenix_kit#896) dropped
+`fk_newsletters_broadcasts_template` — declared with the email-templates
+target through 2.51 — from its `ExpectedSchema` manifest, and 2.52 is this
+package's floor. A host on core 2.51 or earlier that ran V2 would see `mix
+phoenix_kit.doctor` report that FK as wrong-shaped and `mix phoenix_kit.repair`
+exit non-zero on it. `MigrationsTest` pins the manifest staying free of it.
+Any later shape change likewise needs a
 core-side manifest update first, or `mix phoenix_kit.repair` silently
 reverts it. Phase 2 (a
 future core baseline squash that drops these tables from core) is already

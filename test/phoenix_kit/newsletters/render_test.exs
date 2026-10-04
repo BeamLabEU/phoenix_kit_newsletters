@@ -6,6 +6,8 @@ defmodule PhoenixKit.Newsletters.RenderTest do
   alias PhoenixKit.Newsletters.Render
   alias PhoenixKit.Templates.Overrides
 
+  import ExUnit.CaptureLog
+
   @moduletag :tmp_dir
 
   defp layout(html_by_language, subject \\ %{}) do
@@ -100,6 +102,33 @@ defmodule PhoenixKit.Newsletters.RenderTest do
   end
 
   describe "html/4 without a usable layout" do
+    test "warnings remember the latest edit and the resolved language under one key",
+         %{tmp_dir: dir} do
+      layout = layout(%{"en" => "<p>only chrome</p>"})
+      key = {Render, :without_content, layout.uuid}
+      on_exit(fn -> :persistent_term.erase(key) end)
+
+      render = fn layout, locale ->
+        capture_log(fn -> Render.html("Body", layout, %{}, locale: locale, paths: [dir]) end)
+      end
+
+      assert render.(layout, "en") =~ "has no {{{content}}}"
+      refute render.(layout, "en-US") =~ "has no {{{content}}}"
+
+      for edit <- 1..3 do
+        edited = %{layout | html_body: %{"en" => "<p>edit #{edit}</p>"}}
+        assert render.(edited, "en") =~ "has no {{{content}}}"
+        refute render.(edited, "en-GB") =~ "has no {{{content}}}"
+      end
+
+      keys =
+        for {{Render, :without_content, uuid} = key, _} <- :persistent_term.get(),
+            uuid == layout.uuid,
+            do: key
+
+      assert keys == [key]
+    end
+
     test "nil: core's standard layout, newsletters group", %{tmp_dir: dir} do
       html = Render.html("<p>Body</p>", nil, %{}, locale: "en", subject: "News", paths: [dir])
 
@@ -146,6 +175,13 @@ defmodule PhoenixKit.Newsletters.RenderTest do
   end
 
   describe "subject/4" do
+    test "an unusable HTML translation also falls back to the broadcast's subject" do
+      for html <- [%{}, %{"en" => "<p>only chrome</p>"}] do
+        layout = layout(html, %{"en" => "[Legacy] {{subject}}"})
+        assert Render.subject("News", layout, "en") == "News"
+      end
+    end
+
     test "the layout's pattern for the language, around the broadcast's subject" do
       layout =
         layout(%{"en" => "{{{content}}}", "de" => "{{{content}}}"}, %{
@@ -170,8 +206,9 @@ defmodule PhoenixKit.Newsletters.RenderTest do
     end
 
     test "line breaks never reach the header" do
-      layout = layout(%{}, %{"en" => "{{subject}}\r\n{{name}}"})
+      layout = layout(%{"en" => "{{{content}}}"}, %{"en" => "{{subject}}\r\n{{name}}"})
       assert Render.subject("News", layout, "en", %{"name" => "Ada"}) == "News Ada"
+      assert Render.subject("News\r\nInjected", nil, "en") == "News Injected"
     end
   end
 

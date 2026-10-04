@@ -225,9 +225,13 @@ defmodule PhoenixKit.Newsletters.Layout do
   defp present?(value), do: is_binary(value) and String.trim(value) != ""
 
   # Blank translations are dropped on the way in, so "this language has a
-  # subject" always means a non-blank one.
+  # subject" always means a non-blank one. Keep malformed values so the
+  # translation-map validation rejects them instead of deleting data.
   defp compact(map) when is_map(map) do
-    for {k, v} <- map, present?(v), into: %{}, do: {to_string(k), v}
+    for {k, v} <- map,
+        not (is_binary(v) and String.trim(v) == ""),
+        into: %{},
+        do: {to_string(k), v}
   end
 
   defp compact(other), do: other

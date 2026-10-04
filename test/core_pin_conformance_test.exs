@@ -12,15 +12,17 @@ defmodule PhoenixKitNewsletters.CorePinConformanceTest do
   outright, with no degraded mode. Nothing else in this repo's own test run
   would notice, which is why the check is a test rather than a convention.
 
-  The floor is 2.48: broadcast layouts place core's header and footer
-  through `PhoenixKit.Email.Layout.render_parts/2`, which no earlier core
-  has. Core 1.7 stays excluded as before.
+  The floor is 2.52: broadcast layouts place core's header and footer
+  through `PhoenixKit.Email.Layout.render_parts/2` (2.48), and migration V2
+  re-targets `fk_newsletters_broadcasts_template`, which core's schema
+  manifest declares with the old target until 2.52. Core 1.7 stays excluded
+  as before.
   """
 
-  @must_admit ["2.48.0", "2.48.7", "2.49.1", "2.99.4"]
-  @must_reject ["1.7.189", "1.9.4", "2.0.0", "2.47.9", "3.0.0"]
+  @must_admit ["2.52.0", "2.52.1", "2.99.4"]
+  @must_reject ["1.7.189", "1.9.4", "2.0.0", "2.48.0", "2.51.9", "3.0.0"]
 
-  test "the :phoenix_kit requirement admits every core 2.x from 2.48 and nothing else" do
+  test "the :phoenix_kit requirement admits every core 2.x from 2.52 and nothing else" do
     requirement = core_requirement()
 
     assert match?({:ok, _parsed}, Version.parse_requirement(requirement)),
@@ -30,7 +32,7 @@ defmodule PhoenixKitNewsletters.CorePinConformanceTest do
       assert Version.match?(version, requirement),
              "`:phoenix_kit` requirement #{inspect(requirement)} rejects core #{version}. " <>
                "A pin that excludes a core minor breaks `mix deps.get` for every host " <>
-               "running this module alongside that core. Keep it a two-segment `~> 2.48`."
+               "running this module alongside that core. Keep it a two-segment `~> 2.52`."
     end
 
     for version <- @must_reject do

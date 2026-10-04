@@ -46,6 +46,18 @@ defmodule PhoenixKit.Newsletters.LayoutTest do
     test "a valid layout" do
       assert changeset(%{}).valid?
       assert changeset(%{"html_body" => %{"en" => "<div>{{content}}</div>"}}).valid?
+      cs = changeset(%{"html_body" => %{en: "{{{content}}}"}})
+      assert cs.valid?
+      assert Ecto.Changeset.get_field(cs, :html_body) == %{"en" => "{{{content}}}"}
+    end
+
+    test "malformed translation values are rejected instead of silently dropped" do
+      for field <- ~w(display_name subject html_body text_body),
+          value <- [42, true, nil, %{}, ["text"]] do
+        cs = changeset(%{field => %{"en" => "{{{content}}} {{subject}}", "de" => value}})
+        refute cs.valid?, "#{field} accepted #{inspect(value)}"
+        assert cs.errors[String.to_existing_atom(field)]
+      end
     end
 
     test "every HTML translation must place the body" do

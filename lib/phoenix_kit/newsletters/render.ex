@@ -42,7 +42,7 @@ defmodule PhoenixKit.Newsletters.Render do
 
   ## Subject
 
-  A layout's subject for the reader's language, when it places
+  A usable layout's subject for the reader's language, when it places
   `{{subject}}`, is a pattern around the broadcast's subject; otherwise the
   broadcast's subject is sent unchanged. Line breaks never reach the header.
 
@@ -129,22 +129,25 @@ defmodule PhoenixKit.Newsletters.Render do
 
   def subject(subject, %Layout{subject: patterns, html_body: html}, locale, variables)
       when is_map(patterns) do
-    language = Layout.translation_key(html, locale) || Layout.translation_key(patterns, locale)
+    language = Layout.translation_key(html, locale)
+    translation = if language, do: Map.fetch!(html, language)
     pattern = Map.get(patterns, language)
 
-    if Layout.subject_pattern?(pattern) do
-      bound = variables |> stringify() |> Map.put("subject", subject)
+    rendered =
+      if Layout.places_content?(translation) and
+           Layout.subject_pattern?(pattern) do
+        bound = variables |> stringify() |> Map.put("subject", subject)
+        Substitution.substitute(pattern, bound)
+      else
+        subject
+      end
 
-      pattern
-      |> Substitution.substitute(bound)
-      |> String.replace(~r/[\r\n]+/, " ")
-      |> String.trim()
-    else
-      subject
-    end
+    clean_subject(rendered)
   end
 
-  def subject(subject, _layout, _locale, _variables), do: subject
+  def subject(subject, _layout, _locale, _variables), do: clean_subject(subject)
+
+  defp clean_subject(subject), do: subject |> String.replace(~r/[\r\n]+/, " ") |> String.trim()
 
   @doc "The text part: the broadcast's own text with its variables filled in."
   @spec text(String.t() | nil, variables()) :: String.t()
@@ -233,14 +236,22 @@ defmodule PhoenixKit.Newsletters.Render do
   defp insert_content(wrapper, body), do: Regex.replace(@content, wrapper, fn _ -> body end)
 
   # Rendered once per recipient, so a broken layout would log once per
-  # recipient; once per layout, version and locale for the life of the VM is
-  # enough to be seen. Keyed on `updated_at`, so a fixed-then-broken-again
-  # layout warns again.
+  # recipient; remember only the latest version under one key per layout.
+  # Track the resolved translation, so arbitrary recipient dialects that
+  # fall back to the same HTML do not grow the cache or repeat the warning.
   defp warn_once_without_content(layout, locale) do
-    key = {__MODULE__, :without_content, layout.uuid, layout.updated_at, locale}
+    key = {__MODULE__, :without_content, layout.uuid}
+    version = {layout.updated_at, layout.html_body}
+    language = Layout.translation_key(layout.html_body, locale)
 
-    unless :persistent_term.get(key, false) do
-      :persistent_term.put(key, true)
+    warned =
+      case :persistent_term.get(key, nil) do
+        {^version, languages} -> languages
+        _ -> MapSet.new()
+      end
+
+    unless MapSet.member?(warned, language) do
+      :persistent_term.put(key, {version, MapSet.put(warned, language)})
 
       Logger.warning(
         "Newsletters layout #{layout.name} (#{layout.uuid}) has no {{{content}}} " <>

@@ -87,6 +87,39 @@ defmodule PhoenixKit.Newsletters.Web.LayoutEditorTest do
       {:noreply, _} = LayoutEditor.handle_event("save", %{}, socket)
       assert Layouts.get_layout(layout.uuid).html_body["zz"] == "{{content}}"
     end
+
+    test "correcting a field refreshes save errors without hiding remaining errors" do
+      socket = mounted(LayoutEditor, %{})
+
+      {:noreply, socket} =
+        LayoutEditor.handle_event(
+          "save",
+          %{
+            "name" => "Invalid Name",
+            "fields" => %{"html_body" => "<p>no body</p>"}
+          },
+          socket
+        )
+
+      assert length(socket.assigns.errors) == 2
+
+      {:noreply, socket} =
+        LayoutEditor.handle_event(
+          "validate",
+          %{
+            "fields" => %{"html_body" => "{{{content}}}"}
+          },
+          socket
+        )
+
+      assert [error] = socket.assigns.errors
+      assert error =~ "Name"
+
+      {:noreply, socket} =
+        LayoutEditor.handle_event("validate", %{"name" => "corrected"}, socket)
+
+      assert socket.assigns.errors == []
+    end
   end
 
   describe "LayoutsIndex" do

@@ -61,11 +61,11 @@ defmodule PhoenixKitNewsletters.MixProject do
       # Core
       # 2.48 is the first core with `PhoenixKit.Email.Layout.render_parts/2`,
       # the header/footer a broadcast layout places as {{{header}}} and
-      # {{{footer}}}. When releasing, raise it to the core release that
-      # drops `fk_newsletters_broadcasts_template` from its `ExpectedSchema`
-      # manifest — see `PhoenixKitNewsletters.Migrations`' moduledoc
-      # ("Merge order").
-      {:phoenix_kit, "~> 2.48"},
+      # {{{footer}}}; 2.52 is the first whose `ExpectedSchema` manifest no
+      # longer declares `fk_newsletters_broadcasts_template` (#896), the FK
+      # migration V2 re-targets at the layouts table — see
+      # `PhoenixKitNewsletters.Migrations`' moduledoc ("Core's manifest").
+      {:phoenix_kit, "~> 2.52"},
       # `PhoenixKit.Templates.Substitution` is called directly (the one
       # substitution pass a broadcast gets), so it is declared rather than
       # reached through core.

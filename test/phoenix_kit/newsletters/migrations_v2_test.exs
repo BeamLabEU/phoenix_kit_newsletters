@@ -304,6 +304,65 @@ defmodule PhoenixKitNewsletters.MigrationsV2Test do
       assert [["owned by ops pknl_layouts:imported"]] = rows(layouts_comment_sql())
     end
 
+    test "names chosen during the same import cannot collide", %{operator: [welcome | _]} do
+      create_layouts_table()
+      insert_layout(uuid(), "welcome_layout")
+      suffix = welcome |> String.replace("-", "") |> binary_part(0, 8)
+      peer = insert_template("welcome_layout_" <> suffix, "active", false, nil)
+      peer_broadcast = insert_broadcast("On the peer", peer)
+
+      run_migration(UpToTwo)
+
+      assert welcome in copied_uuids()
+      assert peer in copied_uuids()
+      assert Map.new(template_refs())[peer_broadcast] == peer
+    end
+
+    test "even a full-uuid name already held by another layout is preserved",
+         %{operator: [welcome | _]} do
+      create_layouts_table()
+      hex = String.replace(welcome, "-", "")
+
+      occupied = [
+        "welcome_layout",
+        "welcome_layout_" <> binary_part(hex, 0, 8),
+        "welcome_layout_" <> hex
+      ]
+
+      Enum.each(occupied, &insert_layout(uuid(), &1))
+
+      run_migration(UpToTwo)
+
+      assert welcome in copied_uuids()
+
+      assert Enum.all?(occupied, fn name ->
+               [[1]] ==
+                 rows(
+                   "SELECT count(*) FROM #{@prefix}.phoenix_kit_newsletters_layouts WHERE name = '#{name}'"
+                 )
+             end)
+    end
+
+    test "numbered suffixes fit the column even for a maximum-length name" do
+      create_layouts_table()
+      name = String.duplicate("a", 255)
+      template = insert_template(name, "active", false, nil)
+      hex = String.replace(template, "-", "")
+      insert_layout(uuid(), name)
+      insert_layout(uuid(), String.slice(name, 0, 246) <> "_" <> String.slice(hex, 0, 8))
+      insert_layout(uuid(), String.slice(name, 0, 222) <> "_" <> hex)
+
+      run_migration(UpToTwo)
+
+      [[copied_name]] =
+        rows(
+          "SELECT name FROM #{@prefix}.phoenix_kit_newsletters_layouts WHERE uuid = '#{template}'"
+        )
+
+      assert String.length(copied_name) == 255
+      assert String.ends_with?(copied_name, "_" <> hex <> "_1")
+    end
+
     test "a row already there under its uuid is kept as it is (ON CONFLICT (uuid))",
          %{operator: [welcome | _]} do
       create_layouts_table()

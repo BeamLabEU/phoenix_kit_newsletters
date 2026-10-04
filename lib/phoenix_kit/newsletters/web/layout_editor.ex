@@ -97,7 +97,17 @@ defmodule PhoenixKit.Newsletters.Web.LayoutEditor do
 
   @impl true
   def handle_event("validate", params, socket) do
-    {:noreply, socket |> apply_params(params) |> assign_preview()}
+    socket = apply_params(socket, params)
+
+    socket =
+      if socket.assigns.errors == [] do
+        socket
+      else
+        changeset = Layouts.change_layout(socket.assigns.layout || %Layout{}, attrs(socket))
+        assign(socket, :errors, error_messages(changeset))
+      end
+
+    {:noreply, assign_preview(socket)}
   end
 
   def handle_event("switch_language", %{"language" => language}, socket) do

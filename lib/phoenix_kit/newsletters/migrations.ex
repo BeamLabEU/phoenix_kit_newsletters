@@ -249,8 +249,9 @@ defmodule PhoenixKitNewsletters.Migrations do
        import, like the version marker) and never runs again — not on a replay of the cumulative chain (a later
        version, a down-then-up), so email templates created after V2 are
        never imported. `ON CONFLICT (uuid) DO NOTHING`; a name already taken
-       by another layout gets a `_<8 hex>` (or, if taken, `_<32 hex>`) suffix
-       rather than being skipped.
+       by another layout gets a `_<8 hex>`, `_<32 hex>`, then numbered suffix
+       until free. Rows are copied in order so names chosen earlier in the
+       same import are checked too, rather than aborting on a duplicate.
        The source rows are left alone (an archive).
     3. Every FK from `template_uuid` to any table other than the layouts
        table is dropped — found by `conrelid`/`conkey`/`confrelid`, never by
@@ -263,13 +264,13 @@ defmodule PhoenixKitNewsletters.Migrations do
     5. `fk_newsletters_broadcasts_template` → layouts `ON DELETE SET NULL` —
        core's own name for the old FK.
 
-  ### Merge order — V2 changes a shape core still audits
+  ### Core's manifest — V2 changes a shape core used to audit
 
   This is the Phase 1 case above: V2 re-targets an FK that core's
-  `ExpectedSchema` manifest (2.51 and earlier) still declares with the
-  email-templates target. Merge BeamLabEU/phoenix_kit#896 before this — it
-  drops that FK from core's manifest. Until a core release carries it, on a
-  host that ran V2:
+  `ExpectedSchema` manifest declared with the email-templates target through
+  2.51. BeamLabEU/phoenix_kit#896 dropped it from the manifest in core 2.52,
+  which is this package's `:phoenix_kit` floor. On a host that ran V2 with
+  core 2.51 or earlier (a floor this package no longer allows):
 
     * `mix phoenix_kit.doctor` reports the FK as wrong-shaped (a warning
       summarising `repair`'s finding: `wrong_shape`, foreign table);
@@ -280,8 +281,8 @@ defmodule PhoenixKitNewsletters.Migrations do
     * `mix phoenix_kit.update`, sending, the editors and this migration itself
       are unaffected: none of them reads the manifest.
 
-  When releasing, raise the `:phoenix_kit` floor to the core release that
-  carries #896.
+  `MigrationsTest` pins that the manifest stays free of that FK, so a core
+  that brings it back fails there instead of on a host.
 
   At target 2, V1's own guard for the old FK is not emitted (it is
   superseded), so a run up to V2 — from 0, from 1, or repeated — never
@@ -810,12 +811,17 @@ defmodule PhoenixKitNewsletters.Migrations do
   # `ON CONFLICT (uuid) DO NOTHING`: a row already there under its uuid is
   # kept as it is. A row whose NAME is already taken by another layout is
   # still copied — under `<name>_<first 8 hex digits of its uuid>`, or, if
-  # that is taken too, `<name>_<all 32 hex digits>`, which no other row can
-  # hold — so the broadcasts pointing at it keep a layout to point at.
+  # that is taken too, `<name>_<all 32 hex digits>`, then a numbered suffix.
+  # Insert one row at a time so name checks also see rows imported earlier
+  # in this run; even a full-uuid name can already belong to another row.
   defp copy_email_templates(q_layouts, q_broadcasts, email_templates, users, settings) do
     """
     DO $$
     DECLARE
+      t record;
+      layout_name text;
+      name_suffix text;
+      suffix_attempt integer;
       default_uuid text;
       table_comment text := obj_description('#{q_layouts}'::regclass, 'pg_class');
     BEGIN
@@ -827,42 +833,50 @@ defmodule PhoenixKitNewsletters.Migrations do
             USING 'newsletters_default_template';
         END IF;
 
-        INSERT INTO #{q_layouts} (
-          uuid, name, display_name, subject, html_body, text_body,
-          status, metadata, created_by_user_uuid, inserted_at, updated_at
-        )
-        SELECT
-          t.uuid,
-          CASE
-            WHEN NOT EXISTS (SELECT 1 FROM #{q_layouts} l WHERE l.name = t.name AND l.uuid <> t.uuid)
-              THEN t.name
-            WHEN NOT EXISTS (
-              SELECT 1 FROM #{q_layouts} l
-              WHERE l.name = left(t.name, 246) || '_' || left(replace(t.uuid::text, '-', ''), 8)
-            )
-              THEN left(t.name, 246) || '_' || left(replace(t.uuid::text, '-', ''), 8)
-            ELSE left(t.name, 222) || '_' || replace(t.uuid::text, '-', '')
-          END,
-          COALESCE(t.display_name, '{}'::jsonb),
-          COALESCE(t.subject, '{}'::jsonb),
-          COALESCE(t.html_body, '{}'::jsonb),
-          COALESCE(t.text_body, '{}'::jsonb),
-          CASE WHEN t.is_system = false AND t.status = 'active' THEN 'active' ELSE 'archived' END,
-          COALESCE(t.metadata, '{}'::jsonb) || jsonb_build_object(
-            'migrated_from', 'phoenix_kit_email_templates',
-            'email_category', t.category,
-            'email_status', t.status,
-            'email_is_system', t.is_system
-          ),
-          u.uuid,
-          COALESCE(t.inserted_at, now()),
-          COALESCE(t.updated_at, now())
-        FROM #{email_templates} t
-        LEFT JOIN #{users} u ON u.uuid = t.created_by_user_uuid
-        WHERE t.is_system = false
-          OR EXISTS (SELECT 1 FROM #{q_broadcasts} b WHERE b.template_uuid = t.uuid)
-          OR t.uuid::text = default_uuid
-        ON CONFLICT (uuid) DO NOTHING;
+        FOR t IN
+          SELECT source.*, u.uuid AS author_uuid
+          FROM #{email_templates} source
+          LEFT JOIN #{users} u ON u.uuid = source.created_by_user_uuid
+          WHERE (source.is_system = false
+            OR EXISTS (SELECT 1 FROM #{q_broadcasts} b WHERE b.template_uuid = source.uuid)
+            OR source.uuid::text = default_uuid)
+            AND NOT EXISTS (SELECT 1 FROM #{q_layouts} l WHERE l.uuid = source.uuid)
+          ORDER BY source.name, source.uuid
+        LOOP
+          layout_name := t.name;
+          suffix_attempt := 0;
+
+          WHILE EXISTS (SELECT 1 FROM #{q_layouts} l WHERE l.name = layout_name) LOOP
+            suffix_attempt := suffix_attempt + 1;
+            name_suffix := '_' || CASE
+              WHEN suffix_attempt = 1 THEN left(replace(t.uuid::text, '-', ''), 8)
+              WHEN suffix_attempt = 2 THEN replace(t.uuid::text, '-', '')
+              ELSE replace(t.uuid::text, '-', '') || '_' || (suffix_attempt - 2)::text
+            END;
+            layout_name := left(t.name, #{Layout.column_widths().name} - length(name_suffix)) || name_suffix;
+          END LOOP;
+
+          INSERT INTO #{q_layouts} (
+            uuid, name, display_name, subject, html_body, text_body,
+            status, metadata, created_by_user_uuid, inserted_at, updated_at
+          ) VALUES (
+            t.uuid, layout_name,
+            COALESCE(t.display_name, '{}'::jsonb),
+            COALESCE(t.subject, '{}'::jsonb),
+            COALESCE(t.html_body, '{}'::jsonb),
+            COALESCE(t.text_body, '{}'::jsonb),
+            CASE WHEN t.is_system = false AND t.status = 'active' THEN 'active' ELSE 'archived' END,
+            COALESCE(t.metadata, '{}'::jsonb) || jsonb_build_object(
+              'migrated_from', 'phoenix_kit_email_templates',
+              'email_category', t.category,
+              'email_status', t.status,
+              'email_is_system', t.is_system
+            ),
+            t.author_uuid,
+            COALESCE(t.inserted_at, now()),
+            COALESCE(t.updated_at, now())
+          ) ON CONFLICT (uuid) DO NOTHING;
+        END LOOP;
       END IF;
 
       IF position('#{@import_mark}' in coalesce(table_comment, '')) = 0 THEN

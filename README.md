@@ -63,7 +63,7 @@ same way it drives core's own.
 | Dependency | Version |
 |---|---|
 | Elixir | `~> 1.18` |
-| PhoenixKit | `~> 2.48` |
+| PhoenixKit | `~> 2.52` |
 | Phoenix LiveView | `~> 1.1` |
 | Oban | `~> 2.20` |
 | MDEx | `~> 0.13` |
