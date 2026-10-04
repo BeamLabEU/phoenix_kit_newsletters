@@ -1,5 +1,41 @@
 # Changelog
 
+## 0.4.0 - 2026-10-04
+
+### Added
+
+- **Module-owned broadcast layouts.** Migration V2 creates
+  `phoenix_kit_newsletters_layouts` and copies the operator-authored rows of
+  core's `phoenix_kit_email_templates` into it under their own uuids (plus any
+  system email a broadcast or the default setting still points at, archived).
+  `broadcasts.template_uuid` becomes a foreign key to the new table. The
+  import runs once per install and gives a colliding name a unique suffix
+  instead of aborting. New Layouts admin pages (list, archive/restore,
+  default layout, per-language editor with preview). (#37)
+- **Per-recipient language.** Each email is rendered in the reader's language
+  (user locale, CRM contact or list locale, else the site's): the layout's
+  translation, its subject pattern and core's header/footer. A layout places
+  the broadcast with `{{{content}}}` and can use `{{{header}}}`,
+  `{{{footer}}}`, `{{logo_url}}`, `{{accent_color}}`, `{{site_name}}`,
+  `{{site_url}}` and `{{subject}}`. A broadcast without a layout is wrapped in
+  core's standard layout. The broadcast editor previews in any site language. (#37)
+
+### Changed
+
+- Requires `phoenix_kit ~> 2.52` (was `~> 2.0`) and declares
+  `phoenix_kit_templates ~> 0.2.2`. Core 2.52 no longer audits
+  `fk_newsletters_broadcasts_template`, which V2 re-targets, so `mix
+  phoenix_kit.doctor` and `repair` stay clean.
+- A subject always loses line breaks, and a layout's subject pattern applies
+  only when its HTML translation places the body.
+
+### Fixed
+
+- Layout changes reject malformed translation values instead of silently
+  dropping them; the layout editor clears an error once its field is fixed.
+- The warning for a layout without `{{{content}}}` keeps one cache entry per
+  layout instead of one per edit.
+
 ## 0.3.0 - 2026-09-17
 
 ### Added
