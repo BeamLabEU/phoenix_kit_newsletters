@@ -35,7 +35,7 @@ defmodule PhoenixKit.Newsletters.Web.LayoutEditor do
        |> assign(:project_title, Settings.get_project_title())
        |> assign_new(:current_locale, fn -> nil end)
        |> assign_new(:phoenix_kit_current_user, fn -> nil end)
-       |> assign(:layout, nil)
+       |> assign(:edited_layout, nil)
        |> assign(:name, "")
        |> assign(:translations, Map.new(@fields, &{&1, %{}}))
        |> assign(:languages, [])
@@ -66,7 +66,7 @@ defmodule PhoenixKit.Newsletters.Web.LayoutEditor do
          socket
          |> assign(:page_title, gettext("Edit"))
          |> assign(:page_subtitle, layout.name)
-         |> assign(:layout, layout)
+         |> assign(:edited_layout, layout)
          |> assign(:name, layout.name)
          |> assign(
            :translations,
@@ -103,7 +103,9 @@ defmodule PhoenixKit.Newsletters.Web.LayoutEditor do
       if socket.assigns.errors == [] do
         socket
       else
-        changeset = Layouts.change_layout(socket.assigns.layout || %Layout{}, attrs(socket))
+        changeset =
+          Layouts.change_layout(socket.assigns.edited_layout || %Layout{}, attrs(socket))
+
         assign(socket, :errors, error_messages(changeset))
       end
 
@@ -123,7 +125,7 @@ defmodule PhoenixKit.Newsletters.Web.LayoutEditor do
     attrs = attrs(socket)
 
     result =
-      case socket.assigns.layout do
+      case socket.assigns.edited_layout do
         nil ->
           Layouts.create_layout(attrs, created_by_user_uuid: current_user_uuid(socket))
 

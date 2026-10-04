@@ -459,10 +459,16 @@ verbatim — it is core-owned DDL, not something to fix here.
   tags skip together).
 - `PhoenixKitNewsletters.DataCase` tags `:integration`, checks out the
   sandbox, and provides `errors_on/1`. Support modules: `DataCase`,
-  `Test.Repo`. There is no test Endpoint, Router or Layouts, so LiveView
-  tests call `mount/3`, `handle_params/3` and `handle_event/3` directly on a
-  hand-built `%Phoenix.LiveView.Socket{}`; controller tests build a
-  `Plug.Test` conn with a cookie session and `fetch_flash`.
+  `Test.Repo`. LiveView tests call `mount/3`, `handle_params/3` and
+  `handle_event/3` directly on a hand-built `%Phoenix.LiveView.Socket{}`;
+  controller tests build a `Plug.Test` conn with a cookie session and
+  `fetch_flash`. Those never reach `Phoenix.Controller.render/3`, which a
+  dead render feeds the socket's assigns into and which reads `:layout` as
+  the page layout (a LiveView assigning its own `:layout` crashes on the
+  first browser load). `dead_render_test.exs` therefore GETs every admin
+  LiveView through a never-listening endpoint and router
+  (`test/support/dead_render_*.ex`, started by `test_helper.exs`);
+  add a route there for every new LiveView, and never `assign(:layout, _)`.
 - `config/test.exs` wires `config :phoenix_kit, repo:`, a `secret_key_base`
   (so integration credentials round-trip encrypted), `PhoenixKit.Mailer` to
   `Swoosh.Adapters.Test`, and `:endpoint` to a raw secret string so
