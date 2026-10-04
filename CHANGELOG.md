@@ -1,5 +1,20 @@
 # Changelog
 
+## 0.4.1 - 2026-10-04
+
+### Fixed
+
+- **Layout editor crashed on first load.** `/layouts/new` and
+  `/layouts/:id/edit` raised a `CaseClauseError` in the browser because the
+  editor assigned the edited record as `:layout`, which a dead render reads as
+  the page layout. It is now `:edited_layout`. (#38)
+
+### Added
+
+- A dead-render test that GETs every LiveView (admin pages and the public
+  preference center) through a test endpoint and router, the path the
+  callback-level tests never reach. (#38)
+
 ## 0.4.0 - 2026-10-04
 
 ### Added

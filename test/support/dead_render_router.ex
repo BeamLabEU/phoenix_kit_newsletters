@@ -32,5 +32,11 @@ defmodule PhoenixKitNewsletters.Test.DeadRenderRouter do
       live("/layouts/new", Web.LayoutEditor, :new, as: :layout_new)
       live("/layouts/:id/edit", Web.LayoutEditor, :edit, as: :layout_edit)
     end
+
+    # The public preference center is its own live_session in `Web.Routes`.
+    live_session :newsletters_public,
+      on_mount: [{PhoenixKitNewsletters.Test.DeadRenderHooks, :default}] do
+      live("/newsletters/preferences", Web.PreferenceCenterLive, :index, as: :preferences)
+    end
   end
 end

@@ -83,4 +83,15 @@ defmodule PhoenixKit.Newsletters.Web.DeadRenderTest do
       assert html_response(get(conn, "/broadcasts/#{broadcast.uuid}"), 200) =~ "Dead render"
     end
   end
+
+  describe "preference center" do
+    test "an invalid token renders the invalid-token page", %{conn: conn} do
+      conn = get(conn, "/newsletters/preferences", %{"token" => "bogus"})
+      assert html_response(conn, 200)
+    end
+
+    test "without a token or a login it sends the visitor to log in", %{conn: conn} do
+      assert redirected_to(get(conn, "/newsletters/preferences")) =~ "log-in"
+    end
+  end
 end

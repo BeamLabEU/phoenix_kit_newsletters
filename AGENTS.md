@@ -465,7 +465,7 @@ verbatim — it is core-owned DDL, not something to fix here.
   `fetch_flash`. Those never reach `Phoenix.Controller.render/3`, which a
   dead render feeds the socket's assigns into and which reads `:layout` as
   the page layout (a LiveView assigning its own `:layout` crashes on the
-  first browser load). `dead_render_test.exs` therefore GETs every admin
+  first browser load). `dead_render_test.exs` therefore GETs every
   LiveView through a never-listening endpoint and router
   (`test/support/dead_render_*.ex`, started by `test_helper.exs`);
   add a route there for every new LiveView, and never `assign(:layout, _)`.
