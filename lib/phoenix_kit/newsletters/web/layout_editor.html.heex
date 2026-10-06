@@ -59,7 +59,7 @@
           >
             {tab.language}
             <span
-              :if={Map.get(@translations["html_body"], tab.keys["html_body"]) not in [nil, ""]}
+              :if={filled?(@translations["html_body"], tab.keys["html_body"])}
               class="badge badge-xs badge-success ml-1"
             >
             </span>

@@ -35,13 +35,13 @@ msgstr "Uus saadetis"
 msgid "Edit broadcast"
 msgstr "Muuda saadetist"
 
-#: lib/phoenix_kit/newsletters/web/layout_editor.ex:43
+#: lib/phoenix_kit/newsletters/web/layout_editor.ex:44
 #: lib/phoenix_kit/newsletters/web/layouts_index.ex:26
 #, elixir-autogen
 msgid "Layouts"
 msgstr "Kujundused"
 
-#: lib/phoenix_kit/newsletters/web/layout_editor.ex:41
+#: lib/phoenix_kit/newsletters/web/layout_editor.ex:42
 #: lib/phoenix_kit/newsletters/web/layouts_index.html.heex:31
 #, elixir-autogen
 msgid "New layout"
@@ -67,7 +67,7 @@ msgstr "Muuda saatmisprofiili"
 #: lib/phoenix_kit/newsletters/web/broadcast_details.ex:62
 #: lib/phoenix_kit/newsletters/web/broadcast_editor.ex:91
 #: lib/phoenix_kit/newsletters/web/broadcasts.ex:36
-#: lib/phoenix_kit/newsletters/web/layout_editor.ex:62
+#: lib/phoenix_kit/newsletters/web/layout_editor.ex:63
 #: lib/phoenix_kit/newsletters/web/layouts_index.ex:38
 #: lib/phoenix_kit/newsletters/web/preference_center_live.ex:42
 #, elixir-autogen
@@ -88,7 +88,7 @@ msgstr "Laadimine..."
 
 #: lib/phoenix_kit/newsletters/web/broadcast_details.html.heex:40
 #: lib/phoenix_kit/newsletters/web/broadcast_editor.ex:107
-#: lib/phoenix_kit/newsletters/web/layout_editor.ex:82
+#: lib/phoenix_kit/newsletters/web/layout_editor.ex:83
 #: lib/phoenix_kit/newsletters/web/layouts_index.html.heex:82
 #, elixir-autogen
 msgid "Edit"
@@ -214,7 +214,7 @@ msgstr "Alustamiseks loo oma esimene saadetis."
 
 #: lib/phoenix_kit/newsletters/web/broadcast_editor.html.heex:19
 #: lib/phoenix_kit/newsletters/web/broadcasts.html.heex:93
-#: lib/phoenix_kit/newsletters/web/layout_editor.ex:318
+#: lib/phoenix_kit/newsletters/web/layout_editor.ex:323
 #, elixir-autogen
 msgid "Subject"
 msgstr "Teema"
@@ -705,13 +705,13 @@ msgstr "Vaikimisi"
 msgid "Default layout updated"
 msgstr "Vaikekujundus muudetud"
 
-#: lib/phoenix_kit/newsletters/web/layout_editor.ex:317
+#: lib/phoenix_kit/newsletters/web/layout_editor.ex:322
 #: lib/phoenix_kit/newsletters/web/layout_editor.html.heex:88
 #, elixir-autogen, elixir-format
 msgid "Display name"
 msgstr "Kuvatav nimi"
 
-#: lib/phoenix_kit/newsletters/web/layout_editor.ex:319
+#: lib/phoenix_kit/newsletters/web/layout_editor.ex:324
 #: lib/phoenix_kit/newsletters/web/layout_editor.html.heex:124
 #, elixir-autogen, elixir-format
 msgid "HTML"
@@ -744,7 +744,7 @@ msgid "Layout archived"
 msgstr "Kujundus arhiveeritud"
 
 ## --- Broadcast editor page ---
-#: lib/phoenix_kit/newsletters/web/layout_editor.ex:73
+#: lib/phoenix_kit/newsletters/web/layout_editor.ex:74
 #, elixir-autogen, elixir-format
 msgid "Layout not found"
 msgstr "Kujundust ei leitud"
@@ -754,7 +754,7 @@ msgstr "Kujundust ei leitud"
 msgid "Layout restored"
 msgstr "Kujundus taastatud"
 
-#: lib/phoenix_kit/newsletters/web/layout_editor.ex:149
+#: lib/phoenix_kit/newsletters/web/layout_editor.ex:150
 #, elixir-autogen, elixir-format
 msgid "Layout saved"
 msgstr "Kujundus salvestatud"
@@ -774,7 +774,7 @@ msgstr "Halda kujundusi"
 msgid "Must contain {{subject}}, the broadcast's own subject. Leave blank to send the broadcast's subject unchanged."
 msgstr "Peab sisaldama kohatäitjat {{subject}} – saadetise enda teemat. Jätke tühjaks, et saata saadetise teema muutmata kujul."
 
-#: lib/phoenix_kit/newsletters/web/layout_editor.ex:316
+#: lib/phoenix_kit/newsletters/web/layout_editor.ex:321
 #: lib/phoenix_kit/newsletters/web/layout_editor.html.heex:23
 #: lib/phoenix_kit/newsletters/web/layouts_index.html.heex:53
 #, elixir-autogen, elixir-format
@@ -818,12 +818,12 @@ msgid "Restore"
 msgstr "Taasta"
 
 ## --- Broadcast details page ---
-#: lib/phoenix_kit/newsletters/web/layout_editor.ex:278
+#: lib/phoenix_kit/newsletters/web/layout_editor.ex:283
 #, elixir-autogen, elixir-format
 msgid "Sample broadcast"
 msgstr "Näidissaadetis"
 
-#: lib/phoenix_kit/newsletters/web/layout_editor.ex:257
+#: lib/phoenix_kit/newsletters/web/layout_editor.ex:262
 #, elixir-autogen, elixir-format
 msgid "Sample subject"
 msgstr "Näidisteema"
@@ -843,7 +843,7 @@ msgstr "Standardne e-kirja kujundus"
 msgid "Subject pattern (optional)"
 msgstr "Teema muster (valikuline)"
 
-#: lib/phoenix_kit/newsletters/web/layout_editor.ex:320
+#: lib/phoenix_kit/newsletters/web/layout_editor.ex:325
 #, elixir-autogen, elixir-format
 msgid "Text"
 msgstr "Tekst"
@@ -860,7 +860,7 @@ msgstr "HTML, milles teie saadetised välja saadetakse"
 
 #: lib/phoenix_kit/newsletters/render.ex:169
 #: lib/phoenix_kit/newsletters/render.ex:175
-#: lib/phoenix_kit/newsletters/web/layout_editor.ex:280
+#: lib/phoenix_kit/newsletters/web/layout_editor.ex:285
 #, elixir-autogen, elixir-format
 msgid "This is where the broadcast's own text goes."
 msgstr "Siia tuleb saadetise enda tekst."

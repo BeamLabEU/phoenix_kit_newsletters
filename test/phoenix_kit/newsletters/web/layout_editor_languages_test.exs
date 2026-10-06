@@ -495,6 +495,17 @@ defmodule PhoenixKit.Newsletters.Web.LayoutEditorLanguagesTest do
       refute render_page(socket) =~ "Use this name"
     end
 
+    test "a tab holding only whitespace HTML gets no 'has HTML' badge" do
+      socket = mounted(%{})
+      assert [_starter] = Regex.scan(~r/badge-success/, render_page(socket))
+
+      socket = socket |> switch("fr") |> type(%{"html_body" => "  \n "})
+      assert [_starter] = Regex.scan(~r/badge-success/, render_page(socket))
+
+      socket = type(socket, %{"html_body" => "<p>{{{content}}}</p>"})
+      assert [_, _] = Regex.scan(~r/badge-success/, render_page(socket))
+    end
+
     test "a stored key the site does not offer is badged; site languages are not" do
       layout =
         layout!("with_pt", %{"en" => "<p>{{{content}}}</p>", "pt" => "<p>{{{content}}}</p>"})

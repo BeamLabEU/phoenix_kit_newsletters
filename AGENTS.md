@@ -276,7 +276,7 @@ lib/phoenix_kit/newsletters/
 ├── preference_token.ex     # Preference-center token (salt "newsletters_preferences")
 ├── paths.ex                # Admin + public path helpers
 ├── gettext.ex              # PhoenixKit.Newsletters.Gettext backend
-├── layout.ex               # Layout schema (per-language maps) + translation/3 fallback
+├── layout.ex               # Layout schema (per-language maps) + translation/3 fallback + language_tabs/2 (editor tab -> stored key per field)
 ├── layouts.ex              # Layout context: list/get/create/update/archive/restore, default layout
 ├── render.ex               # One email: layout in the reader's language, core chrome, subject, text
 ├── recipient_language.ex   # Which language a recipient reads in (user / CRM contact / site)
@@ -287,7 +287,7 @@ lib/phoenix_kit/newsletters/
 │   ├── broadcast_editor.ex/.heex    # Compose/edit, source picker, preflight, attachments, send/schedule
 │   ├── broadcast_details.ex/.heex   # Stats, deliveries, cancel, retry
 │   ├── layouts_index.ex/.heex       # Layouts list, archive/restore, default layout
-│   ├── layout_editor.ex/.heex       # Layout per language (tabs), preview through Render
+│   ├── layout_editor.ex/.heex       # Layout per language (tabs from Layout.language_tabs/2), preview through Render
 │   ├── language_options.ex          # The site's languages for the admin screens
 │   ├── preference_center_live.ex/.heex  # Public self-service subscriptions (token or login)
 │   ├── unsubscribe_controller.ex    # GET confirm pages, POST unsubscribe, one-click endpoint

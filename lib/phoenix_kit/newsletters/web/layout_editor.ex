@@ -220,12 +220,16 @@ defmodule PhoenixKit.Newsletters.Web.LayoutEditor do
   end
 
   defp has_content?(translations, keys) do
-    Enum.any?(@fields, fn field ->
-      case get_in(translations, [field, keys[field]]) do
-        value when is_binary(value) -> String.trim(value) != ""
-        _ -> false
-      end
-    end)
+    Enum.any?(@fields, &filled?(translations[&1], keys[&1]))
+  end
+
+  # Whether `map` holds a non-blank value under `key`; a blank value is not a
+  # stored translation (the changeset drops it on save).
+  defp filled?(map, key) do
+    case Map.get(map, key) do
+      value when is_binary(value) -> String.trim(value) != ""
+      _ -> false
+    end
   end
 
   # With no name typed yet, a name made from the display name: this tab's if
