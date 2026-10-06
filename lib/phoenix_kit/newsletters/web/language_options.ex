@@ -23,13 +23,6 @@ defmodule PhoenixKit.Newsletters.Web.LanguageOptions do
     _ -> [content_language()]
   end
 
-  @doc """
-  `site_languages/0` plus any language `extra` holds (a layout's own
-  translations in a language the site no longer offers stay editable).
-  """
-  @spec with_languages([String.t()]) :: [String.t()]
-  def with_languages(extra), do: Enum.uniq(site_languages() ++ Enum.sort(extra))
-
   defp content_language do
     case Settings.get_content_language() do
       language when is_binary(language) and language != "" -> language

@@ -33,11 +33,6 @@ defmodule PhoenixKit.Newsletters.Web.LanguageOptionsTest do
       assert languages == Enum.uniq(languages)
     end
 
-    test "a layout's own languages are kept even when the site does not offer them" do
-      assert "zz" in LanguageOptions.with_languages(["zz"])
-      assert "de-DE" in LanguageOptions.with_languages(["zz"])
-    end
-
     test "the broadcast editor's preview offers them, and accepts a switch to one" do
       PhoenixKit.Settings.update_boolean_setting("newsletters_enabled", true)
 

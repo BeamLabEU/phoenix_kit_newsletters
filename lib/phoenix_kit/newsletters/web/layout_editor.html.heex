@@ -30,41 +30,73 @@
             placeholder="monthly_layout"
             phx-debounce="300"
           />
-          <p class="label text-xs">
-            {gettext("Lowercase letters, numbers and underscores; starts with a letter.")}
+          <p class="label text-xs whitespace-normal">
+            {gettext(
+              "Lowercase Latin letters, numbers and underscores; starts with a letter. For example: monthly_news."
+            )}
+          </p>
+          <p :if={@suggested_name} class="label text-xs whitespace-normal">
+            {gettext("Suggested name:")}
+            <code class="font-mono">{@suggested_name}</code>
+            <button
+              type="button"
+              class="btn btn-xs btn-ghost"
+              phx-click="use_suggested_name"
+            >
+              {gettext("Use this name")}
+            </button>
           </p>
         </fieldset>
 
         <div role="tablist" class="tabs tabs-border flex-wrap">
           <button
-            :for={language <- @languages}
+            :for={tab <- @tabs}
             type="button"
             role="tab"
-            class={["tab", language == @editor_locale && "tab-active"]}
+            class={["tab", tab.language == @editor_locale && "tab-active"]}
             phx-click="switch_language"
-            phx-value-language={language}
+            phx-value-language={tab.language}
           >
-            {language}
+            {tab.language}
             <span
-              :if={Map.get(@translations["html_body"], language) not in [nil, ""]}
+              :if={Map.get(@translations["html_body"], tab.keys["html_body"]) not in [nil, ""]}
               class="badge badge-xs badge-success ml-1"
             >
+            </span>
+            <span :if={tab.residue?} class="badge badge-xs badge-warning ml-1">
+              {gettext("subject not used by sends")}
+            </span>
+            <span :if={not tab.site? and not tab.residue?} class="badge badge-xs badge-warning ml-1">
+              {gettext("not a site language")}
             </span>
           </button>
         </div>
 
         <%!-- Keyed by language so switching tabs replaces the inputs
              instead of morphing one language's text into another's. --%>
-        <div id={"layout-fields-#{@editor_locale}"} class="space-y-4">
+        <div
+          id={"layout-fields-#{@editor_tab.locale}#{if @editor_tab.residue?, do: "-subject"}"}
+          class="space-y-4"
+        >
+          <p :if={@editor_tab.residue?} class="alert alert-warning text-sm whitespace-normal">
+            {gettext(
+              "This subject is stored under %{key}, but a send reads the subject in the language of the HTML, so it is never used. Copy it to the right language tab, or clear it to remove it.",
+              key: @editor_tab.locale
+            )}
+          </p>
           <fieldset class="fieldset">
             <label class="label">{gettext("Display name")}</label>
             <input
               type="text"
               name="fields[display_name]"
-              value={Map.get(@translations["display_name"], @editor_locale, "")}
+              disabled={is_nil(@editor_keys["display_name"])}
+              value={Map.get(@translations["display_name"], @editor_keys["display_name"], "")}
               class="input w-full"
               phx-debounce="300"
             />
+            <p :if={is_nil(@editor_keys["display_name"])} class="label text-xs whitespace-normal">
+              {gettext("Not editable here: in this field the language is stored under another tab.")}
+            </p>
           </fieldset>
 
           <fieldset class="fieldset">
@@ -72,7 +104,8 @@
             <input
               type="text"
               name="fields[subject]"
-              value={Map.get(@translations["subject"], @editor_locale, "")}
+              disabled={is_nil(@editor_keys["subject"])}
+              value={Map.get(@translations["subject"], @editor_keys["subject"], "")}
               class="input w-full"
               placeholder="{{subject}}"
               phx-debounce="300"
@@ -82,20 +115,27 @@
                 "Must contain {{subject}}, the broadcast's own subject. Leave blank to send the broadcast's subject unchanged."
               )}
             </p>
+            <p :if={is_nil(@editor_keys["subject"])} class="label text-xs whitespace-normal">
+              {gettext("Not editable here: in this field the language is stored under another tab.")}
+            </p>
           </fieldset>
 
           <fieldset class="fieldset">
             <label class="label">{gettext("HTML")}</label>
             <textarea
               name="fields[html_body]"
+              disabled={is_nil(@editor_keys["html_body"])}
               class="textarea w-full font-mono text-xs"
               rows="18"
               phx-debounce="500"
-            >{Map.get(@translations["html_body"], @editor_locale, "")}</textarea>
+            >{Map.get(@translations["html_body"], @editor_keys["html_body"], "")}</textarea>
             <p class="label text-xs whitespace-normal">
               {gettext(
                 "{{{content}}} is the broadcast. Also available: {{{header}}}, {{{footer}}}, {{logo_url}}, {{accent_color}}, {{site_name}}, {{site_url}}, {{subject}}, {{name}}, {{email}}, {{unsubscribe_url}}, {{preferences_url}}."
               )}
+            </p>
+            <p :if={is_nil(@editor_keys["html_body"])} class="label text-xs whitespace-normal">
+              {gettext("Not editable here: in this field the language is stored under another tab.")}
             </p>
           </fieldset>
 
@@ -103,10 +143,14 @@
             <label class="label">{gettext("Text (kept for reference)")}</label>
             <textarea
               name="fields[text_body]"
+              disabled={is_nil(@editor_keys["text_body"])}
               class="textarea w-full font-mono text-xs"
               rows="5"
               phx-debounce="500"
-            >{Map.get(@translations["text_body"], @editor_locale, "")}</textarea>
+            >{Map.get(@translations["text_body"], @editor_keys["text_body"], "")}</textarea>
+            <p :if={is_nil(@editor_keys["text_body"])} class="label text-xs whitespace-normal">
+              {gettext("Not editable here: in this field the language is stored under another tab.")}
+            </p>
           </fieldset>
         </div>
 

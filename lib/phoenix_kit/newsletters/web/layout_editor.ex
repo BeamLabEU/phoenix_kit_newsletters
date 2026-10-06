@@ -1,9 +1,20 @@
 defmodule PhoenixKit.Newsletters.Web.LayoutEditor do
   @moduledoc """
-  LiveView for creating and editing a broadcast layout: one tab per
+  LiveView for creating and editing a broadcast layout: one tab per site
   language for the display name, subject pattern, HTML and text, and a
   preview of the HTML in the selected language through the same
   `PhoenixKit.Newsletters.Render` a send uses.
+
+  A tab reads and writes, for each field, the key the layout already stores
+  its language under (`Layout.language_tabs/2`): a site language `en-US` over
+  a layout that stores `en` is one tab, and a save writes `en` back rather
+  than adding an `en-US` key beside it. The subject is stored under the key of
+  the tab's HTML, because that is where a send reads it. A save puts a
+  dialect key beside a base key only when the site has two languages with the
+  same base over one stored key (`en-GB` + `en-US`, or `en` + `en-US`, over a
+  stored `en`): one tab keeps `en` (the exact spelling first, else the first in
+  the site's order), the other starts its own key. A stored key no site
+  language claims gets a tab of its own after the site's.
   """
 
   use Phoenix.LiveView
@@ -38,8 +49,12 @@ defmodule PhoenixKit.Newsletters.Web.LayoutEditor do
        |> assign(:edited_layout, nil)
        |> assign(:name, "")
        |> assign(:translations, Map.new(@fields, &{&1, %{}}))
+       |> assign(:tabs, [])
        |> assign(:languages, [])
        |> assign(:editor_locale, nil)
+       |> assign(:editor_keys, %{})
+       |> assign(:editor_tab, nil)
+       |> assign(:suggested_name, nil)
        |> assign(:errors, [])
        |> assign(:preview_html, "")}
     else
@@ -60,7 +75,8 @@ defmodule PhoenixKit.Newsletters.Web.LayoutEditor do
          |> push_navigate(to: Paths.layouts_index())}
 
       layout ->
-        languages = LanguageOptions.with_languages(all_languages(layout))
+        translations =
+          Map.new(@fields, &{&1, Map.get(layout, String.to_existing_atom(&1)) || %{}})
 
         {:noreply,
          socket
@@ -68,55 +84,49 @@ defmodule PhoenixKit.Newsletters.Web.LayoutEditor do
          |> assign(:page_subtitle, layout.name)
          |> assign(:edited_layout, layout)
          |> assign(:name, layout.name)
-         |> assign(
-           :translations,
-           Map.new(@fields, &{&1, Map.get(layout, String.to_existing_atom(&1)) || %{}})
+         |> assign_tabs(
+           Layout.language_tabs(LanguageOptions.site_languages(), translations),
+           translations
          )
-         |> assign(:languages, languages)
-         |> assign(:editor_locale, List.first(languages))
          |> assign_preview()}
     end
   end
 
   def handle_params(_params, _url, socket) do
-    languages = LanguageOptions.site_languages()
-    first = List.first(languages)
+    empty = Map.new(@fields, &{&1, %{}})
+
+    [%{keys: %{"html_body" => key}} | _] =
+      tabs = Layout.language_tabs(LanguageOptions.site_languages(), empty)
 
     {:noreply,
      socket
-     |> assign(:languages, languages)
-     |> assign(:editor_locale, first)
-     |> assign(:translations, %{
-       "display_name" => %{},
-       "subject" => %{},
-       "html_body" => %{first => starter_html()},
-       "text_body" => %{}
-     })
+     |> assign_tabs(tabs, %{empty | "html_body" => %{key => starter_html()}})
      |> assign_preview()}
   end
 
   @impl true
   def handle_event("validate", params, socket) do
-    socket = apply_params(socket, params)
-
-    socket =
-      if socket.assigns.errors == [] do
-        socket
-      else
-        changeset =
-          Layouts.change_layout(socket.assigns.edited_layout || %Layout{}, attrs(socket))
-
-        assign(socket, :errors, error_messages(changeset))
-      end
+    socket = socket |> apply_params(params) |> refresh_errors()
 
     {:noreply, assign_preview(socket)}
   end
 
   def handle_event("switch_language", %{"language" => language}, socket) do
     if language in socket.assigns.languages do
-      {:noreply, socket |> assign(:editor_locale, language) |> assign_preview()}
+      {:noreply, socket |> select_tab(language) |> assign_preview()}
     else
       {:noreply, socket}
+    end
+  end
+
+  def handle_event("use_suggested_name", _params, socket) do
+    case socket.assigns.suggested_name do
+      nil ->
+        {:noreply, socket}
+
+      name ->
+        socket = socket |> assign(:name, name) |> assign(:suggested_name, nil)
+        {:noreply, refresh_errors(socket)}
     end
   end
 
@@ -147,23 +157,89 @@ defmodule PhoenixKit.Newsletters.Web.LayoutEditor do
 
   # ── internals ──────────────────────────────────────────────────────────
 
-  # The form carries the name and the CURRENT language's fields only; the
-  # other languages live in `translations` until save.
+  # Once a save has put errors on the screen, they follow the form.
+  defp refresh_errors(socket) do
+    if socket.assigns.errors == [] do
+      socket
+    else
+      changeset =
+        Layouts.change_layout(socket.assigns.edited_layout || %Layout{}, attrs(socket))
+
+      assign(socket, :errors, error_messages(changeset))
+    end
+  end
+
+  # The form carries the name and the CURRENT tab's fields only; the other
+  # tabs live in `translations` until save. `translations` is keyed, per
+  # field, by the key a tab stores its language under, not by the tab's own
+  # code. A field the tab has no key for is not rendered editable and writes
+  # nothing.
   defp apply_params(socket, params) do
-    locale = socket.assigns.editor_locale
+    keys = socket.assigns.editor_keys
     fields = params["fields"] || %{}
 
     translations =
       Enum.reduce(@fields, socket.assigns.translations, fn field, acc ->
-        case Map.fetch(fields, field) do
-          {:ok, value} -> Map.update!(acc, field, &Map.put(&1, locale, value))
-          :error -> acc
+        with key when is_binary(key) <- keys[field],
+             {:ok, value} <- Map.fetch(fields, field) do
+          Map.update!(acc, field, &Map.put(&1, key, value))
+        else
+          _ -> acc
         end
       end)
 
     socket
     |> assign(:name, params["name"] || socket.assigns.name)
     |> assign(:translations, translations)
+    |> assign_suggested_name()
+  end
+
+  defp assign_tabs(socket, tabs, translations) do
+    socket
+    |> assign(:tabs, tabs)
+    |> assign(:languages, Enum.map(tabs, & &1.language))
+    |> assign(:translations, translations)
+    |> select_tab(initial_language(tabs, translations))
+  end
+
+  defp select_tab(socket, language) do
+    tab = Enum.find(socket.assigns.tabs, &(&1.language == language))
+
+    socket
+    |> assign(:editor_locale, language)
+    |> assign(:editor_keys, tab.keys)
+    |> assign(:editor_tab, tab)
+  end
+
+  # The site's default language when it has content, else the first tab that
+  # does, else the first: never open an empty tab over a layout that has
+  # something to show.
+  defp initial_language(tabs, translations) do
+    tab = Enum.find(tabs, &has_content?(translations, &1.keys)) || List.first(tabs)
+    tab.language
+  end
+
+  defp has_content?(translations, keys) do
+    Enum.any?(@fields, fn field ->
+      case get_in(translations, [field, keys[field]]) do
+        value when is_binary(value) -> String.trim(value) != ""
+        _ -> false
+      end
+    end)
+  end
+
+  # With no name typed yet, a name made from the display name: this tab's if
+  # it has one, else the first tab's that does.
+  defp assign_suggested_name(socket) do
+    suggestion =
+      if String.trim(socket.assigns.name) == "" do
+        display_names = socket.assigns.translations["display_name"]
+
+        [socket.assigns.editor_keys | Enum.map(socket.assigns.tabs, & &1.keys)]
+        |> Enum.find_value(&Layout.suggest_name(display_names[&1["display_name"]]))
+      end
+
+    assign(socket, :suggested_name, suggestion)
   end
 
   defp attrs(socket) do
@@ -171,8 +247,9 @@ defmodule PhoenixKit.Newsletters.Web.LayoutEditor do
   end
 
   defp assign_preview(socket) do
-    locale = socket.assigns.editor_locale
-    html = Map.get(socket.assigns.translations["html_body"], locale)
+    locale = socket.assigns.editor_tab.locale
+    keys = socket.assigns.editor_keys
+    html = Map.get(socket.assigns.translations["html_body"], keys["html_body"])
 
     preview =
       if is_binary(html) and String.trim(html) != "" do
@@ -180,8 +257,9 @@ defmodule PhoenixKit.Newsletters.Web.LayoutEditor do
           Render.subject(
             gettext("Sample subject"),
             %Layout{
-              subject: socket.assigns.translations["subject"],
-              html_body: socket.assigns.translations["html_body"]
+              subject:
+                language_map(socket.assigns.translations["subject"], keys["subject"], locale),
+              html_body: %{locale => html}
             },
             locale
           )
@@ -203,12 +281,13 @@ defmodule PhoenixKit.Newsletters.Web.LayoutEditor do
       gettext("This is where the broadcast's own text goes.") <> "</p>"
   end
 
-  defp all_languages(layout) do
-    @fields
-    |> Enum.flat_map(fn field ->
-      Map.keys(Map.get(layout, String.to_existing_atom(field)) || %{})
-    end)
-    |> Enum.uniq()
+  # The tab's value under the tab's own language, so the preview reads this
+  # tab alone and never a fallback from another one.
+  defp language_map(map, key, language) do
+    case Map.get(map, key) do
+      value when is_binary(value) -> %{language => value}
+      _ -> %{}
+    end
   end
 
   defp current_user_uuid(socket) do

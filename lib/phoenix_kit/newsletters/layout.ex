@@ -102,7 +102,7 @@ defmodule PhoenixKit.Newsletters.Layout do
     |> validate_format(:name, @name_format,
       message:
         gettext_noop(
-          "must start with a letter and contain only lowercase letters, numbers, and underscores"
+          "must use only lowercase Latin letters, numbers and underscores, and start with a letter (for example monthly_news)"
         )
     )
     |> validate_inclusion(:status, @valid_statuses)
@@ -174,6 +174,201 @@ defmodule PhoenixKit.Newsletters.Layout do
 
   def translation_key(_map, _locale, _site_default), do: nil
 
+  @typedoc """
+  One tab of the layout editor. `language` is what the tab is called and the
+  id it is switched by (a site language, or a stored key the site no longer
+  offers); `locale` is the language its preview renders in; `keys` maps each
+  field to the key of that field's language map the tab reads and writes
+  (`nil`: that key is another tab's, so the tab has no value there and writes
+  none); `site?` is false for a stored key no site language claims;
+  `residue?` is true for a subject stored under a key no HTML is stored
+  under, which a send never reads.
+  """
+  @type language_tab :: %{
+          language: String.t(),
+          locale: String.t(),
+          keys: %{optional(String.t()) => String.t() | nil},
+          site?: boolean(),
+          residue?: boolean()
+        }
+
+  @own_fields ["display_name", "text_body"]
+
+  @doc """
+  The editor's tabs: one per site language, in the site's order, then one per
+  stored key no site language accounts for (sorted).
+
+  `translations` maps each field to its language map (`%{"html_body" =>
+  %{"en" => …}, …}`). A tab edits what the readers of its language get, and
+  the editor writes each field where a send reads it:
+
+    * **HTML** — the key `translation_key/3` picks for the tab's language
+      (exact, then base, then another dialect of the same base), if no other
+      tab already owns it; otherwise, or when nothing matches, a new key named
+      by the tab's code. A site that spells its languages with a dialect
+      (`en-US`) over a layout that stores base keys (`en`) is one tab and one
+      translation, not two. A tab never edits a key its readers do not get:
+      with the site's `en` and `en-US` over `en` and `en-GB`, `en` is the `en`
+      tab's, `en-US` starts a key of its own (its readers get `en`, which `en`
+      owns), and `en-GB` is a tab of its own.
+    * **Subject** — the HTML's key. `Render.subject/4` reads the subject
+      pattern in the language the HTML was picked in, so a subject stored
+      under any other key is never used.
+    * **Display name** and **text** — matched per field the same way the
+      admin screens show a display name (`display_name/2` matches it on its
+      own; no send reads it, and the text is kept for reference and never
+      read). A language with no key of its own there uses the tab's HTML key
+      if it is free in that field, else the tab's code, else the tab has no
+      key (`nil`) in that field.
+
+  A key belongs to at most one tab in a field. When several tabs want one key,
+  the exact spelling wins, then a base match, then a dialect match, each in
+  the site's order, so an earlier tab never takes the key a later tab spells
+  exactly. With the site's `en-GB` and `en-US` and only `en` stored, `en` is
+  `en-GB`'s and `en-US` starts a key of its own, so saving on both tabs
+  leaves `en` and `en-US` in the map. `en_US` and `en-US` are one site
+  language. Blank values are not stored translations.
+
+  A stored key no site language accounts for is a tab of its own, called by
+  the key, with `site?: false`; in a field where another tab already owns that
+  key the tab has no key (`nil`). A subject stored under a key that no tab
+  uses for HTML (the old editor saved one under `en-US` over HTML under `en`;
+  a send never applies it) is shown on a `residue?: true` tab, named `"<key>
+  (subject)"` when the key is a site language, so it can be read, copied to
+  the right tab or cleared, and is never silently dropped. That tab owns only
+  the subject: every other field has no key. Once the same key also holds a
+  display name or text the tab is an ordinary extra tab (the language has
+  data in another field and can be given HTML).
+  """
+  @spec language_tabs([String.t()], %{optional(String.t()) => map() | nil}) :: [language_tab()]
+  def language_tabs(site_languages, translations) when is_map(translations) do
+    site =
+      site_languages
+      |> Enum.filter(&is_binary/1)
+      |> Enum.uniq_by(&String.replace(&1, "_", "-"))
+
+    stored =
+      Map.new(["html_body", "subject" | @own_fields], &{&1, present_keys(translations[&1])})
+
+    html_claimed = claim_keys(site, stored["html_body"])
+    site_html = Map.new(site, &{&1, Map.get(html_claimed, &1, &1)})
+    html_keys = Map.values(site_html)
+
+    own =
+      Map.new(@own_fields, fn field ->
+        claimed = claim_keys(site, stored[field])
+        {field, with_fallbacks(site, claimed, site_html)}
+      end)
+
+    site_tabs =
+      for lang <- site do
+        keys =
+          %{"html_body" => site_html[lang], "subject" => site_html[lang]}
+          |> Map.merge(Map.new(@own_fields, &{&1, own[&1][lang]}))
+
+        %{language: lang, locale: lang, keys: keys, site?: true, residue?: false}
+      end
+
+    html_extra = stored["html_body"] -- Map.values(html_claimed)
+    own_extra = Enum.flat_map(@own_fields, &(stored[&1] -- Map.values(own[&1])))
+    with_html = Enum.uniq(html_extra ++ own_extra)
+    residue = stored["subject"] -- (html_keys ++ with_html)
+
+    extra_tabs =
+      Enum.map(Enum.sort(with_html), &extra_tab(&1, site, own, html_keys, false)) ++
+        Enum.map(Enum.sort(residue), &extra_tab(&1, site, own, html_keys, true))
+
+    site_tabs ++ Enum.sort_by(extra_tabs, &{&1.residue?, &1.locale})
+  end
+
+  # A site language with no stored key of its own in a field: its HTML key if
+  # no other tab has it there, else its code, else none. Tried in site order,
+  # so two tabs never end up on one key.
+  defp with_fallbacks(site, claimed, site_html) do
+    {keys, _used} =
+      Enum.reduce(site, {%{}, MapSet.new(Map.values(claimed))}, fn lang, {keys, used} ->
+        key =
+          claimed[lang] || Enum.find([site_html[lang], lang], &(not MapSet.member?(used, &1)))
+
+        {Map.put(keys, lang, key), if(key, do: MapSet.put(used, key), else: used)}
+      end)
+
+    keys
+  end
+
+  # A tab for a stored key no site language accounts for. It owns the key in
+  # every field where no site tab does; a residue tab owns only the subject.
+  defp extra_tab(key, site, own, html_keys, residue?) do
+    html = if residue? or key in html_keys, do: nil, else: key
+
+    keys =
+      Map.new(@own_fields, fn field ->
+        {field, if(residue? or key in Map.values(own[field]), do: nil, else: key)}
+      end)
+      |> Map.merge(%{"html_body" => html, "subject" => if(residue?, do: key, else: html)})
+
+    language = if residue? and key in site, do: "#{key} (subject)", else: key
+
+    %{language: language, locale: key, keys: keys, site?: false, residue?: residue?}
+  end
+
+  # The stored key each site language edits in one field: the one
+  # `translation_key/3` picks for it (exact, base, another dialect), unless
+  # another tab owns it. Tabs that want one key are settled by how well they
+  # match (exact, then base, then dialect), each in the site's order.
+  defp claim_keys(site, stored) do
+    wanted =
+      for lang <- site, pick = wanted_key(lang, stored), into: %{}, do: {lang, pick}
+
+    Enum.reduce([:exact, :base, :dialect], %{}, fn kind, claimed ->
+      Enum.reduce(site, claimed, &claim_wanted(&1, &2, wanted[&1], kind))
+    end)
+  end
+
+  defp claim_wanted(lang, claimed, {kind, key}, kind) do
+    if key in Map.values(claimed), do: claimed, else: Map.put(claimed, lang, key)
+  end
+
+  defp claim_wanted(_lang, claimed, _wanted, _kind), do: claimed
+
+  defp wanted_key(lang, stored) do
+    cond do
+      key = Enum.find(exact_candidates(lang), &(&1 in stored)) -> {:exact, key}
+      key = Enum.find(base_candidates(lang), &(&1 in stored)) -> {:base, key}
+      key = dialect_match(stored, lang) -> {:dialect, key}
+      true -> nil
+    end
+  end
+
+  defp present_keys(map) when is_map(map),
+    do: for({k, v} <- map, is_binary(k), present?(v), do: k) |> Enum.uniq() |> Enum.sort()
+
+  defp present_keys(_map), do: []
+
+  @doc """
+  A name the operator can accept for a layout called `text`: lowercase ASCII
+  letters and digits, with spaces and `-` as `_`; `nil` when nothing usable
+  is left (a name in another script). Always a valid name when not `nil`.
+  """
+  @spec suggest_name(String.t() | nil) :: String.t() | nil
+  def suggest_name(text) when is_binary(text) do
+    slug =
+      text
+      |> String.downcase()
+      |> String.replace(~r/[\s-]+/u, "_")
+      |> String.replace(~r/[^a-z0-9_]/, "")
+      |> String.replace(~r/_+/, "_")
+      |> String.trim("_")
+
+    cond do
+      slug == "" -> nil
+      slug =~ ~r/\A[a-z]/ -> String.slice(slug, 0, @column_widths.name)
+      true -> String.slice("layout_" <> slug, 0, @column_widths.name)
+    end
+  end
+
+  def suggest_name(_text), do: nil
+
   @doc """
   The display name for `locale` (same fallback as `translation/3`), or the
   slug when the layout has none.
@@ -194,12 +389,19 @@ defmodule PhoenixKit.Newsletters.Layout do
   # ── internals ──────────────────────────────────────────────────────────
 
   # Exact (as written, and with `_` spelled `-`), then the base language.
-  defp candidates(locale) when is_binary(locale) and locale != "" do
+  defp candidates(locale), do: exact_candidates(locale) ++ base_candidates(locale)
+
+  defp exact_candidates(locale) when is_binary(locale) and locale != "",
+    do: Enum.uniq([locale, String.replace(locale, "_", "-")])
+
+  defp exact_candidates(_locale), do: []
+
+  defp base_candidates(locale) when is_binary(locale) and locale != "" do
     base = locale |> String.split(["-", "_"]) |> hd()
-    Enum.uniq([locale, String.replace(locale, "_", "-"), base])
+    if base in exact_candidates(locale), do: [], else: [base]
   end
 
-  defp candidates(_locale), do: []
+  defp base_candidates(_locale), do: []
 
   defp dialect_match(present, locale) when is_binary(locale) and locale != "" do
     base = locale |> String.split(["-", "_"]) |> hd()
