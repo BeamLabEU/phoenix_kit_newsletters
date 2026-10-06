@@ -8,7 +8,8 @@ defmodule PhoenixKit.Newsletters.Web.LayoutEditor do
   A tab reads and writes, for each field, the key the layout already stores
   its language under (`Layout.language_tabs/2`): a site language `en-US` over
   a layout that stores `en` is one tab, and a save writes `en` back rather
-  than adding an `en-US` key beside it. The one case where a save does put a
+  than adding an `en-US` key beside it. The subject is stored under the key of
+  the tab's HTML, because that is where a send reads it. The one case where a save does put a
   dialect key beside a base key is a site with two dialects of one language
   (`en-GB`, `en-US` over a stored `en`): the first keeps `en`, the second
   starts its own key. A stored key no site language claims gets a tab of its
@@ -51,6 +52,7 @@ defmodule PhoenixKit.Newsletters.Web.LayoutEditor do
        |> assign(:languages, [])
        |> assign(:editor_locale, nil)
        |> assign(:editor_keys, %{})
+       |> assign(:editor_tab, nil)
        |> assign(:suggested_name, nil)
        |> assign(:errors, [])
        |> assign(:preview_html, "")}
@@ -202,7 +204,10 @@ defmodule PhoenixKit.Newsletters.Web.LayoutEditor do
   defp select_tab(socket, language) do
     tab = Enum.find(socket.assigns.tabs, &(&1.language == language))
 
-    socket |> assign(:editor_locale, language) |> assign(:editor_keys, tab.keys)
+    socket
+    |> assign(:editor_locale, language)
+    |> assign(:editor_keys, tab.keys)
+    |> assign(:editor_tab, tab)
   end
 
   # The site's default language when it has content, else the first tab that
@@ -241,7 +246,7 @@ defmodule PhoenixKit.Newsletters.Web.LayoutEditor do
   end
 
   defp assign_preview(socket) do
-    locale = socket.assigns.editor_locale
+    locale = socket.assigns.editor_tab.locale
     keys = socket.assigns.editor_keys
     html = Map.get(socket.assigns.translations["html_body"], keys["html_body"])
 

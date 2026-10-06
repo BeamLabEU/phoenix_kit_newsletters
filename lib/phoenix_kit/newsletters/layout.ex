@@ -175,44 +175,61 @@ defmodule PhoenixKit.Newsletters.Layout do
   def translation_key(_map, _locale, _site_default), do: nil
 
   @typedoc """
-  One tab of the layout editor. `language` is what the tab is called (a site
-  language, or a stored key the site no longer offers); `keys` maps each
+  One tab of the layout editor. `language` is what the tab is called and the
+  id it is switched by (a site language, or a stored key the site no longer
+  offers); `locale` is the language its preview renders in; `keys` maps each
   field to the key of that field's language map the tab reads and writes
-  (`nil`: the key is another tab's in that field, so the tab has no value
-  there and writes none); `site?` is false for a stored key no site language
-  claims.
+  (`nil`: that key is another tab's, so the tab has no value there and writes
+  none); `site?` is false for a stored key no site language claims;
+  `residue?` is true for a subject stored under a key no HTML is stored
+  under, which a send never reads.
   """
   @type language_tab :: %{
           language: String.t(),
+          locale: String.t(),
           keys: %{optional(String.t()) => String.t() | nil},
-          site?: boolean()
+          site?: boolean(),
+          residue?: boolean()
         }
+
+  @own_fields ["display_name", "text_body"]
 
   @doc """
   The editor's tabs: one per site language, in the site's order, then one per
-  stored key no site language claims (sorted).
+  stored key no site language accounts for (sorted).
 
   `translations` maps each field to its language map (`%{"html_body" =>
-  %{"en" => …}, …}`). Each site language reads and writes the key a field
-  already stores it under, so a site that spells its languages with a dialect
-  (`en-US`) and a layout that stores base keys (`en`) are one tab and one
-  translation, not two. The match is `translation_key/3`'s — exact, then base,
-  then another dialect of the same base — and it is made **per field**, the
-  way a send resolves each field on its own: a layout whose HTML is under `en`
-  and whose display name is under `en-US` shows both on the `en-US` tab, and
-  a save writes each back where it was. A field with no match gets the tab's
-  own code as a new key. Blank values are not stored translations.
+  %{"en" => …}, …}`). The editor writes each field where a send will read it:
 
-  A key belongs to at most one tab in a field: the exact matches are settled
-  first, then base matches, then dialect matches, each in the site's order, so
-  an earlier tab never takes the key a later tab spells exactly. With the
-  site's `en-GB` and `en-US` and only `en` stored, `en` is `en-GB`'s and
-  `en-US` starts a key of its own, so saving on both tabs leaves `en` and
-  `en-US` in the map. `en_US` and `en-US` are one site language.
+    * **HTML** — the key `translation_key/3` finds for the tab's language:
+      exact, then base, then another dialect of the same base; a language
+      with none starts a key named by the tab's code. A site that spells its
+      languages with a dialect (`en-US`) over a layout that stores base keys
+      (`en`) is one tab and one translation, not two.
+    * **Subject** — the HTML's key. `Render.subject/4` reads the subject
+      pattern in the language the HTML was picked in, so a subject stored
+      under any other key is never used.
+    * **Display name** and **text** — a send reads the display name by its
+      own `translation_key/3` match (the text is kept for reference and never
+      read), so these are matched per field the same way; a language with no
+      match of its own uses the tab's HTML key, so new translations stay under
+      one key per language.
 
-  A key no site language claims in some field is a tab of its own, called by
-  the key, with `site?: false`; in a field where another tab already owns
-  that key the tab has no key (`nil`).
+  A key belongs to at most one tab in a field. Exact matches are settled first,
+  then base matches, then dialect matches, each in the site's order, so an
+  earlier tab never takes the key a later tab spells exactly. With the site's
+  `en-GB` and `en-US` and only `en` stored, `en` is `en-GB`'s and `en-US`
+  starts a key of its own, so saving on both tabs leaves `en` and `en-US` in
+  the map. `en_US` and `en-US` are one site language. Blank values are not
+  stored translations.
+
+  A stored key no site language accounts for is a tab of its own, called by
+  the key, with `site?: false`; in a field where another tab already owns that
+  key the tab has no key (`nil`). A subject under a key that no HTML is under
+  (the old editor saved one under `en-US` over HTML under `en`) is shown on a
+  `residue?: true` tab, named `"<key> (subject)"` when the key is a site
+  language, so it can be read, copied to the right tab or cleared, and is
+  never silently dropped; that tab has no HTML key.
   """
   @spec language_tabs([String.t()], %{optional(String.t()) => map() | nil}) :: [language_tab()]
   def language_tabs(site_languages, translations) when is_map(translations) do
@@ -221,34 +238,61 @@ defmodule PhoenixKit.Newsletters.Layout do
       |> Enum.filter(&is_binary/1)
       |> Enum.uniq_by(&String.replace(&1, "_", "-"))
 
-    claims =
-      Map.new(translations, fn {field, map} -> {field, claim_keys(site, present_keys(map))} end)
+    stored =
+      Map.new(["html_body", "subject" | @own_fields], &{&1, present_keys(translations[&1])})
+
+    {html_claimed, _} = claim_keys(site, stored["html_body"])
+    site_html = Map.new(site, &{&1, Map.get(html_claimed, &1, &1)})
+    html_keys = Map.values(site_html)
+
+    own =
+      Map.new(@own_fields, fn field ->
+        {claimed, _} = claim_keys(site, stored[field])
+        taken = Map.values(claimed)
+
+        keys =
+          Map.new(site, fn lang ->
+            {lang, claimed[lang] || if(site_html[lang] in taken, do: nil, else: site_html[lang])}
+          end)
+
+        {field, keys}
+      end)
 
     site_tabs =
       for lang <- site do
         keys =
-          Map.new(claims, fn {field, {claimed, _}} -> {field, Map.get(claimed, lang, lang)} end)
+          %{"html_body" => site_html[lang], "subject" => site_html[lang]}
+          |> Map.merge(Map.new(@own_fields, &{&1, own[&1][lang]}))
 
-        %{language: lang, keys: keys, site?: true}
+        %{language: lang, locale: lang, keys: keys, site?: true, residue?: false}
       end
 
-    unclaimed =
-      claims
-      |> Enum.flat_map(fn {_field, {claimed, stored}} -> stored -- Map.values(claimed) end)
-      |> Enum.uniq()
-      |> Enum.sort()
+    html_extra = stored["html_body"] -- Map.values(html_claimed)
+    own_extra = Enum.flat_map(@own_fields, &(stored[&1] -- Map.values(own[&1])))
+    with_html = Enum.uniq(html_extra ++ own_extra)
+    residue = stored["subject"] -- (html_keys ++ with_html)
 
     extra_tabs =
-      for key <- unclaimed do
-        keys =
-          Map.new(claims, fn {field, {claimed, _}} ->
-            {field, if(key in Map.values(claimed), do: nil, else: key)}
-          end)
+      Enum.map(Enum.sort(with_html), &extra_tab(&1, site, own, html_keys, false)) ++
+        Enum.map(Enum.sort(residue), &extra_tab(&1, site, own, html_keys, true))
 
-        %{language: key, keys: keys, site?: false}
-      end
+    site_tabs ++ Enum.sort_by(extra_tabs, &{&1.residue?, &1.locale})
+  end
 
-    site_tabs ++ extra_tabs
+  # A tab for a stored key no site language accounts for. It owns the key in
+  # every field where no site tab does.
+  defp extra_tab(key, site, own, html_keys, residue?) do
+    html = if residue? or key in html_keys, do: nil, else: key
+
+    keys =
+      Map.new(@own_fields, fn field ->
+        {field, if(key in Map.values(own[field]), do: nil, else: key)}
+      end)
+      |> Map.merge(%{"html_body" => html, "subject" => if(residue?, do: key, else: html)})
+
+    language = if residue? and key in site, do: "#{key} (subject)", else: key
+
+    %{language: language, locale: key, keys: keys, site?: false, residue?: residue?}
   end
 
   # Which stored key each site language reads in one field, in passes, so a

@@ -63,7 +63,10 @@
               class="badge badge-xs badge-success ml-1"
             >
             </span>
-            <span :if={not tab.site?} class="badge badge-xs badge-warning ml-1">
+            <span :if={tab.residue?} class="badge badge-xs badge-warning ml-1">
+              {gettext("subject not used by sends")}
+            </span>
+            <span :if={not tab.site? and not tab.residue?} class="badge badge-xs badge-warning ml-1">
               {gettext("not a site language")}
             </span>
           </button>
@@ -72,6 +75,12 @@
         <%!-- Keyed by language so switching tabs replaces the inputs
              instead of morphing one language's text into another's. --%>
         <div id={"layout-fields-#{@editor_locale}"} class="space-y-4">
+          <p :if={@editor_tab.residue?} class="alert alert-warning text-sm whitespace-normal">
+            {gettext(
+              "This subject is stored under %{key}, but a send reads the subject in the language of the HTML, so it is never used. Copy it to the right language tab, or clear it to remove it.",
+              key: @editor_tab.locale
+            )}
+          </p>
           <fieldset class="fieldset">
             <label class="label">{gettext("Display name")}</label>
             <input
@@ -82,6 +91,9 @@
               class="input w-full"
               phx-debounce="300"
             />
+            <p :if={is_nil(@editor_keys["display_name"])} class="label text-xs whitespace-normal">
+              {gettext("Not editable here: in this field the language is stored under another tab.")}
+            </p>
           </fieldset>
 
           <fieldset class="fieldset">
@@ -100,6 +112,9 @@
                 "Must contain {{subject}}, the broadcast's own subject. Leave blank to send the broadcast's subject unchanged."
               )}
             </p>
+            <p :if={is_nil(@editor_keys["subject"])} class="label text-xs whitespace-normal">
+              {gettext("Not editable here: in this field the language is stored under another tab.")}
+            </p>
           </fieldset>
 
           <fieldset class="fieldset">
@@ -116,6 +131,9 @@
                 "{{{content}}} is the broadcast. Also available: {{{header}}}, {{{footer}}}, {{logo_url}}, {{accent_color}}, {{site_name}}, {{site_url}}, {{subject}}, {{name}}, {{email}}, {{unsubscribe_url}}, {{preferences_url}}."
               )}
             </p>
+            <p :if={is_nil(@editor_keys["html_body"])} class="label text-xs whitespace-normal">
+              {gettext("Not editable here: in this field the language is stored under another tab.")}
+            </p>
           </fieldset>
 
           <fieldset class="fieldset">
@@ -127,6 +145,9 @@
               rows="5"
               phx-debounce="500"
             >{Map.get(@translations["text_body"], @editor_keys["text_body"], "")}</textarea>
+            <p :if={is_nil(@editor_keys["text_body"])} class="label text-xs whitespace-normal">
+              {gettext("Not editable here: in this field the language is stored under another tab.")}
+            </p>
           </fieldset>
         </div>
 

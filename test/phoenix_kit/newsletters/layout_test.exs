@@ -109,51 +109,125 @@ defmodule PhoenixKit.Newsletters.LayoutTest do
     end
 
     test "blank values are not stored translations" do
-      tabs =
-        Layout.language_tabs(["en-US"], %{
-          "html_body" => %{"en" => "x"},
-          "subject" => %{"en-US" => "  "}
-        })
+      # A blank under a key the tab would otherwise claim does not claim it.
+      translations = %{
+        "html_body" => %{"en" => "x"},
+        "display_name" => %{"en-GB" => "  "},
+        "subject" => %{"pt" => "  "}
+      }
 
-      assert [%{language: "en-US", keys: %{"html_body" => "en", "subject" => "en-US"}}] = tabs
+      assert [%{language: "en-US", keys: keys}] = Layout.language_tabs(["en-US"], translations)
+
+      assert keys["display_name"] == "en"
+      assert keys["subject"] == "en"
+    end
+
+    test "a blank-only key is not a tab" do
+      assert [%{language: "en-US"}] =
+               Layout.language_tabs(["en-US"], %{
+                 "html_body" => %{"en" => "x", "pt" => ""},
+                 "text_body" => %{"fr" => "   "}
+               })
     end
   end
 
-  describe "language_tabs/2 — each field resolves on its own" do
-    test "html under the base key and the display name under the dialect key: one tab, two keys" do
-      translations = %{
-        "html_body" => %{"en" => "<p>{{{content}}}</p>"},
-        "display_name" => %{"en-US" => "News"},
-        "subject" => %{"en-US" => "{{subject}}"},
-        "text_body" => %{}
-      }
+  describe "language_tabs/2 — each field is stored where a send reads it" do
+    test "the subject follows the HTML's key; so does a field with no match of its own" do
+      translations = %{"html_body" => %{"en" => "<p>{{{content}}}</p>"}}
 
-      assert [%{language: "en-US", site?: true, keys: keys}] =
-               Layout.language_tabs(["en-US"], translations)
+      assert [%{language: "en-US", keys: keys}] = Layout.language_tabs(["en-US"], translations)
 
       assert keys == %{
                "html_body" => "en",
-               "display_name" => "en-US",
-               "subject" => "en-US",
-               "text_body" => "en-US"
+               "subject" => "en",
+               "display_name" => "en",
+               "text_body" => "en"
              }
     end
 
-    test "a language stored in one field only is a tab; the field it has no value in gets a new key" do
-      translations = %{"html_body" => %{"en" => "x"}, "subject" => %{"pt" => "{{subject}}"}}
+    test "a second dialect with no HTML starts one key for all four fields" do
+      translations = %{"html_body" => %{"en" => "x"}, "display_name" => %{"en" => "n"}}
+
+      assert [_, %{language: "en-US", keys: keys}] =
+               Layout.language_tabs(["en-GB", "en-US"], translations)
+
+      assert Map.values(keys) |> Enum.uniq() == ["en-US"]
+    end
+
+    test "the display name is matched on its own, as Layout.display_name/2 does" do
+      translations = %{
+        "html_body" => %{"en" => "x"},
+        "display_name" => %{"en-US" => "News"},
+        "text_body" => %{}
+      }
+
+      assert [%{language: "en-US", keys: %{"html_body" => "en", "display_name" => "en-US"}}] =
+               Layout.language_tabs(["en-US"], translations)
+    end
+
+    test "a subject under a key no HTML is under is a residue tab: shown, not used, not lost" do
+      translations = %{
+        "html_body" => %{"en" => "x"},
+        "subject" => %{"en-US" => "[US] {{subject}}"},
+        "display_name" => %{"en-US" => "News"}
+      }
 
       assert [
-               %{language: "en-US", keys: %{"html_body" => "en", "subject" => "en-US"}},
-               %{language: "pt", site?: false, keys: %{"html_body" => "pt", "subject" => "pt"}}
+               %{
+                 language: "en-US",
+                 site?: true,
+                 keys: %{"subject" => "en", "display_name" => "en-US"}
+               },
+               %{
+                 language: "en-US (subject)",
+                 locale: "en-US",
+                 site?: false,
+                 residue?: true,
+                 keys: %{"html_body" => nil, "subject" => "en-US", "display_name" => nil}
+               }
              ] = Layout.language_tabs(["en-US"], translations)
     end
 
-    test "an extra tab has no key in a field where its key is another tab's" do
-      translations = %{"html_body" => %{"en" => "x"}, "subject" => %{"en-US" => "s", "en" => "t"}}
+    test "a language held only by a non-HTML field is a tab, with no HTML key" do
+      translations = %{"html_body" => %{"en" => "x"}, "subject" => %{"pt" => "{{subject}}"}}
 
       assert [
-               %{language: "en-US", keys: %{"html_body" => "en", "subject" => "en-US"}},
-               %{language: "en", site?: false, keys: %{"html_body" => nil, "subject" => "en"}}
+               %{language: "en-US"},
+               %{
+                 language: "pt",
+                 site?: false,
+                 residue?: true,
+                 keys: %{"html_body" => nil, "subject" => "pt", "display_name" => "pt"}
+               }
+             ] = Layout.language_tabs(["en-US"], translations)
+    end
+
+    test "a display name under a key of its own is a tab whose HTML key is its own" do
+      translations = %{"html_body" => %{"en" => "x"}, "display_name" => %{"pt" => "Notícias"}}
+
+      assert [
+               %{language: "en-US"},
+               %{
+                 language: "pt",
+                 site?: false,
+                 residue?: false,
+                 keys: %{"html_body" => "pt", "subject" => "pt", "display_name" => "pt"}
+               }
+             ] = Layout.language_tabs(["en-US"], translations)
+    end
+
+    test "a tab has no key in a field where a site tab owns its key" do
+      translations = %{
+        "html_body" => %{"en" => "x"},
+        "display_name" => %{"en-US" => "a", "en" => "b"}
+      }
+
+      assert [
+               %{language: "en-US", keys: %{"html_body" => "en", "display_name" => "en-US"}},
+               %{
+                 language: "en",
+                 keys: %{"html_body" => nil, "subject" => nil, "display_name" => "en"}
+               }
              ] = Layout.language_tabs(["en-US"], translations)
     end
   end

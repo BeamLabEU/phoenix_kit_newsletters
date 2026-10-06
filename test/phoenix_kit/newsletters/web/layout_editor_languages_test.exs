@@ -10,6 +10,7 @@ defmodule PhoenixKit.Newsletters.Web.LayoutEditorLanguagesTest do
 
   alias PhoenixKit.Modules.Languages
   alias PhoenixKit.Newsletters.Layouts
+  alias PhoenixKit.Newsletters.Render
   alias PhoenixKit.Newsletters.Web.LayoutEditor
   alias PhoenixKit.Settings
 
@@ -249,7 +250,7 @@ defmodule PhoenixKit.Newsletters.Web.LayoutEditorLanguagesTest do
   describe "a layout the old editor saved in part" do
     setup do: site_languages!(["en-US", "fr", "de", "es"])
 
-    test "HTML under the base key, display name and subject under the dialect key" do
+    defp partial_layout! do
       {:ok, layout} =
         Layouts.create_layout(%{
           "name" => "partial",
@@ -258,30 +259,63 @@ defmodule PhoenixKit.Newsletters.Web.LayoutEditorLanguagesTest do
           "subject" => %{"en-US" => "[US] {{subject}}"}
         })
 
-      socket = mounted(%{"id" => layout.uuid})
+      layout
+    end
 
-      # One en-US tab with all three, not an empty en-US next to an "en" tab.
-      assert socket.assigns.languages == ["en-US", "fr", "de", "es"]
+    test "the en-US tab shows the HTML and the display name; the stored subject is flagged" do
+      socket = mounted(%{"id" => partial_layout!().uuid})
+
+      assert socket.assigns.languages == ["en-US", "fr", "de", "es", "en-US (subject)"]
       assert socket.assigns.editor_locale == "en-US"
+      assert html_in(socket, "en-US") =~ "EN "
 
-      assert socket.assigns.translations["html_body"][socket.assigns.editor_keys["html_body"]] =~
-               "EN "
+      assert socket.assigns.translations["display_name"][
+               socket.assigns.editor_keys["display_name"]
+             ] == "News"
 
       assert socket.assigns.preview_html =~ "EN "
 
-      socket =
-        type(socket, %{
-          "html_body" => "<p>EN2 {{{content}}}</p>",
-          "display_name" => "News 2",
-          "subject" => "[US2] {{subject}}"
-        })
+      # The subject stored under en-US is not what a send reads for this HTML.
+      assert socket.assigns.editor_keys["subject"] == "en"
+      assert socket.assigns.translations["subject"][socket.assigns.editor_keys["subject"]] == nil
+    end
 
-      save(socket)
+    test "the flagged subject is readable on its own tab, and clearing it removes it" do
+      layout = partial_layout!()
+      socket = mounted(%{"id" => layout.uuid}) |> switch("en-US (subject)")
+
+      assert socket.assigns.editor_keys == %{
+               "html_body" => nil,
+               "subject" => "en-US",
+               "display_name" => nil,
+               "text_body" => "en-US"
+             }
+
+      html = render_page(socket)
+      assert html =~ "[US] {{subject}}"
+      assert html =~ "never used"
+      assert html =~ "subject not used by sends"
+
+      socket |> type(%{"subject" => ""}) |> save()
+      saved = Layouts.get_layout(layout.uuid)
+
+      assert saved.subject == %{}
+      assert saved.html_body == %{"en" => "<p>EN {{{content}}}</p>"}
+      assert saved.display_name == %{"en-US" => "News"}
+    end
+
+    test "saving from the en-US tab changes each field where it was and keeps the flagged subject" do
+      layout = partial_layout!()
+
+      mounted(%{"id" => layout.uuid})
+      |> type(%{"html_body" => "<p>EN2 {{{content}}}</p>", "display_name" => "News 2"})
+      |> save()
+
       saved = Layouts.get_layout(layout.uuid)
 
       assert saved.html_body == %{"en" => "<p>EN2 {{{content}}}</p>"}
       assert saved.display_name == %{"en-US" => "News 2"}
-      assert saved.subject == %{"en-US" => "[US2] {{subject}}"}
+      assert saved.subject == %{"en-US" => "[US] {{subject}}"}
     end
 
     test "a language that exists only in a non-HTML field is still a tab, and survives a save" do
@@ -302,22 +336,87 @@ defmodule PhoenixKit.Newsletters.Web.LayoutEditorLanguagesTest do
       assert Layouts.get_layout(layout.uuid).subject == %{"pt" => "[PT] {{subject}}"}
     end
 
-    test "a tab whose key is another tab's in a field has that field disabled and writes nothing" do
-      {:ok, layout} =
-        Layouts.create_layout(%{
-          "name" => "shared",
-          "html_body" => %{"en" => "<p>EN {{{content}}}</p>"},
-          "subject" => %{"en-US" => "[US] {{subject}}", "en" => "[EN] {{subject}}"}
-        })
+    test "a field with no key on this tab is disabled, explained, and writes nothing" do
+      layout = partial_layout!()
+      socket = mounted(%{"id" => layout.uuid}) |> switch("en-US (subject)")
 
-      socket = mounted(%{"id" => layout.uuid}) |> switch("en")
-
-      assert socket.assigns.editor_keys["html_body"] == nil
       html = render_page(socket)
-      assert html =~ ~r/<textarea[^>]*name="fields\[html_body\]"[^>]*disabled/s
 
-      socket |> type(%{"html_body" => "<p>clobbered</p>"}) |> save()
-      assert Layouts.get_layout(layout.uuid).html_body == %{"en" => "<p>EN {{{content}}}</p>"}
+      for field <- ~w(html_body display_name) do
+        assert html =~ ~r/name="fields\[#{field}\]"[^>]*disabled/s
+      end
+
+      assert html =~ "Not editable here"
+
+      # A valid value, so only the missing key keeps it out of the save.
+      result =
+        socket
+        |> type(%{"html_body" => "<p>clobbered {{{content}}}</p>", "display_name" => "Clobbered"})
+        |> save()
+
+      assert result.assigns.errors == []
+      saved = Layouts.get_layout(layout.uuid)
+      assert saved.html_body == %{"en" => "<p>EN {{{content}}}</p>"}
+      assert saved.display_name == %{"en-US" => "News"}
+    end
+  end
+
+  describe "the subject is stored where a send reads it" do
+    @html "<html><head><title>{{subject}}</title></head><body>{{{content}}}</body></html>"
+
+    test "a dialect site over base keys: the pattern typed on en-US lands under en and is applied" do
+      site_languages!(["en-US", "fr"])
+      layout = layout!("base_keys", %{"en" => @html})
+
+      socket =
+        mounted(%{"id" => layout.uuid})
+        |> type(%{"subject" => "[N] {{subject}}"})
+
+      assert socket.assigns.preview_html =~ "[N] Sample subject"
+
+      save(socket)
+      saved = Layouts.get_layout(layout.uuid)
+
+      assert saved.subject == %{"en" => "[N] {{subject}}"}
+      assert Render.subject("Hello", saved, "en-US") == "[N] Hello"
+      assert Render.subject("Hello", saved, "en") == "[N] Hello"
+    end
+
+    test "a base site over dialect keys: the pattern typed on en lands under en-US and is applied" do
+      site_languages!(["en", "fr"])
+      layout = layout!("dialect_keys", %{"en-US" => @html})
+
+      mounted(%{"id" => layout.uuid})
+      |> type(%{"subject" => "[N] {{subject}}"})
+      |> save()
+
+      saved = Layouts.get_layout(layout.uuid)
+
+      assert saved.subject == %{"en-US" => "[N] {{subject}}"}
+      assert Render.subject("Hello", saved, "en") == "[N] Hello"
+    end
+
+    test "a new translation keeps all its fields under one key" do
+      site_languages!(["en-GB", "en-US"])
+      layout = layout!("one_each", %{"en" => @html})
+
+      mounted(%{"id" => layout.uuid})
+      |> switch("en-US")
+      |> type(%{
+        "html_body" => @html,
+        "subject" => "[US] {{subject}}",
+        "display_name" => "US",
+        "text_body" => "text"
+      })
+      |> save()
+
+      saved = Layouts.get_layout(layout.uuid)
+
+      assert Map.keys(saved.html_body) |> Enum.sort() == ["en", "en-US"]
+      assert Map.keys(saved.subject) == ["en-US"]
+      assert Map.keys(saved.display_name) == ["en-US"]
+      assert Map.keys(saved.text_body) == ["en-US"]
+      assert Render.subject("Hello", saved, "en-US") == "[US] Hello"
     end
   end
 
