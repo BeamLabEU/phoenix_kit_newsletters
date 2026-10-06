@@ -5,11 +5,14 @@ defmodule PhoenixKit.Newsletters.Web.LayoutEditor do
   preview of the HTML in the selected language through the same
   `PhoenixKit.Newsletters.Render` a send uses.
 
-  A tab reads and writes the key the layout already stores its language
-  under (`Layout.language_tabs/2`): a site language `en-US` over a layout that
-  stores `en` is one tab, and a save writes `en` back — it never adds a
-  dialect key beside the base one. A stored key no site language claims gets
-  a tab of its own after the site's.
+  A tab reads and writes, for each field, the key the layout already stores
+  its language under (`Layout.language_tabs/2`): a site language `en-US` over
+  a layout that stores `en` is one tab, and a save writes `en` back rather
+  than adding an `en-US` key beside it. The one case where a save does put a
+  dialect key beside a base key is a site with two dialects of one language
+  (`en-GB`, `en-US` over a stored `en`): the first keeps `en`, the second
+  starts its own key. A stored key no site language claims gets a tab of its
+  own after the site's.
   """
 
   use Phoenix.LiveView
@@ -47,7 +50,7 @@ defmodule PhoenixKit.Newsletters.Web.LayoutEditor do
        |> assign(:tabs, [])
        |> assign(:languages, [])
        |> assign(:editor_locale, nil)
-       |> assign(:editor_key, nil)
+       |> assign(:editor_keys, %{})
        |> assign(:suggested_name, nil)
        |> assign(:errors, [])
        |> assign(:preview_html, "")}
@@ -79,7 +82,7 @@ defmodule PhoenixKit.Newsletters.Web.LayoutEditor do
          |> assign(:edited_layout, layout)
          |> assign(:name, layout.name)
          |> assign_tabs(
-           Layout.language_tabs(LanguageOptions.site_languages(), stored_keys(translations)),
+           Layout.language_tabs(LanguageOptions.site_languages(), translations),
            translations
          )
          |> assign_preview()}
@@ -87,16 +90,14 @@ defmodule PhoenixKit.Newsletters.Web.LayoutEditor do
   end
 
   def handle_params(_params, _url, socket) do
-    [%{key: key} | _] = tabs = Layout.language_tabs(LanguageOptions.site_languages(), [])
+    empty = Map.new(@fields, &{&1, %{}})
+
+    [%{keys: %{"html_body" => key}} | _] =
+      tabs = Layout.language_tabs(LanguageOptions.site_languages(), empty)
 
     {:noreply,
      socket
-     |> assign_tabs(tabs, %{
-       "display_name" => %{},
-       "subject" => %{},
-       "html_body" => %{key => starter_html()},
-       "text_body" => %{}
-     })
+     |> assign_tabs(tabs, %{empty | "html_body" => %{key => starter_html()}})
      |> assign_preview()}
   end
 
@@ -166,17 +167,21 @@ defmodule PhoenixKit.Newsletters.Web.LayoutEditor do
   end
 
   # The form carries the name and the CURRENT tab's fields only; the other
-  # tabs live in `translations` until save. `translations` is keyed by the
-  # key a tab stores its language under, not by the tab's own code.
+  # tabs live in `translations` until save. `translations` is keyed, per
+  # field, by the key a tab stores its language under, not by the tab's own
+  # code. A field the tab has no key for is not rendered editable and writes
+  # nothing.
   defp apply_params(socket, params) do
-    key = socket.assigns.editor_key
+    keys = socket.assigns.editor_keys
     fields = params["fields"] || %{}
 
     translations =
       Enum.reduce(@fields, socket.assigns.translations, fn field, acc ->
-        case Map.fetch(fields, field) do
-          {:ok, value} -> Map.update!(acc, field, &Map.put(&1, key, value))
-          :error -> acc
+        with key when is_binary(key) <- keys[field],
+             {:ok, value} <- Map.fetch(fields, field) do
+          Map.update!(acc, field, &Map.put(&1, key, value))
+        else
+          _ -> acc
         end
       end)
 
@@ -195,22 +200,22 @@ defmodule PhoenixKit.Newsletters.Web.LayoutEditor do
   end
 
   defp select_tab(socket, language) do
-    key = socket.assigns.tabs |> Enum.find(&(&1.language == language)) |> Map.fetch!(:key)
+    tab = Enum.find(socket.assigns.tabs, &(&1.language == language))
 
-    socket |> assign(:editor_locale, language) |> assign(:editor_key, key)
+    socket |> assign(:editor_locale, language) |> assign(:editor_keys, tab.keys)
   end
 
   # The site's default language when it has content, else the first tab that
   # does, else the first: never open an empty tab over a layout that has
   # something to show.
   defp initial_language(tabs, translations) do
-    tab = Enum.find(tabs, &has_content?(translations, &1.key)) || List.first(tabs)
+    tab = Enum.find(tabs, &has_content?(translations, &1.keys)) || List.first(tabs)
     tab.language
   end
 
-  defp has_content?(translations, key) do
+  defp has_content?(translations, keys) do
     Enum.any?(@fields, fn field ->
-      case get_in(translations, [field, key]) do
+      case get_in(translations, [field, keys[field]]) do
         value when is_binary(value) -> String.trim(value) != ""
         _ -> false
       end
@@ -224,8 +229,8 @@ defmodule PhoenixKit.Newsletters.Web.LayoutEditor do
       if String.trim(socket.assigns.name) == "" do
         display_names = socket.assigns.translations["display_name"]
 
-        [socket.assigns.editor_key | Enum.map(socket.assigns.tabs, & &1.key)]
-        |> Enum.find_value(&Layout.suggest_name(display_names[&1]))
+        [socket.assigns.editor_keys | Enum.map(socket.assigns.tabs, & &1.keys)]
+        |> Enum.find_value(&Layout.suggest_name(display_names[&1["display_name"]]))
       end
 
     assign(socket, :suggested_name, suggestion)
@@ -237,8 +242,8 @@ defmodule PhoenixKit.Newsletters.Web.LayoutEditor do
 
   defp assign_preview(socket) do
     locale = socket.assigns.editor_locale
-    key = socket.assigns.editor_key
-    html = Map.get(socket.assigns.translations["html_body"], key)
+    keys = socket.assigns.editor_keys
+    html = Map.get(socket.assigns.translations["html_body"], keys["html_body"])
 
     preview =
       if is_binary(html) and String.trim(html) != "" do
@@ -246,7 +251,8 @@ defmodule PhoenixKit.Newsletters.Web.LayoutEditor do
           Render.subject(
             gettext("Sample subject"),
             %Layout{
-              subject: language_map(socket.assigns.translations["subject"], key, locale),
+              subject:
+                language_map(socket.assigns.translations["subject"], keys["subject"], locale),
               html_body: %{locale => html}
             },
             locale
@@ -276,10 +282,6 @@ defmodule PhoenixKit.Newsletters.Web.LayoutEditor do
       value when is_binary(value) -> %{language => value}
       _ -> %{}
     end
-  end
-
-  defp stored_keys(translations) do
-    translations |> Map.values() |> Enum.flat_map(&Map.keys/1) |> Enum.uniq()
   end
 
   defp current_user_uuid(socket) do

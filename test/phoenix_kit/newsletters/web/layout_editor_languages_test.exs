@@ -58,6 +58,13 @@ defmodule PhoenixKit.Newsletters.Web.LayoutEditorLanguagesTest do
     layout
   end
 
+  defp render_page(socket) do
+    socket.assigns
+    |> Map.merge(%{url_path: "/admin/newsletters/layouts", phoenix_kit_current_scope: nil})
+    |> LayoutEditor.render()
+    |> Phoenix.LiveViewTest.rendered_to_string()
+  end
+
   defp switch(socket, language) do
     {:noreply, socket} =
       LayoutEditor.handle_event("switch_language", %{"language" => language}, socket)
@@ -67,18 +74,28 @@ defmodule PhoenixKit.Newsletters.Web.LayoutEditorLanguagesTest do
 
   defp html_in(socket, language) do
     tab = Enum.find(socket.assigns.tabs, &(&1.language == language))
-    socket.assigns.translations["html_body"][tab.key]
+    socket.assigns.translations["html_body"][tab.keys["html_body"]]
+  end
+
+  defp type(socket, fields) do
+    {:noreply, socket} = LayoutEditor.handle_event("validate", %{"fields" => fields}, socket)
+    socket
+  end
+
+  defp save(socket) do
+    {:noreply, socket} = LayoutEditor.handle_event("save", %{}, socket)
+    socket
   end
 
   describe "a site that spells its languages with a dialect" do
-    setup do: site_languages!(["en-US", "et", "ru", "uk"])
+    setup do: site_languages!(["en-US", "fr", "de", "es"])
 
     test "one tab per site language, none for the base key the layout stores" do
       layout = layout!("base_keys", %{"en" => "<p>EN {{{content}}}</p>"})
 
       socket = mounted(%{"id" => layout.uuid})
 
-      assert socket.assigns.languages == ["en-US", "et", "ru", "uk"]
+      assert socket.assigns.languages == ["en-US", "fr", "de", "es"]
     end
 
     test "the dialect tab shows the base key's content and previews it" do
@@ -113,9 +130,9 @@ defmodule PhoenixKit.Newsletters.Web.LayoutEditorLanguagesTest do
 
       socket = mounted(%{"id" => layout.uuid})
 
-      assert socket.assigns.languages == ["en-US", "et", "ru", "uk", "pt"]
+      assert socket.assigns.languages == ["en-US", "fr", "de", "es", "pt"]
 
-      assert [%{language: "pt", key: "pt", site?: false}] =
+      assert [%{language: "pt", keys: %{"html_body" => "pt"}, site?: false}] =
                Enum.filter(socket.assigns.tabs, &(not &1.site?))
 
       socket = socket |> switch("pt")
@@ -138,84 +155,210 @@ defmodule PhoenixKit.Newsletters.Web.LayoutEditorLanguagesTest do
     test "a new layout puts the starter HTML under the first tab's own key" do
       socket = mounted(%{})
 
-      assert socket.assigns.languages == ["en-US", "et", "ru", "uk"]
+      assert socket.assigns.languages == ["en-US", "fr", "de", "es"]
       assert socket.assigns.editor_locale == "en-US"
       assert Map.keys(socket.assigns.translations["html_body"]) == ["en-US"]
       assert socket.assigns.preview_html =~ "Sample broadcast"
     end
 
     test "the editor opens on the first tab that has content when the default has none" do
-      layout = layout!("only_ru", %{"ru" => "<p>RU {{{content}}}</p>"})
+      layout = layout!("only_de", %{"de" => "<p>DE {{{content}}}</p>"})
 
       socket = mounted(%{"id" => layout.uuid})
 
-      assert socket.assigns.editor_locale == "ru"
-      assert socket.assigns.preview_html =~ "RU "
+      assert socket.assigns.editor_locale == "de"
+      assert socket.assigns.preview_html =~ "DE "
     end
   end
 
   describe "a site with a dialect for most languages" do
-    setup do: site_languages!(["en-GB", "fr-FR", "de-DE", "it", "es-ES", "pl", "ru"])
+    setup do: site_languages!(["en-GB", "nl-NL", "sv-SE", "fi", "da-DK", "cs", "ja"])
 
     test "seven tabs, each reading the base key; no dialect key after save" do
-      html = for l <- ~w(de en es fr it pl ru), into: %{}, do: {l, "<p>#{l} {{{content}}}</p>"}
+      html = for l <- ~w(cs da en fi ja nl sv), into: %{}, do: {l, "<p>#{l} {{{content}}}</p>"}
       layout = layout!("all_base", html)
 
       socket = mounted(%{"id" => layout.uuid})
 
-      assert socket.assigns.languages == ["en-GB", "fr-FR", "de-DE", "it", "es-ES", "pl", "ru"]
-      assert html_in(socket, "fr-FR") == "<p>fr {{{content}}}</p>"
+      assert socket.assigns.languages == ["en-GB", "nl-NL", "sv-SE", "fi", "da-DK", "cs", "ja"]
+      assert html_in(socket, "nl-NL") == "<p>nl {{{content}}}</p>"
 
-      socket = switch(socket, "fr-FR")
-      assert socket.assigns.editor_locale == "fr-FR"
-      assert socket.assigns.preview_html =~ "fr "
+      socket = switch(socket, "nl-NL")
+      assert socket.assigns.editor_locale == "nl-NL"
+      assert socket.assigns.preview_html =~ "nl "
 
       {:noreply, socket} =
         LayoutEditor.handle_event(
           "validate",
-          %{"fields" => %{"html_body" => "<p>fr2 {{{content}}}</p>"}},
+          %{"fields" => %{"html_body" => "<p>nl2 {{{content}}}</p>"}},
           socket
         )
 
       {:noreply, _} = LayoutEditor.handle_event("save", %{}, socket)
 
       saved = Layouts.get_layout(layout.uuid).html_body
-      assert Map.keys(saved) |> Enum.sort() == ~w(de en es fr it pl ru)
-      assert saved["fr"] == "<p>fr2 {{{content}}}</p>"
+      assert Map.keys(saved) |> Enum.sort() == ~w(cs da en fi ja nl sv)
+      assert saved["nl"] == "<p>nl2 {{{content}}}</p>"
     end
   end
 
   describe "two dialects of one language and a layout that stores only the base" do
-    setup do: site_languages!(["en-GB", "en-US", "ru"])
+    setup do: site_languages!(["en-GB", "en-US", "de"])
 
     test "the first dialect takes the base key, the second gets its own" do
       layout = layout!("one_base", %{"en" => "<p>EN {{{content}}}</p>"})
 
       socket = mounted(%{"id" => layout.uuid})
 
-      assert socket.assigns.languages == ["en-GB", "en-US", "ru"]
+      assert socket.assigns.languages == ["en-GB", "en-US", "de"]
 
       assert [
-               %{language: "en-GB", key: "en"},
-               %{language: "en-US", key: "en-US"},
-               %{language: "ru", key: "ru"}
+               %{language: "en-GB", keys: %{"html_body" => "en"}},
+               %{language: "en-US", keys: %{"html_body" => "en-US"}},
+               %{language: "de", keys: %{"html_body" => "de"}}
              ] = socket.assigns.tabs
 
       assert html_in(socket, "en-US") == nil
     end
 
-    test "saving leaves one version of English, not two" do
+    test "editing the first dialect's tab changes the one English version" do
       layout = layout!("one_base", %{"en" => "<p>EN {{{content}}}</p>"})
+
+      mounted(%{"id" => layout.uuid})
+      |> type(%{"html_body" => "<p>EN2 {{{content}}}</p>"})
+      |> save()
+
+      assert Layouts.get_layout(layout.uuid).html_body == %{"en" => "<p>EN2 {{{content}}}</p>"}
+    end
+
+    test "the second dialect's tab writes a key of its own, beside en" do
+      layout = layout!("one_base", %{"en" => "<p>EN {{{content}}}</p>"})
+
+      mounted(%{"id" => layout.uuid})
+      |> switch("en-US")
+      |> type(%{"html_body" => "<p>US {{{content}}}</p>"})
+      |> save()
+
+      assert Layouts.get_layout(layout.uuid).html_body == %{
+               "en" => "<p>EN {{{content}}}</p>",
+               "en-US" => "<p>US {{{content}}}</p>"
+             }
+    end
+  end
+
+  describe "a layout the old editor saved in part" do
+    setup do: site_languages!(["en-US", "fr", "de", "es"])
+
+    test "HTML under the base key, display name and subject under the dialect key" do
+      {:ok, layout} =
+        Layouts.create_layout(%{
+          "name" => "partial",
+          "html_body" => %{"en" => "<p>EN {{{content}}}</p>"},
+          "display_name" => %{"en-US" => "News"},
+          "subject" => %{"en-US" => "[US] {{subject}}"}
+        })
+
       socket = mounted(%{"id" => layout.uuid})
 
-      {:noreply, _} = LayoutEditor.handle_event("save", %{}, socket)
+      # One en-US tab with all three, not an empty en-US next to an "en" tab.
+      assert socket.assigns.languages == ["en-US", "fr", "de", "es"]
+      assert socket.assigns.editor_locale == "en-US"
 
+      assert socket.assigns.translations["html_body"][socket.assigns.editor_keys["html_body"]] =~
+               "EN "
+
+      assert socket.assigns.preview_html =~ "EN "
+
+      socket =
+        type(socket, %{
+          "html_body" => "<p>EN2 {{{content}}}</p>",
+          "display_name" => "News 2",
+          "subject" => "[US2] {{subject}}"
+        })
+
+      save(socket)
+      saved = Layouts.get_layout(layout.uuid)
+
+      assert saved.html_body == %{"en" => "<p>EN2 {{{content}}}</p>"}
+      assert saved.display_name == %{"en-US" => "News 2"}
+      assert saved.subject == %{"en-US" => "[US2] {{subject}}"}
+    end
+
+    test "a language that exists only in a non-HTML field is still a tab, and survives a save" do
+      {:ok, layout} =
+        Layouts.create_layout(%{
+          "name" => "subject_only",
+          "html_body" => %{"en" => "<p>EN {{{content}}}</p>"},
+          "subject" => %{"pt" => "[PT] {{subject}}"}
+        })
+
+      socket = mounted(%{"id" => layout.uuid})
+
+      assert socket.assigns.languages == ["en-US", "fr", "de", "es", "pt"]
+      socket = switch(socket, "pt")
+      assert socket.assigns.translations["subject"]["pt"] == "[PT] {{subject}}"
+
+      save(socket)
+      assert Layouts.get_layout(layout.uuid).subject == %{"pt" => "[PT] {{subject}}"}
+    end
+
+    test "a tab whose key is another tab's in a field has that field disabled and writes nothing" do
+      {:ok, layout} =
+        Layouts.create_layout(%{
+          "name" => "shared",
+          "html_body" => %{"en" => "<p>EN {{{content}}}</p>"},
+          "subject" => %{"en-US" => "[US] {{subject}}", "en" => "[EN] {{subject}}"}
+        })
+
+      socket = mounted(%{"id" => layout.uuid}) |> switch("en")
+
+      assert socket.assigns.editor_keys["html_body"] == nil
+      html = render_page(socket)
+      assert html =~ ~r/<textarea[^>]*name="fields\[html_body\]"[^>]*disabled/s
+
+      socket |> type(%{"html_body" => "<p>clobbered</p>"}) |> save()
       assert Layouts.get_layout(layout.uuid).html_body == %{"en" => "<p>EN {{{content}}}</p>"}
     end
   end
 
+  describe "the editor's markup" do
+    setup do: site_languages!(["en-US", "fr"])
+
+    test "the name hint is shown" do
+      html = render_page(mounted(%{}))
+
+      assert html =~ "Lowercase Latin letters, numbers and underscores"
+    end
+
+    test "a suggestion and its button appear once a display name is typed, and go with a name" do
+      socket = mounted(%{})
+      refute render_page(socket) =~ "Use this name"
+
+      socket = type(socket, %{"display_name" => "Monthly News"})
+      html = render_page(socket)
+      assert html =~ "Use this name"
+      assert html =~ "monthly_news"
+      assert html =~ ~s(phx-click="use_suggested_name")
+
+      {:noreply, socket} = LayoutEditor.handle_event("use_suggested_name", %{}, socket)
+      refute render_page(socket) =~ "Use this name"
+    end
+
+    test "a stored key the site does not offer is badged; site languages are not" do
+      layout =
+        layout!("with_pt", %{"en" => "<p>{{{content}}}</p>", "pt" => "<p>{{{content}}}</p>"})
+
+      html = render_page(mounted(%{"id" => layout.uuid}))
+
+      assert [_one] = Regex.scan(~r/not a site language/, html)
+
+      assert html =~
+               ~r/pt\s*<span[^>]*>\s*<\/span>\s*<span[^>]*badge-warning[^>]*>\s*not a site language/s
+    end
+  end
+
   describe "the layout's name" do
-    setup do: site_languages!(["en-US", "ru"])
+    setup do: site_languages!(["en-US", "fr"])
 
     test "an unusable name is refused with a readable, rule-stating message" do
       socket = mounted(%{})

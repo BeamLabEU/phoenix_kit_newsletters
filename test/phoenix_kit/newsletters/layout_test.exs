@@ -36,12 +36,17 @@ defmodule PhoenixKit.Newsletters.LayoutTest do
   end
 
   describe "language_tabs/2 — one tab per site language, one tab per stored key" do
-    defp tabs(site, stored),
-      do: Enum.map(Layout.language_tabs(site, stored), &{&1.language, &1.key})
+    defp translations(stored), do: %{"html_body" => Map.new(stored, &{&1, "x"})}
+
+    defp tabs(site, stored) do
+      site
+      |> Layout.language_tabs(translations(stored))
+      |> Enum.map(&{&1.language, &1.keys["html_body"]})
+    end
 
     test "a stored base key serves the dialect tab; no extra tab for it" do
-      assert tabs(["en-US", "et", "ru", "uk"], ["en"]) ==
-               [{"en-US", "en"}, {"et", "et"}, {"ru", "ru"}, {"uk", "uk"}]
+      assert tabs(["en-US", "fr", "de", "es"], ["en"]) ==
+               [{"en-US", "en"}, {"fr", "fr"}, {"de", "de"}, {"es", "es"}]
     end
 
     test "an exact key wins over the base key" do
@@ -56,18 +61,30 @@ defmodule PhoenixKit.Newsletters.LayoutTest do
       assert tabs(["en-GB", "en-US"], ["en"]) == [{"en-GB", "en"}, {"en-US", "en-US"}]
     end
 
-    test "a later tab's exact key is not taken by an earlier tab's base match" do
+    # The ownership pass order: a per-tab loop (each tab tries exact, base,
+    # dialect in site order) gives these two cases a key on two tabs, so
+    # typing in one language overwrites the other.
+    test "an earlier tab never takes the key a later tab spells exactly (dialect)" do
+      assert tabs(["en-GB", "en-US"], ["en-US"]) == [{"en-GB", "en-GB"}, {"en-US", "en-US"}]
+    end
+
+    test "an earlier tab never takes the key a later tab spells exactly (base)" do
+      assert tabs(["en-US", "en"], ["en"]) == [{"en-US", "en-US"}, {"en", "en"}]
+    end
+
+    test "base keys go to the first tab before any dialect match is made" do
       assert tabs(["en-GB", "en-US"], ["en", "en-US"]) == [{"en-GB", "en"}, {"en-US", "en-US"}]
     end
 
-    test "_ and - spell the same language" do
+    test "_ and - spell the same language, and the site's two spellings are one tab" do
       assert tabs(["pt_BR"], ["pt-BR"]) == [{"pt_BR", "pt-BR"}]
+      assert tabs(["en_US", "en-US"], ["en-US"]) == [{"en_US", "en-US"}]
     end
 
     test "stored keys no site language claims follow the site's tabs, sorted, marked" do
-      tabs = Layout.language_tabs(["de-DE", "en-US"], ["pt", "en", "de", "ja"])
+      tabs = Layout.language_tabs(["de-DE", "en-US"], translations(["pt", "en", "de", "ja"]))
 
-      assert Enum.map(tabs, &{&1.language, &1.key, &1.site?}) == [
+      assert Enum.map(tabs, &{&1.language, &1.keys["html_body"], &1.site?}) == [
                {"de-DE", "de", true},
                {"en-US", "en", true},
                {"ja", "ja", false},
@@ -76,9 +93,9 @@ defmodule PhoenixKit.Newsletters.LayoutTest do
     end
 
     test "every stored key is on exactly one tab" do
-      stored = ~w(de en es fr it pl ru)
-      site = ["en-GB", "fr-FR", "de-DE", "it", "es-ES", "pl", "ru"]
-      keys = Enum.map(Layout.language_tabs(site, stored), & &1.key)
+      stored = ~w(cs da en fi ja nl sv)
+      site = ["en-GB", "nl-NL", "sv-SE", "fi", "da-DK", "cs", "ja"]
+      keys = site |> tabs(stored) |> Enum.map(&elem(&1, 1))
 
       assert Enum.sort(keys) == stored
     end
@@ -86,11 +103,58 @@ defmodule PhoenixKit.Newsletters.LayoutTest do
     test "agrees with translation_key/3 on which key a language reads" do
       map = %{"en" => "EN", "fr" => "FR"}
 
-      tabs = Layout.language_tabs(["en-US", "fr-FR"], Map.keys(map))
-
-      for %{language: lang, key: key} <- tabs do
+      for {lang, key} <- tabs(["en-US", "fr-FR"], Map.keys(map)) do
         assert key == Layout.translation_key(map, lang, nil)
       end
+    end
+
+    test "blank values are not stored translations" do
+      tabs =
+        Layout.language_tabs(["en-US"], %{
+          "html_body" => %{"en" => "x"},
+          "subject" => %{"en-US" => "  "}
+        })
+
+      assert [%{language: "en-US", keys: %{"html_body" => "en", "subject" => "en-US"}}] = tabs
+    end
+  end
+
+  describe "language_tabs/2 — each field resolves on its own" do
+    test "html under the base key and the display name under the dialect key: one tab, two keys" do
+      translations = %{
+        "html_body" => %{"en" => "<p>{{{content}}}</p>"},
+        "display_name" => %{"en-US" => "News"},
+        "subject" => %{"en-US" => "{{subject}}"},
+        "text_body" => %{}
+      }
+
+      assert [%{language: "en-US", site?: true, keys: keys}] =
+               Layout.language_tabs(["en-US"], translations)
+
+      assert keys == %{
+               "html_body" => "en",
+               "display_name" => "en-US",
+               "subject" => "en-US",
+               "text_body" => "en-US"
+             }
+    end
+
+    test "a language stored in one field only is a tab; the field it has no value in gets a new key" do
+      translations = %{"html_body" => %{"en" => "x"}, "subject" => %{"pt" => "{{subject}}"}}
+
+      assert [
+               %{language: "en-US", keys: %{"html_body" => "en", "subject" => "en-US"}},
+               %{language: "pt", site?: false, keys: %{"html_body" => "pt", "subject" => "pt"}}
+             ] = Layout.language_tabs(["en-US"], translations)
+    end
+
+    test "an extra tab has no key in a field where its key is another tab's" do
+      translations = %{"html_body" => %{"en" => "x"}, "subject" => %{"en-US" => "s", "en" => "t"}}
+
+      assert [
+               %{language: "en-US", keys: %{"html_body" => "en", "subject" => "en-US"}},
+               %{language: "en", site?: false, keys: %{"html_body" => nil, "subject" => "en"}}
+             ] = Layout.language_tabs(["en-US"], translations)
     end
   end
 

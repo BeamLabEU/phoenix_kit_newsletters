@@ -176,32 +176,84 @@ defmodule PhoenixKit.Newsletters.Layout do
 
   @typedoc """
   One tab of the layout editor. `language` is what the tab is called (a site
-  language, or a stored key the site no longer offers); `key` is the key of
-  the layout's language maps the tab reads and writes; `site?` is false for
-  a stored key no site language claims.
+  language, or a stored key the site no longer offers); `keys` maps each
+  field to the key of that field's language map the tab reads and writes
+  (`nil`: the key is another tab's in that field, so the tab has no value
+  there and writes none); `site?` is false for a stored key no site language
+  claims.
   """
-  @type language_tab :: %{language: String.t(), key: String.t(), site?: boolean()}
+  @type language_tab :: %{
+          language: String.t(),
+          keys: %{optional(String.t()) => String.t() | nil},
+          site?: boolean()
+        }
 
   @doc """
   The editor's tabs: one per site language, in the site's order, then one per
   stored key no site language claims (sorted).
 
-  Each site language reads and writes the key the layout already stores it
-  under, so a site that spells its languages with a dialect (`en-US`) and a
-  layout that stores base keys (`en`) are one tab and one translation, not
-  two. The match is `translation_key/3`'s — exact, then base, then another
-  dialect of the same base — and a tab with no match gets its own code as a
-  new key. A stored key belongs to at most one tab: the exact matches are
-  settled first (a key is never taken from the tab it spells exactly), then
-  base matches, then dialect matches, each in the site's order. With the
-  site's `en-GB` and `en-US` and only `en` stored, `en` is `en-GB`'s and
-  `en-US` starts a key of its own.
-  """
-  @spec language_tabs([String.t()], [String.t()]) :: [language_tab()]
-  def language_tabs(site_languages, stored_keys) do
-    site = site_languages |> Enum.filter(&is_binary/1) |> Enum.uniq()
-    stored = stored_keys |> Enum.filter(&is_binary/1) |> Enum.uniq() |> Enum.sort()
+  `translations` maps each field to its language map (`%{"html_body" =>
+  %{"en" => …}, …}`). Each site language reads and writes the key a field
+  already stores it under, so a site that spells its languages with a dialect
+  (`en-US`) and a layout that stores base keys (`en`) are one tab and one
+  translation, not two. The match is `translation_key/3`'s — exact, then base,
+  then another dialect of the same base — and it is made **per field**, the
+  way a send resolves each field on its own: a layout whose HTML is under `en`
+  and whose display name is under `en-US` shows both on the `en-US` tab, and
+  a save writes each back where it was. A field with no match gets the tab's
+  own code as a new key. Blank values are not stored translations.
 
+  A key belongs to at most one tab in a field: the exact matches are settled
+  first, then base matches, then dialect matches, each in the site's order, so
+  an earlier tab never takes the key a later tab spells exactly. With the
+  site's `en-GB` and `en-US` and only `en` stored, `en` is `en-GB`'s and
+  `en-US` starts a key of its own, so saving on both tabs leaves `en` and
+  `en-US` in the map. `en_US` and `en-US` are one site language.
+
+  A key no site language claims in some field is a tab of its own, called by
+  the key, with `site?: false`; in a field where another tab already owns
+  that key the tab has no key (`nil`).
+  """
+  @spec language_tabs([String.t()], %{optional(String.t()) => map() | nil}) :: [language_tab()]
+  def language_tabs(site_languages, translations) when is_map(translations) do
+    site =
+      site_languages
+      |> Enum.filter(&is_binary/1)
+      |> Enum.uniq_by(&String.replace(&1, "_", "-"))
+
+    claims =
+      Map.new(translations, fn {field, map} -> {field, claim_keys(site, present_keys(map))} end)
+
+    site_tabs =
+      for lang <- site do
+        keys =
+          Map.new(claims, fn {field, {claimed, _}} -> {field, Map.get(claimed, lang, lang)} end)
+
+        %{language: lang, keys: keys, site?: true}
+      end
+
+    unclaimed =
+      claims
+      |> Enum.flat_map(fn {_field, {claimed, stored}} -> stored -- Map.values(claimed) end)
+      |> Enum.uniq()
+      |> Enum.sort()
+
+    extra_tabs =
+      for key <- unclaimed do
+        keys =
+          Map.new(claims, fn {field, {claimed, _}} ->
+            {field, if(key in Map.values(claimed), do: nil, else: key)}
+          end)
+
+        %{language: key, keys: keys, site?: false}
+      end
+
+    site_tabs ++ extra_tabs
+  end
+
+  # Which stored key each site language reads in one field, in passes, so a
+  # key never has two owners.
+  defp claim_keys(site, stored) do
     steps = [
       fn lang, free -> Enum.find(exact_candidates(lang), &(&1 in free)) end,
       fn lang, free -> Enum.find(base_candidates(lang), &(&1 in free)) end,
@@ -213,12 +265,13 @@ defmodule PhoenixKit.Newsletters.Layout do
         Enum.reduce(site, acc, &claim_key(&1, &2, step))
       end)
 
-    site_tabs = Enum.map(site, &%{language: &1, key: Map.get(claimed, &1, &1), site?: true})
-    taken = Map.values(claimed)
-    extra = for key <- stored, key not in taken, do: %{language: key, key: key, site?: false}
-
-    site_tabs ++ extra
+    {claimed, stored}
   end
+
+  defp present_keys(map) when is_map(map),
+    do: for({k, v} <- map, is_binary(k), present?(v), do: k) |> Enum.uniq() |> Enum.sort()
+
+  defp present_keys(_map), do: []
 
   # One site language claims the stored key `step` finds for it among the
   # keys still free, unless an earlier step already gave it one.
