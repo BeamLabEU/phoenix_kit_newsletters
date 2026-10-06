@@ -102,7 +102,7 @@ defmodule PhoenixKit.Newsletters.Layout do
     |> validate_format(:name, @name_format,
       message:
         gettext_noop(
-          "must start with a letter and contain only lowercase letters, numbers, and underscores"
+          "must use only lowercase Latin letters, numbers and underscores, and start with a letter (for example monthly_news)"
         )
     )
     |> validate_inclusion(:status, @valid_statuses)
@@ -174,6 +174,87 @@ defmodule PhoenixKit.Newsletters.Layout do
 
   def translation_key(_map, _locale, _site_default), do: nil
 
+  @typedoc """
+  One tab of the layout editor. `language` is what the tab is called (a site
+  language, or a stored key the site no longer offers); `key` is the key of
+  the layout's language maps the tab reads and writes; `site?` is false for
+  a stored key no site language claims.
+  """
+  @type language_tab :: %{language: String.t(), key: String.t(), site?: boolean()}
+
+  @doc """
+  The editor's tabs: one per site language, in the site's order, then one per
+  stored key no site language claims (sorted).
+
+  Each site language reads and writes the key the layout already stores it
+  under, so a site that spells its languages with a dialect (`en-US`) and a
+  layout that stores base keys (`en`) are one tab and one translation, not
+  two. The match is `translation_key/3`'s — exact, then base, then another
+  dialect of the same base — and a tab with no match gets its own code as a
+  new key. A stored key belongs to at most one tab: the exact matches are
+  settled first (a key is never taken from the tab it spells exactly), then
+  base matches, then dialect matches, each in the site's order. With the
+  site's `en-GB` and `en-US` and only `en` stored, `en` is `en-GB`'s and
+  `en-US` starts a key of its own.
+  """
+  @spec language_tabs([String.t()], [String.t()]) :: [language_tab()]
+  def language_tabs(site_languages, stored_keys) do
+    site = site_languages |> Enum.filter(&is_binary/1) |> Enum.uniq()
+    stored = stored_keys |> Enum.filter(&is_binary/1) |> Enum.uniq() |> Enum.sort()
+
+    steps = [
+      fn lang, free -> Enum.find(exact_candidates(lang), &(&1 in free)) end,
+      fn lang, free -> Enum.find(base_candidates(lang), &(&1 in free)) end,
+      fn lang, free -> dialect_match(free, lang) end
+    ]
+
+    {claimed, _free} =
+      Enum.reduce(steps, {%{}, stored}, fn step, acc ->
+        Enum.reduce(site, acc, &claim_key(&1, &2, step))
+      end)
+
+    site_tabs = Enum.map(site, &%{language: &1, key: Map.get(claimed, &1, &1), site?: true})
+    taken = Map.values(claimed)
+    extra = for key <- stored, key not in taken, do: %{language: key, key: key, site?: false}
+
+    site_tabs ++ extra
+  end
+
+  # One site language claims the stored key `step` finds for it among the
+  # keys still free, unless an earlier step already gave it one.
+  defp claim_key(lang, {claimed, free} = state, step) do
+    with false <- Map.has_key?(claimed, lang),
+         key when is_binary(key) <- step.(lang, free) do
+      {Map.put(claimed, lang, key), List.delete(free, key)}
+    else
+      _ -> state
+    end
+  end
+
+  @doc """
+  A name the operator can accept for a layout called `text`: lowercase ASCII
+  letters and digits, with spaces and `-` as `_`; `nil` when nothing usable
+  is left (a name in another script). Always a valid name when not `nil`.
+  """
+  @spec suggest_name(String.t() | nil) :: String.t() | nil
+  def suggest_name(text) when is_binary(text) do
+    slug =
+      text
+      |> String.downcase()
+      |> String.replace(~r/[\s-]+/u, "_")
+      |> String.replace(~r/[^a-z0-9_]/, "")
+      |> String.replace(~r/_+/, "_")
+      |> String.trim("_")
+
+    cond do
+      slug == "" -> nil
+      slug =~ ~r/\A[a-z]/ -> String.slice(slug, 0, @column_widths.name)
+      true -> String.slice("layout_" <> slug, 0, @column_widths.name)
+    end
+  end
+
+  def suggest_name(_text), do: nil
+
   @doc """
   The display name for `locale` (same fallback as `translation/3`), or the
   slug when the layout has none.
@@ -194,12 +275,19 @@ defmodule PhoenixKit.Newsletters.Layout do
   # ── internals ──────────────────────────────────────────────────────────
 
   # Exact (as written, and with `_` spelled `-`), then the base language.
-  defp candidates(locale) when is_binary(locale) and locale != "" do
+  defp candidates(locale), do: exact_candidates(locale) ++ base_candidates(locale)
+
+  defp exact_candidates(locale) when is_binary(locale) and locale != "",
+    do: Enum.uniq([locale, String.replace(locale, "_", "-")])
+
+  defp exact_candidates(_locale), do: []
+
+  defp base_candidates(locale) when is_binary(locale) and locale != "" do
     base = locale |> String.split(["-", "_"]) |> hd()
-    Enum.uniq([locale, String.replace(locale, "_", "-"), base])
+    if base in exact_candidates(locale), do: [], else: [base]
   end
 
-  defp candidates(_locale), do: []
+  defp base_candidates(_locale), do: []
 
   defp dialect_match(present, locale) when is_binary(locale) and locale != "" do
     base = locale |> String.split(["-", "_"]) |> hd()
