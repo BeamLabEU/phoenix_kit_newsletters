@@ -197,7 +197,12 @@ defmodule PhoenixKit.Newsletters.LayoutTest do
                  language: "pt",
                  site?: false,
                  residue?: true,
-                 keys: %{"html_body" => nil, "subject" => "pt", "display_name" => "pt"}
+                 keys: %{
+                   "html_body" => nil,
+                   "subject" => "pt",
+                   "display_name" => nil,
+                   "text_body" => nil
+                 }
                }
              ] = Layout.language_tabs(["en-US"], translations)
     end
@@ -229,6 +234,180 @@ defmodule PhoenixKit.Newsletters.LayoutTest do
                  keys: %{"html_body" => nil, "subject" => nil, "display_name" => "en"}
                }
              ] = Layout.language_tabs(["en-US"], translations)
+    end
+  end
+
+  describe "language_tabs/2 — a tab edits only what its readers get" do
+    test "a base key goes to the tab spelled exactly; a same-base language starts its own key" do
+      assert tabs(["en", "en-US"], ["en", "en-GB"]) ==
+               [{"en", "en"}, {"en-US", "en-US"}, {"en-GB", "en-GB"}]
+    end
+
+    test "a dialect key another tab's reader would get is not taken by a third" do
+      assert tabs(["en-GB", "en-US"], ["en-GB", "en-NZ"]) ==
+               [{"en-GB", "en-GB"}, {"en-US", "en-US"}, {"en-NZ", "en-NZ"}]
+    end
+
+    test "with no match at all there is no key to take, and a lone dialect is still taken" do
+      assert tabs(["fr"], ["en-GB"]) == [{"fr", "fr"}, {"en-GB", "en-GB"}]
+      assert tabs(["en-US"], ["en-GB", "en-NZ"]) == [{"en-US", "en-GB"}, {"en-NZ", "en-NZ"}]
+    end
+
+    test "a display name's fallback falls through to the tab's code, never to nothing it could have" do
+      translations = %{
+        "html_body" => %{"en-GB" => "x", "en" => "x"},
+        "display_name" => %{"en" => "n"}
+      }
+
+      assert [
+               %{language: "en-GB", keys: %{"html_body" => "en-GB", "display_name" => "en"}},
+               %{language: "en-US", keys: %{"html_body" => "en", "display_name" => "en-US"}}
+             ] = Layout.language_tabs(["en-GB", "en-US"], translations)
+    end
+
+    test "a residue tab owns only the subject" do
+      translations = %{"html_body" => %{"en" => "x"}, "subject" => %{"pt" => "s"}}
+
+      assert [_, %{residue?: true, keys: keys}] = Layout.language_tabs(["en-US"], translations)
+
+      assert keys == %{
+               "html_body" => nil,
+               "subject" => "pt",
+               "display_name" => nil,
+               "text_body" => nil
+             }
+    end
+
+    test "a residue key that also holds a display name is an ordinary tab with its own HTML key" do
+      translations = %{
+        "html_body" => %{"en" => "x"},
+        "subject" => %{"pt" => "s"},
+        "display_name" => %{"pt" => "n"}
+      }
+
+      assert [_, %{language: "pt", residue?: false, keys: keys}] =
+               Layout.language_tabs(["en-US"], translations)
+
+      assert keys == %{
+               "html_body" => "pt",
+               "subject" => "pt",
+               "display_name" => "pt",
+               "text_body" => "pt"
+             }
+    end
+  end
+
+  # Every combination of a few site configurations and up to two stored keys
+  # per field: the ownership contract in one place.
+  describe "language_tabs/2 — ownership, for every small combination" do
+    @sites [
+      ["en-US", "fr"],
+      ["en", "en-US"],
+      ["en-GB", "en-US"],
+      ["en-US", "en"],
+      ["en_US", "en-US", "fr"],
+      ["en", "en-US", "en-GB"],
+      ["pt-BR", "pt", "en"]
+    ]
+    @codes ["en", "en-GB", "en-US", "en-NZ", "pt"]
+    @fields ["html_body", "subject", "display_name", "text_body"]
+
+    defp subsets(codes),
+      do: [[]] ++ Enum.map(codes, &[&1]) ++ for(a <- codes, b <- codes, a < b, do: [a, b])
+
+    defp combos do
+      for site <- @sites,
+          html <- subsets(@codes),
+          subject <- subsets(@codes),
+          display <- subsets(@codes),
+          text <- [[], ["pt"]] do
+        {site, html, subject, display, text}
+      end
+    end
+
+    defp to_translations({_site, html, subject, display, text}) do
+      [html, subject, display, text]
+      |> Enum.zip(@fields)
+      |> Map.new(fn {keys, field} -> {field, Map.new(keys, &{&1, "x"})} end)
+    end
+
+    test "a key is on at most one tab per field, labels are unique, every stored key is on a tab" do
+      problems =
+        for {site, _, _, _, _} = combo <- combos(),
+            problem <- ownership_problems(site, to_translations(combo)) do
+          {combo, problem}
+        end
+
+      assert Enum.take(problems, 3) == []
+    end
+
+    defp ownership_problems(site, translations) do
+      tabs = Layout.language_tabs(site, translations)
+      labels = Enum.map(tabs, & &1.language)
+
+      duplicate_labels =
+        if labels == Enum.uniq(labels), do: [], else: [{:duplicate_labels, labels}]
+
+      per_field =
+        for field <- @fields do
+          keys = tabs |> Enum.map(& &1.keys[field]) |> Enum.reject(&is_nil/1)
+          shared = if keys == Enum.uniq(keys), do: [], else: [{:shared_key, field, keys}]
+
+          lost =
+            for stored <- Map.keys(translations[field]),
+                stored not in keys,
+                do: {:on_no_tab, field, stored}
+
+          shared ++ lost
+        end
+
+      duplicate_labels ++ List.flatten(per_field)
+    end
+
+    test "a site tab's HTML key is the one translation_key/3 picks, or a new key when another tab owns it" do
+      problems =
+        for {site, html, _, _, _} = combo <- combos(),
+            html != [],
+            problem <- html_key_problems(site, html, to_translations(combo)["html_body"], combo) do
+          problem
+        end
+
+      assert Enum.take(problems, 3) == []
+    end
+
+    defp html_key_problems(site, stored_html, html_map, combo) do
+      tabs = Layout.language_tabs(site, to_translations(combo))
+      base = fn code -> code |> String.split(["-", "_"]) |> hd() end
+
+      for %{site?: true, language: lang, keys: %{"html_body" => key}} <- tabs,
+          pick = Layout.translation_key(html_map, lang, nil),
+          key != pick,
+          problem = html_key_problem(tabs, lang, key, pick, stored_html, base),
+          do: {combo, problem}
+    end
+
+    # A key other than the readers' is a new key, and only when the readers' key
+    # is another tab's or is not this language's at all.
+    defp html_key_problem(tabs, lang, key, pick, stored_html, base) do
+      owned_elsewhere =
+        Enum.any?(tabs, &(&1.keys["html_body"] == pick and &1.language != lang))
+
+      cond do
+        key in stored_html -> {:edits_other_key, lang, key, pick}
+        owned_elsewhere or base.(pick) != base.(lang) -> nil
+        true -> {:new_key_though_free, lang, key, pick}
+      end
+    end
+
+    test "a site tab's subject key is its HTML key" do
+      problems =
+        for {site, _, _, _, _} = combo <- combos(),
+            %{site?: true, keys: keys} <- Layout.language_tabs(site, to_translations(combo)),
+            keys["subject"] != keys["html_body"] do
+          combo
+        end
+
+      assert Enum.take(problems, 3) == []
     end
   end
 

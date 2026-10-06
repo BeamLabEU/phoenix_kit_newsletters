@@ -288,7 +288,7 @@ defmodule PhoenixKit.Newsletters.Web.LayoutEditorLanguagesTest do
                "html_body" => nil,
                "subject" => "en-US",
                "display_name" => nil,
-               "text_body" => "en-US"
+               "text_body" => nil
              }
 
       html = render_page(socket)
@@ -342,9 +342,16 @@ defmodule PhoenixKit.Newsletters.Web.LayoutEditorLanguagesTest do
 
       html = render_page(socket)
 
-      for field <- ~w(html_body display_name) do
+      # The residue tab owns the subject and nothing else.
+      for field <- ~w(html_body display_name text_body) do
         assert html =~ ~r/name="fields\[#{field}\]"[^>]*disabled/s
       end
+
+      refute html =~ ~r/name="fields\[subject\]"[^>]*disabled/s
+
+      # An id is one token.
+      assert html =~ ~s(id="layout-fields-en-US-subject")
+      refute html =~ ~r/id="[^"]*\s[^"]*"/
 
       assert html =~ "Not editable here"
 
@@ -358,6 +365,51 @@ defmodule PhoenixKit.Newsletters.Web.LayoutEditorLanguagesTest do
       saved = Layouts.get_layout(layout.uuid)
       assert saved.html_body == %{"en" => "<p>EN {{{content}}}</p>"}
       assert saved.display_name == %{"en-US" => "News"}
+    end
+  end
+
+  describe "the subject is stored where a send reads it — tabs without every key" do
+    setup do: site_languages!(["en-US", "fr"])
+
+    test "a tab whose HTML is another tab's has no subject either, and keeps its own display name" do
+      {:ok, layout} =
+        Layouts.create_layout(%{
+          "name" => "shared_html",
+          "html_body" => %{"en" => "<p>EN {{{content}}}</p>"},
+          "display_name" => %{"en-US" => "US", "en" => "EN"}
+        })
+
+      socket = mounted(%{"id" => layout.uuid}) |> switch("en")
+      html = render_page(socket)
+
+      # The en-US tab's fallback key `en` (its HTML key) owns subject, HTML and
+      # text there; only the display name is stored under `en` for this tab.
+      for field <- ~w(html_body subject text_body) do
+        assert html =~ ~r/name="fields\[#{field}\]"[^>]*disabled/s
+      end
+
+      refute html =~ ~r/name="fields\[display_name\]"[^>]*disabled/s
+    end
+
+    test "a flagged subject under a language the site lacks stays flagged after a save" do
+      {:ok, layout} =
+        Layouts.create_layout(%{
+          "name" => "pt_subject",
+          "html_body" => %{"en" => "<p>EN {{{content}}}</p>"},
+          "subject" => %{"pt" => "[PT] {{subject}}"}
+        })
+
+      mounted(%{"id" => layout.uuid})
+      |> switch("pt")
+      |> type(%{"display_name" => "Typed in a disabled field", "text_body" => "nor here"})
+      |> save()
+
+      saved = Layouts.get_layout(layout.uuid)
+      assert saved.display_name == %{}
+      assert saved.text_body == %{}
+
+      assert [%{language: "pt", residue?: true}] =
+               mounted(%{"id" => layout.uuid}).assigns.tabs |> Enum.filter(& &1.residue?)
     end
   end
 

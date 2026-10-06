@@ -74,7 +74,10 @@
 
         <%!-- Keyed by language so switching tabs replaces the inputs
              instead of morphing one language's text into another's. --%>
-        <div id={"layout-fields-#{@editor_locale}"} class="space-y-4">
+        <div
+          id={"layout-fields-#{@editor_tab.locale}#{if @editor_tab.residue?, do: "-subject"}"}
+          class="space-y-4"
+        >
           <p :if={@editor_tab.residue?} class="alert alert-warning text-sm whitespace-normal">
             {gettext(
               "This subject is stored under %{key}, but a send reads the subject in the language of the HTML, so it is never used. Copy it to the right language tab, or clear it to remove it.",
