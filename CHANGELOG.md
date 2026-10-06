@@ -1,5 +1,25 @@
 # Changelog
 
+## 0.4.2 - 2026-10-06
+
+### Fixed
+
+- **Layout editor language tabs matched the site's languages, not the layout's
+  stored translations.** A site that spells languages with a dialect (`en-US`)
+  over a layout storing base keys (`en`) got duplicate tabs, opened on an
+  empty one and saved a dialect key beside the base key. `Layout.language_tabs/2`
+  now gives one tab per site language that reads and writes, per field, the key
+  the layout already stores that language under; stored keys no site language
+  claims get their own tab, and a subject stored where a send never reads it is
+  flagged rather than hidden. The subject is saved under the tab's HTML key,
+  where a send reads it. (#39)
+- The tab's "has HTML" badge no longer shows for whitespace-only HTML.
+
+### Added
+
+- The name field suggests a slug made from the display name, and the invalid
+  name error states the rule. (#39)
+
 ## 0.4.1 - 2026-10-04
 
 ### Fixed
