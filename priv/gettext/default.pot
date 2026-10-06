@@ -76,7 +76,7 @@ msgstr ""
 
 #: lib/phoenix_kit/newsletters/web/broadcast_details.html.heex:19
 #: lib/phoenix_kit/newsletters/web/broadcast_editor.html.heex:237
-#: lib/phoenix_kit/newsletters/web/layout_editor.html.heex:157
+#: lib/phoenix_kit/newsletters/web/layout_editor.html.heex:160
 #, elixir-autogen
 msgid "Cancel"
 msgstr ""
@@ -318,7 +318,7 @@ msgid "Schedule"
 msgstr ""
 
 #: lib/phoenix_kit/newsletters/web/broadcast_editor.html.heex:300
-#: lib/phoenix_kit/newsletters/web/layout_editor.html.heex:163
+#: lib/phoenix_kit/newsletters/web/layout_editor.html.heex:166
 #, elixir-autogen
 msgid "Preview"
 msgstr ""
@@ -706,13 +706,13 @@ msgid "Default layout updated"
 msgstr ""
 
 #: lib/phoenix_kit/newsletters/web/layout_editor.ex:317
-#: lib/phoenix_kit/newsletters/web/layout_editor.html.heex:85
+#: lib/phoenix_kit/newsletters/web/layout_editor.html.heex:88
 #, elixir-autogen, elixir-format
 msgid "Display name"
 msgstr ""
 
 #: lib/phoenix_kit/newsletters/web/layout_editor.ex:319
-#: lib/phoenix_kit/newsletters/web/layout_editor.html.heex:121
+#: lib/phoenix_kit/newsletters/web/layout_editor.html.heex:124
 #, elixir-autogen, elixir-format
 msgid "HTML"
 msgstr ""
@@ -768,7 +768,7 @@ msgstr ""
 msgid "Manage layouts"
 msgstr ""
 
-#: lib/phoenix_kit/newsletters/web/layout_editor.html.heex:111
+#: lib/phoenix_kit/newsletters/web/layout_editor.html.heex:114
 #, elixir-autogen, elixir-format
 msgid "Must contain {{subject}}, the broadcast's own subject. Leave blank to send the broadcast's subject unchanged."
 msgstr ""
@@ -790,7 +790,7 @@ msgstr ""
 msgid "Newsletter broadcast"
 msgstr ""
 
-#: lib/phoenix_kit/newsletters/web/layout_editor.html.heex:173
+#: lib/phoenix_kit/newsletters/web/layout_editor.html.heex:176
 #, elixir-autogen, elixir-format
 msgid "No HTML in this language yet"
 msgstr ""
@@ -825,7 +825,7 @@ msgstr ""
 msgid "Sample subject"
 msgstr ""
 
-#: lib/phoenix_kit/newsletters/web/layout_editor.html.heex:155
+#: lib/phoenix_kit/newsletters/web/layout_editor.html.heex:158
 #, elixir-autogen, elixir-format
 msgid "Save layout"
 msgstr ""
@@ -835,7 +835,7 @@ msgstr ""
 msgid "Standard email layout"
 msgstr ""
 
-#: lib/phoenix_kit/newsletters/web/layout_editor.html.heex:100
+#: lib/phoenix_kit/newsletters/web/layout_editor.html.heex:103
 #, elixir-autogen, elixir-format
 msgid "Subject pattern (optional)"
 msgstr ""
@@ -845,7 +845,7 @@ msgstr ""
 msgid "Text"
 msgstr ""
 
-#: lib/phoenix_kit/newsletters/web/layout_editor.html.heex:140
+#: lib/phoenix_kit/newsletters/web/layout_editor.html.heex:143
 #, elixir-autogen, elixir-format
 msgid "Text (kept for reference)"
 msgstr ""
@@ -872,7 +872,7 @@ msgstr ""
 msgid "Use the standard layout by default"
 msgstr ""
 
-#: lib/phoenix_kit/newsletters/web/layout_editor.html.heex:130
+#: lib/phoenix_kit/newsletters/web/layout_editor.html.heex:133
 #, elixir-autogen, elixir-format
 msgid "{{{content}}} is the broadcast. Also available: {{{header}}}, {{{footer}}}, {{logo_url}}, {{accent_color}}, {{site_name}}, {{site_url}}, {{subject}}, {{name}}, {{email}}, {{unsubscribe_url}}, {{preferences_url}}."
 msgstr ""
@@ -887,27 +887,27 @@ msgstr ""
 msgid "System email"
 msgstr ""
 
-#: lib/phoenix_kit/newsletters/layout.ex:523
+#: lib/phoenix_kit/newsletters/layout.ex:540
 #, elixir-autogen, elixir-format
 msgid "a carried-over system email stays archived"
 msgstr ""
 
-#: lib/phoenix_kit/newsletters/layout.ex:466
+#: lib/phoenix_kit/newsletters/layout.ex:483
 #, elixir-autogen, elixir-format
 msgid "can't be blank"
 msgstr ""
 
-#: lib/phoenix_kit/newsletters/layout.ex:511
+#: lib/phoenix_kit/newsletters/layout.ex:528
 #, elixir-autogen, elixir-format
 msgid "must contain {{subject}} (missing in %{language})"
 msgstr ""
 
-#: lib/phoenix_kit/newsletters/layout.ex:431
+#: lib/phoenix_kit/newsletters/layout.ex:448
 #, elixir-autogen, elixir-format
 msgid "must map each language to text"
 msgstr ""
 
-#: lib/phoenix_kit/newsletters/layout.ex:476
+#: lib/phoenix_kit/newsletters/layout.ex:493
 #, elixir-autogen, elixir-format
 msgid "must place the broadcast with {{{content}}} (missing in %{language})"
 msgstr ""
@@ -922,7 +922,7 @@ msgstr ""
 msgid "No broadcasts with this status"
 msgstr ""
 
-#: lib/phoenix_kit/newsletters/layout.ex:487
+#: lib/phoenix_kit/newsletters/layout.ex:504
 #, elixir-autogen, elixir-format
 msgid "at least one language must place the broadcast with {{{content}}}"
 msgstr ""
@@ -952,15 +952,15 @@ msgstr ""
 msgid "not a site language"
 msgstr ""
 
-#: lib/phoenix_kit/newsletters/web/layout_editor.html.heex:95
-#: lib/phoenix_kit/newsletters/web/layout_editor.html.heex:116
-#: lib/phoenix_kit/newsletters/web/layout_editor.html.heex:135
-#: lib/phoenix_kit/newsletters/web/layout_editor.html.heex:149
+#: lib/phoenix_kit/newsletters/web/layout_editor.html.heex:98
+#: lib/phoenix_kit/newsletters/web/layout_editor.html.heex:119
+#: lib/phoenix_kit/newsletters/web/layout_editor.html.heex:138
+#: lib/phoenix_kit/newsletters/web/layout_editor.html.heex:152
 #, elixir-autogen, elixir-format
 msgid "Not editable here: in this field the language is stored under another tab."
 msgstr ""
 
-#: lib/phoenix_kit/newsletters/web/layout_editor.html.heex:79
+#: lib/phoenix_kit/newsletters/web/layout_editor.html.heex:82
 #, elixir-autogen, elixir-format
 msgid "This subject is stored under %{key}, but a send reads the subject in the language of the HTML, so it is never used. Copy it to the right language tab, or clear it to remove it."
 msgstr ""
