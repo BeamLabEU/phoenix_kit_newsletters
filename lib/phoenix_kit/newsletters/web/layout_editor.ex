@@ -9,11 +9,12 @@ defmodule PhoenixKit.Newsletters.Web.LayoutEditor do
   its language under (`Layout.language_tabs/2`): a site language `en-US` over
   a layout that stores `en` is one tab, and a save writes `en` back rather
   than adding an `en-US` key beside it. The subject is stored under the key of
-  the tab's HTML, because that is where a send reads it. The one case where a save does put a
-  dialect key beside a base key is a site with two dialects of one language
-  (`en-GB`, `en-US` over a stored `en`): the first keeps `en`, the second
-  starts its own key. A stored key no site language claims gets a tab of its
-  own after the site's.
+  the tab's HTML, because that is where a send reads it. A save puts a
+  dialect key beside a base key only when the site has two languages with the
+  same base over one stored key (`en-GB` + `en-US`, or `en` + `en-US`, over a
+  stored `en`): one tab keeps `en` (the exact spelling first, else the first in
+  the site's order), the other starts its own key. A stored key no site
+  language claims gets a tab of its own after the site's.
   """
 
   use Phoenix.LiveView
