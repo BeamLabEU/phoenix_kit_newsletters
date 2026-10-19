@@ -38,8 +38,8 @@ work goes through Oban workers.
   priority 520, group `:admin_modules`, permission `"newsletters"`) with
   subtabs Broadcasts (`/broadcasts`), New (`/broadcasts/new`, hidden), Edit
   (`/broadcasts/:id/edit`, hidden), Details (`/broadcasts/:id`, hidden),
-  Layouts (`/layouts`), New layout (`/layouts/new`, hidden), Edit layout
-  (`/layouts/:id/edit`, hidden). One
+  Layouts (`/layouts`), Address verification (`/verification`), New layout
+  (`/layouts/new`, hidden), Edit layout (`/layouts/:id/edit`, hidden). One
   user-dashboard tab `:dashboard_newsletters_preferences` (group `:account`,
   absolute path `/newsletters/preferences`, no `live_view`, visible only when
   CRM is installed).
@@ -85,6 +85,7 @@ work goes through Oban workers.
 mix deps.get
 createdb phoenix_kit_newsletters_test          # once; DB-backed tests are tagged :integration and auto-skip without it
 mix test
+PHOENIX_KIT_EMAILS_PATH=/path/to/phoenix_kit_emails mix test   # also runs the real-engine tests
 mix precommit                # compile --warnings-as-errors + format + credo --strict + dialyzer; run before every commit
 ```
 
@@ -95,6 +96,10 @@ run `mix deps.get`, and revert **both** `mix.exs` and `mix.lock` before
 committing (switching between path and Hex resolution rewrites the lock).
 
 `mix precommit` also runs `deps.unlock --check-unused` and `mix hex.audit`.
+
+`PHOENIX_KIT_EMAILS_PATH` (read by `mix.exs`) swaps the test-only
+`phoenix_kit_emails` dep from Hex to a local checkout, which rewrites
+`mix.lock`: `git checkout mix.lock` after the run.
 
 Repo-local aliases:
 
@@ -280,6 +285,8 @@ lib/phoenix_kit/newsletters/
 ├── layouts.ex              # Layout context: list/get/create/update/archive/restore, default layout
 ├── render.ex               # One email: layout in the reader's language, core chrome, subject, text
 ├── recipient_language.ex   # Which language a recipient reads in (user / CRM contact / site)
+├── email_verification.ex   # Soft bridge (apply/3) to the Emails module's verification engine; degrades to neutral values
+├── verification_rows.ex    # Verification table as plain data: rows + verdicts, status filter, pagination
 ├── migrations.ex           # PhoenixKitNewsletters.Migrations: V1 = adoption, V2 = layouts table + carry-over
 ├── web/
 │   ├── routes.ex           # route_module/0: unsubscribe routes + preference-center live_session
@@ -289,6 +296,7 @@ lib/phoenix_kit/newsletters/
 │   ├── layouts_index.ex/.heex       # Layouts list, archive/restore, default layout
 │   ├── layout_editor.ex/.heex       # Layout per language (tabs from Layout.language_tabs/2), preview through Render
 │   ├── language_options.ex          # The site's languages for the admin screens
+│   ├── verification.ex/.heex        # Address verification: audience picker, batch start/progress (PubSub), verdict table; state in the URL
 │   ├── preference_center_live.ex/.heex  # Public self-service subscriptions (token or login)
 │   ├── unsubscribe_controller.ex    # GET confirm pages, POST unsubscribe, one-click endpoint
 │   ├── unsubscribe_html.ex + unsubscribe_html/*.heex
@@ -347,6 +355,29 @@ broadcast that stored names would silently re-target on rename.
    `scheduled` broadcast whose time has passed; a `{:crm_list_not_active, _}`
    error marks the broadcast `failed` (terminal, retryable from the details
    page) instead of re-failing every tick.
+
+### Address verification
+
+`Web.Verification` checks the addresses a broadcast audience would mail (same
+resolvers as the sender: `CRMSource` / `UserGroupSource.sendable_recipients/1`)
+against the Emails module's engine (`PhoenixKit.Modules.Emails.Verification`).
+Newsletters does not depend on Emails: `EmailVerification` calls it through
+`Code.ensure_loaded?/1` + `function_exported?/3` + `apply/3`, and every read
+degrades to a neutral value (`start_batch/4` answers `{:error, :unavailable}`
+when the module is absent, `{:error, {:engine_error, msg}}` when it is loaded
+and raised). The page has three states: `:unavailable` (no engine),
+`:disabled` (`email_verify_enabled` off), `:ready`.
+
+- Filtered views read `statuses_for/1` (no step logs; falls back to
+  `results_for/1` on a release without it); full results are loaded only for
+  the rows on the shown page.
+- A batch is stored under `source_type` `"newsletters_crm_list"` /
+  `"newsletters_user_group"` (ref = list uuid / digest of the sorted role
+  uuids). `start_batch` is guarded server-side: engine `:ready`, non-empty
+  audience, no queued/running batch for the source.
+- Progress arrives over the engine's PubSub topic. Subscribe first, then
+  re-read the batch (a batch finishing in between is not missed); the table is
+  re-read only when the batch ends.
 
 ### Public flows
 
@@ -469,6 +500,16 @@ verbatim — it is core-owned DDL, not something to fix here.
   LiveView through a never-listening endpoint and router
   (`test/support/dead_render_*.ex`, started by `test_helper.exs`);
   add a route there for every new LiveView, and never `assign(:layout, _)`.
+- Verification tests: the page and `EmailVerification` are driven through
+  `test/support/fake_verification_engine.ex`
+  (`Application.put_env(:phoenix_kit_newsletters, :email_verification_engine, Fake)`;
+  answers scripted in the test process, calls sent back as messages), so they
+  run without `phoenix_kit_emails`. Tests tagged
+  `:requires_emails_verification` use the real engine and are excluded unless
+  the engine is loaded, i.e. unless the suite runs with
+  `PHOENIX_KIT_EMAILS_PATH` pointing at a checkout that has it (`test_helper.exs`
+  then also runs Emails' migration chain). `config/test.exs` gives the engine a
+  no-DNS resolver; no test reaches the network.
 - `config/test.exs` wires `config :phoenix_kit, repo:`, a `secret_key_base`
   (so integration credentials round-trip encrypted), `PhoenixKit.Mailer` to
   `Swoosh.Adapters.Test`, and `:endpoint` to a raw secret string so
