@@ -51,6 +51,23 @@ defmodule PhoenixKit.Newsletters.Web.DeadRenderTest do
     end
   end
 
+  describe "address verification" do
+    test "the page renders whether or not the Emails module is installed", %{conn: conn} do
+      html = html_response(get(conn, "/verification"), 200)
+
+      assert html =~ "Address verification"
+
+      # Installed and enabled: the audience selector. Otherwise: the explaining alert.
+      assert html =~ "verification-audience-form" or html =~ "verification-unavailable" or
+               html =~ "verification-disabled"
+    end
+
+    test "garbage query parameters still render", %{conn: conn} do
+      conn = get(conn, "/verification", %{"source" => "x", "roles" => "nope", "page" => "-4"})
+      assert html_response(conn, 200)
+    end
+  end
+
   # Broadcast rows need core V158 (the `attachments` column).
   describe "broadcasts" do
     @describetag :requires_v158

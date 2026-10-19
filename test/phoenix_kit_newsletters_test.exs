@@ -80,6 +80,19 @@ defmodule PhoenixKitNewslettersTest do
       refute :admin_newsletters_lists in tab_ids
     end
 
+    test "the address-verification subtab is visible, after Layouts, behind the module permission" do
+      tabs = Newsletters.admin_tabs()
+      layouts = Enum.find(tabs, &(&1.id == :admin_newsletters_layouts))
+      tab = Enum.find(tabs, &(&1.id == :admin_newsletters_verification))
+
+      assert tab.path == "newsletters/verification"
+      assert tab.parent == :admin_newsletters
+      assert tab.permission == "newsletters"
+      assert tab.live_view == {PhoenixKit.Newsletters.Web.Verification, :index}
+      assert tab.visible != false
+      assert tab.priority > layouts.priority
+    end
+
     test "first tab has id :admin_newsletters" do
       first = hd(Newsletters.admin_tabs())
       assert first.id == :admin_newsletters

@@ -2,6 +2,7 @@ defmodule PhoenixKit.Newsletters.Paths do
   @moduledoc "Centralized path helpers for Newsletters module."
 
   alias PhoenixKit.Utils.Routes
+  alias Plug.Conn.Query
 
   @base "/admin/newsletters"
 
@@ -15,6 +16,14 @@ defmodule PhoenixKit.Newsletters.Paths do
   def layouts_index, do: Routes.path("#{@base}/layouts")
   def layout_new, do: Routes.path("#{@base}/layouts/new")
   def layout_edit(id), do: Routes.path("#{@base}/layouts/#{id}/edit")
+
+  # Address verification
+  def verification_index(params \\ %{}) do
+    case params |> Enum.reject(fn {_k, v} -> v in [nil, "", []] end) |> Map.new() do
+      query when map_size(query) == 0 -> Routes.path("#{@base}/verification")
+      query -> Routes.path("#{@base}/verification") <> "?" <> Query.encode(query)
+    end
+  end
 
   # Public
   def unsubscribe, do: Routes.path("/newsletters/unsubscribe")
