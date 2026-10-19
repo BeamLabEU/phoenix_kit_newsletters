@@ -18,6 +18,15 @@ repo_available =
     PhoenixKitNewsletters.Migrations.up_statements()
     |> Enum.each(&Ecto.Adapters.SQL.query!(PhoenixKitNewsletters.Test.Repo, &1, []))
 
+    # The Emails module's own chain, when the address-verification engine is
+    # loaded (test-only dep; PHOENIX_KIT_EMAILS_PATH points at a checkout that
+    # has it): its V4 creates the verification tables the real-engine tests
+    # read and write. Same raw-statements approach as above.
+    if Code.ensure_loaded?(PhoenixKit.Modules.Emails.Verification) do
+      PhoenixKit.Modules.Emails.Migrations.up_statements()
+      |> Enum.each(&Ecto.Adapters.SQL.query!(PhoenixKitNewsletters.Test.Repo, &1, []))
+    end
+
     Ecto.Adapters.SQL.Sandbox.mode(PhoenixKitNewsletters.Test.Repo, :manual)
     # PhoenixKit.Users.Roles.create_role/update_role/delete_role broadcast
     # through this (Admin.Events.broadcast_role_created/2 etc) — needed by
@@ -84,8 +93,25 @@ unless v158_available do
   """)
 end
 
+# The verification engine ships in a phoenix_kit_emails release newer than the
+# one on Hex today; tests that drive the real engine are tagged
+# :requires_emails_verification and skip cleanly when it is not loaded (run the
+# suite with PHOENIX_KIT_EMAILS_PATH=<emails checkout> to include them).
+emails_verification_available =
+  Code.ensure_loaded?(PhoenixKit.Modules.Emails.Verification) and
+    function_exported?(PhoenixKit.Modules.Emails.Verification, :start_batch, 4)
+
+unless emails_verification_available do
+  IO.puts("""
+  \n⚠  PhoenixKit.Modules.Emails.Verification not loaded — tests tagged
+     :requires_emails_verification are excluded. Run with
+     PHOENIX_KIT_EMAILS_PATH=<phoenix_kit_emails checkout> to exercise them.
+  """)
+end
+
 exclude =
   if(repo_available, do: [], else: [:integration]) ++
-    if v158_available, do: [], else: [:requires_v158]
+    if(v158_available, do: [], else: [:requires_v158]) ++
+    if emails_verification_available, do: [], else: [:requires_emails_verification]
 
 ExUnit.start(exclude: exclude)
