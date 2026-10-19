@@ -140,6 +140,10 @@ defmodule PhoenixKit.Newsletters.Web.Verification do
     end
   end
 
+  def handle_event("start_batch", _params, %{assigns: %{engine: :disabled}} = socket) do
+    {:noreply, put_flash(socket, :error, start_error(:disabled))}
+  end
+
   def handle_event("start_batch", _params, socket) do
     {:noreply, put_flash(socket, :error, start_error(:unavailable))}
   end
@@ -374,6 +378,7 @@ defmodule PhoenixKit.Newsletters.Web.Verification do
     do: gettext("A verification of this audience is already running")
 
   defp start_error(:unavailable), do: gettext("The Emails module is not available")
+  defp start_error(:disabled), do: gettext("Address verification is switched off")
 
   defp start_error({:engine_error, _message}),
     do: gettext("The verification failed to start: the Emails module reported an error")
@@ -414,6 +419,7 @@ defmodule PhoenixKit.Newsletters.Web.Verification do
   def reason_label("disposable"), do: gettext("Disposable domain")
   def reason_label("no_mx"), do: gettext("The domain accepts no mail")
   def reason_label("dns_error"), do: gettext("DNS error")
+  def reason_label("job_failed"), do: gettext("Verification failed, will need a re-run")
   def reason_label("smtp_disabled"), do: gettext("Mailbox not probed (SMTP check is off)")
   def reason_label("smtp_unavailable"), do: gettext("Mailbox not probed (SMTP unavailable)")
   def reason_label("smtp_error"), do: gettext("Mailbox not probed (SMTP error)")

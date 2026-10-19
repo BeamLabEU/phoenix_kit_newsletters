@@ -183,6 +183,22 @@ defmodule PhoenixKit.Newsletters.Web.VerificationTest do
       assert html =~ "a@example.com"
     end
 
+    test "a verdict a batch job gave up on (temp, no level) is shown with its reason" do
+      role = audience(["a@example.com"])
+
+      Fake.put(:results, %{
+        "a@example.com" => result("temp", %{reason: "job_failed", level: nil})
+      })
+
+      socket = visit(%{"source" => "user_group", "roles" => [role.uuid]})
+      assert [%{status: :temp}] = socket.assigns.rows
+
+      html = render_page(socket)
+      assert html =~ "Temporary problem"
+      assert html =~ "Verification failed, will need a re-run"
+      refute html =~ "job_failed"
+    end
+
     test "the status filter narrows the rows, and the summary still counts everyone" do
       role = audience(["a@example.com", "b@example.com", "c@example.com"])
 
@@ -481,6 +497,20 @@ defmodule PhoenixKit.Newsletters.Web.VerificationTest do
         refute_received {:start_batch, _, _, _, _}
         refute_received {:latest_batch, _, _}
       end
+    end
+
+    test "says verification is switched off when it is, and the module is missing when it is" do
+      role = audience(["a@example.com"])
+      socket = visit(%{"source" => "user_group", "roles" => [role.uuid]})
+
+      disabled = %{socket | assigns: %{socket.assigns | engine: :disabled}}
+      {:noreply, disabled} = Verification.handle_event("start_batch", %{}, disabled)
+      assert disabled.assigns.flash["error"] =~ "switched off"
+      refute disabled.assigns.flash["error"] =~ "not available"
+
+      missing = %{socket | assigns: %{socket.assigns | engine: :unavailable}}
+      {:noreply, missing} = Verification.handle_event("start_batch", %{}, missing)
+      assert missing.assigns.flash["error"] =~ "not available"
     end
 
     test "says the verification failed to start when the engine raised" do

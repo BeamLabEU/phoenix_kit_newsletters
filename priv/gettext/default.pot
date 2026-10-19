@@ -1017,12 +1017,12 @@ msgstr ""
 msgid "Checked"
 msgstr ""
 
-#: lib/phoenix_kit/newsletters/web/verification.ex:381
+#: lib/phoenix_kit/newsletters/web/verification.ex:386
 #, elixir-autogen, elixir-format
 msgid "Could not start the verification"
 msgstr ""
 
-#: lib/phoenix_kit/newsletters/web/verification.ex:416
+#: lib/phoenix_kit/newsletters/web/verification.ex:421
 #, elixir-autogen, elixir-format
 msgid "DNS error"
 msgstr ""
@@ -1032,12 +1032,12 @@ msgstr ""
 msgid "Disposable"
 msgstr ""
 
-#: lib/phoenix_kit/newsletters/web/verification.ex:414
+#: lib/phoenix_kit/newsletters/web/verification.ex:419
 #, elixir-autogen, elixir-format
 msgid "Disposable domain"
 msgstr ""
 
-#: lib/phoenix_kit/newsletters/web/verification.ex:401
+#: lib/phoenix_kit/newsletters/web/verification.ex:406
 #, elixir-autogen, elixir-format
 msgid "Domain OK (no SMTP)"
 msgstr ""
@@ -1057,12 +1057,12 @@ msgstr ""
 msgid "Free"
 msgstr ""
 
-#: lib/phoenix_kit/newsletters/web/verification.ex:397
+#: lib/phoenix_kit/newsletters/web/verification.ex:402
 #, elixir-autogen, elixir-format
 msgid "Invalid"
 msgstr ""
 
-#: lib/phoenix_kit/newsletters/web/verification.ex:412
+#: lib/phoenix_kit/newsletters/web/verification.ex:417
 #, elixir-autogen, elixir-format
 msgid "Invalid syntax"
 msgstr ""
@@ -1072,17 +1072,17 @@ msgstr ""
 msgid "Last verification finished: %{at} (%{total} addresses)"
 msgstr ""
 
-#: lib/phoenix_kit/newsletters/web/verification.ex:417
+#: lib/phoenix_kit/newsletters/web/verification.ex:423
 #, elixir-autogen, elixir-format
 msgid "Mailbox not probed (SMTP check is off)"
 msgstr ""
 
-#: lib/phoenix_kit/newsletters/web/verification.ex:419
+#: lib/phoenix_kit/newsletters/web/verification.ex:425
 #, elixir-autogen, elixir-format
 msgid "Mailbox not probed (SMTP error)"
 msgstr ""
 
-#: lib/phoenix_kit/newsletters/web/verification.ex:418
+#: lib/phoenix_kit/newsletters/web/verification.ex:424
 #, elixir-autogen, elixir-format
 msgid "Mailbox not probed (SMTP unavailable)"
 msgstr ""
@@ -1102,12 +1102,12 @@ msgstr ""
 msgid "No addresses with this status."
 msgstr ""
 
-#: lib/phoenix_kit/newsletters/web/verification.ex:400
+#: lib/phoenix_kit/newsletters/web/verification.ex:405
 #, elixir-autogen, elixir-format
 msgid "Not checked"
 msgstr ""
 
-#: lib/phoenix_kit/newsletters/web/verification.ex:399
+#: lib/phoenix_kit/newsletters/web/verification.ex:404
 #, elixir-autogen, elixir-format
 msgid "Not sure"
 msgstr ""
@@ -1143,22 +1143,22 @@ msgstr ""
 msgid "Starting..."
 msgstr ""
 
-#: lib/phoenix_kit/newsletters/web/verification.ex:398
+#: lib/phoenix_kit/newsletters/web/verification.ex:403
 #, elixir-autogen, elixir-format
 msgid "Temporary problem"
 msgstr ""
 
-#: lib/phoenix_kit/newsletters/web/verification.ex:376
+#: lib/phoenix_kit/newsletters/web/verification.ex:380
 #, elixir-autogen, elixir-format
 msgid "The Emails module is not available"
 msgstr ""
 
-#: lib/phoenix_kit/newsletters/web/verification.ex:368
+#: lib/phoenix_kit/newsletters/web/verification.ex:372
 #, elixir-autogen, elixir-format
 msgid "The audience is too large for one batch (at most %{max} addresses)"
 msgstr ""
 
-#: lib/phoenix_kit/newsletters/web/verification.ex:415
+#: lib/phoenix_kit/newsletters/web/verification.ex:420
 #, elixir-autogen, elixir-format
 msgid "The domain accepts no mail"
 msgstr ""
@@ -1173,22 +1173,22 @@ msgstr ""
 msgid "The last verification was cancelled after %{processed} of %{total} addresses"
 msgstr ""
 
-#: lib/phoenix_kit/newsletters/web/verification.ex:365
+#: lib/phoenix_kit/newsletters/web/verification.ex:369
 #, elixir-autogen, elixir-format
 msgid "There are no sendable addresses to verify"
 msgstr ""
 
-#: lib/phoenix_kit/newsletters/web/verification.ex:413
+#: lib/phoenix_kit/newsletters/web/verification.ex:418
 #, elixir-autogen, elixir-format
 msgid "Unknown top-level domain"
 msgstr ""
 
-#: lib/phoenix_kit/newsletters/web/verification.ex:396
+#: lib/phoenix_kit/newsletters/web/verification.ex:401
 #, elixir-autogen, elixir-format
 msgid "Valid"
 msgstr ""
 
-#: lib/phoenix_kit/newsletters/web/verification.ex:277
+#: lib/phoenix_kit/newsletters/web/verification.ex:281
 #, elixir-autogen, elixir-format
 msgid "Verification started"
 msgstr ""
@@ -1203,12 +1203,22 @@ msgstr ""
 msgid "Verifying: %{processed} of %{total}"
 msgstr ""
 
-#: lib/phoenix_kit/newsletters/web/verification.ex:374
+#: lib/phoenix_kit/newsletters/web/verification.ex:378
 #, elixir-autogen, elixir-format
 msgid "A verification of this audience is already running"
 msgstr ""
 
-#: lib/phoenix_kit/newsletters/web/verification.ex:379
+#: lib/phoenix_kit/newsletters/web/verification.ex:384
 #, elixir-autogen, elixir-format
 msgid "The verification failed to start: the Emails module reported an error"
+msgstr ""
+
+#: lib/phoenix_kit/newsletters/web/verification.ex:381
+#, elixir-autogen, elixir-format
+msgid "Address verification is switched off"
+msgstr ""
+
+#: lib/phoenix_kit/newsletters/web/verification.ex:422
+#, elixir-autogen, elixir-format
+msgid "Verification failed, will need a re-run"
 msgstr ""

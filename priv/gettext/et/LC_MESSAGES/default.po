@@ -1020,12 +1020,12 @@ msgstr "Saadetise sihtrühma aadresside kontroll"
 msgid "Checked"
 msgstr "Kontrollitud"
 
-#: lib/phoenix_kit/newsletters/web/verification.ex:381
+#: lib/phoenix_kit/newsletters/web/verification.ex:386
 #, elixir-autogen, elixir-format
 msgid "Could not start the verification"
 msgstr "Kontrolli ei õnnestunud käivitada"
 
-#: lib/phoenix_kit/newsletters/web/verification.ex:416
+#: lib/phoenix_kit/newsletters/web/verification.ex:421
 #, elixir-autogen, elixir-format
 msgid "DNS error"
 msgstr "DNS-i viga"
@@ -1035,12 +1035,12 @@ msgstr "DNS-i viga"
 msgid "Disposable"
 msgstr "Ühekordne"
 
-#: lib/phoenix_kit/newsletters/web/verification.ex:414
+#: lib/phoenix_kit/newsletters/web/verification.ex:419
 #, elixir-autogen, elixir-format
 msgid "Disposable domain"
 msgstr "Ühekordne domeen"
 
-#: lib/phoenix_kit/newsletters/web/verification.ex:401
+#: lib/phoenix_kit/newsletters/web/verification.ex:406
 #, elixir-autogen, elixir-format
 msgid "Domain OK (no SMTP)"
 msgstr "Domeen OK (ilma SMTP-ta)"
@@ -1060,12 +1060,12 @@ msgstr "Märked"
 msgid "Free"
 msgstr "Tasuta"
 
-#: lib/phoenix_kit/newsletters/web/verification.ex:397
+#: lib/phoenix_kit/newsletters/web/verification.ex:402
 #, elixir-autogen, elixir-format
 msgid "Invalid"
 msgstr "Kehtetu"
 
-#: lib/phoenix_kit/newsletters/web/verification.ex:412
+#: lib/phoenix_kit/newsletters/web/verification.ex:417
 #, elixir-autogen, elixir-format
 msgid "Invalid syntax"
 msgstr "Vigane süntaks"
@@ -1075,17 +1075,17 @@ msgstr "Vigane süntaks"
 msgid "Last verification finished: %{at} (%{total} addresses)"
 msgstr "Viimane kontroll lõppes: %{at} (aadresse: %{total})"
 
-#: lib/phoenix_kit/newsletters/web/verification.ex:417
+#: lib/phoenix_kit/newsletters/web/verification.ex:423
 #, elixir-autogen, elixir-format
 msgid "Mailbox not probed (SMTP check is off)"
 msgstr "Postkasti ei kontrollitud (SMTP-kontroll on väljas)"
 
-#: lib/phoenix_kit/newsletters/web/verification.ex:419
+#: lib/phoenix_kit/newsletters/web/verification.ex:425
 #, elixir-autogen, elixir-format
 msgid "Mailbox not probed (SMTP error)"
 msgstr "Postkasti ei kontrollitud (SMTP viga)"
 
-#: lib/phoenix_kit/newsletters/web/verification.ex:418
+#: lib/phoenix_kit/newsletters/web/verification.ex:424
 #, elixir-autogen, elixir-format
 msgid "Mailbox not probed (SMTP unavailable)"
 msgstr "Postkasti ei kontrollitud (SMTP pole saadaval)"
@@ -1105,12 +1105,12 @@ msgstr "Kontrollitavaid aadresse pole"
 msgid "No addresses with this status."
 msgstr "Selle olekuga aadresse pole."
 
-#: lib/phoenix_kit/newsletters/web/verification.ex:400
+#: lib/phoenix_kit/newsletters/web/verification.ex:405
 #, elixir-autogen, elixir-format
 msgid "Not checked"
 msgstr "Kontrollimata"
 
-#: lib/phoenix_kit/newsletters/web/verification.ex:399
+#: lib/phoenix_kit/newsletters/web/verification.ex:404
 #, elixir-autogen, elixir-format
 msgid "Not sure"
 msgstr "Pole kindel"
@@ -1146,22 +1146,22 @@ msgstr "Rolliaadress"
 msgid "Starting..."
 msgstr "Käivitan..."
 
-#: lib/phoenix_kit/newsletters/web/verification.ex:398
+#: lib/phoenix_kit/newsletters/web/verification.ex:403
 #, elixir-autogen, elixir-format
 msgid "Temporary problem"
 msgstr "Ajutine probleem"
 
-#: lib/phoenix_kit/newsletters/web/verification.ex:376
+#: lib/phoenix_kit/newsletters/web/verification.ex:380
 #, elixir-autogen, elixir-format
 msgid "The Emails module is not available"
 msgstr "Emails-moodul pole saadaval"
 
-#: lib/phoenix_kit/newsletters/web/verification.ex:368
+#: lib/phoenix_kit/newsletters/web/verification.ex:372
 #, elixir-autogen, elixir-format
 msgid "The audience is too large for one batch (at most %{max} addresses)"
 msgstr "Sihtrühm on ühe partii jaoks liiga suur (kuni %{max} aadressi)"
 
-#: lib/phoenix_kit/newsletters/web/verification.ex:415
+#: lib/phoenix_kit/newsletters/web/verification.ex:420
 #, elixir-autogen, elixir-format
 msgid "The domain accepts no mail"
 msgstr "Domeen ei võta posti vastu"
@@ -1176,22 +1176,22 @@ msgstr "Host-rakenduse Oban-i seadistuses puudub järjekord email_verification, 
 msgid "The last verification was cancelled after %{processed} of %{total} addresses"
 msgstr "Viimane kontroll tühistati pärast %{processed} aadressi %{total}-st"
 
-#: lib/phoenix_kit/newsletters/web/verification.ex:365
+#: lib/phoenix_kit/newsletters/web/verification.ex:369
 #, elixir-autogen, elixir-format
 msgid "There are no sendable addresses to verify"
 msgstr "Kontrollimiseks pole saadetavaid aadresse"
 
-#: lib/phoenix_kit/newsletters/web/verification.ex:413
+#: lib/phoenix_kit/newsletters/web/verification.ex:418
 #, elixir-autogen, elixir-format
 msgid "Unknown top-level domain"
 msgstr "Tundmatu ülemtaseme domeen"
 
-#: lib/phoenix_kit/newsletters/web/verification.ex:396
+#: lib/phoenix_kit/newsletters/web/verification.ex:401
 #, elixir-autogen, elixir-format
 msgid "Valid"
 msgstr "Kehtiv"
 
-#: lib/phoenix_kit/newsletters/web/verification.ex:277
+#: lib/phoenix_kit/newsletters/web/verification.ex:281
 #, elixir-autogen, elixir-format
 msgid "Verification started"
 msgstr "Kontroll käivitatud"
@@ -1206,12 +1206,22 @@ msgstr "Kontrolli nimekirja"
 msgid "Verifying: %{processed} of %{total}"
 msgstr "Kontrollin: %{processed} / %{total}"
 
-#: lib/phoenix_kit/newsletters/web/verification.ex:374
+#: lib/phoenix_kit/newsletters/web/verification.ex:378
 #, elixir-autogen, elixir-format
 msgid "A verification of this audience is already running"
 msgstr "Selle sihtrühma kontroll juba töötab"
 
-#: lib/phoenix_kit/newsletters/web/verification.ex:379
+#: lib/phoenix_kit/newsletters/web/verification.ex:384
 #, elixir-autogen, elixir-format
 msgid "The verification failed to start: the Emails module reported an error"
 msgstr "Kontrolli käivitamine ebaõnnestus: Emails-moodul teatas veast"
+
+#: lib/phoenix_kit/newsletters/web/verification.ex:381
+#, elixir-autogen, elixir-format
+msgid "Address verification is switched off"
+msgstr "Aadresside kontroll on välja lülitatud"
+
+#: lib/phoenix_kit/newsletters/web/verification.ex:422
+#, elixir-autogen, elixir-format
+msgid "Verification failed, will need a re-run"
+msgstr "Kontroll ebaõnnestus, vaja uuesti käivitada"

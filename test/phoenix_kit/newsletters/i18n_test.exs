@@ -99,6 +99,26 @@ defmodule PhoenixKit.Newsletters.I18nTest do
     end
   end
 
+  describe "address verification messages" do
+    alias PhoenixKit.Newsletters.Web.Verification
+
+    test "the gave-up reason is translated" do
+      for {locale, text} <- [
+            {"en", "Verification failed, will need a re-run"},
+            {"et", "Kontroll ebaõnnestus, vaja uuesti käivitada"},
+            {"ru", "Проверка не удалась, нужен повторный запуск"}
+          ] do
+        Gettext.put_locale(NewslettersGettext, locale)
+        assert Verification.reason_label("job_failed") == text, locale
+      end
+    end
+
+    test "an unknown reason is shown as it is, and no reason as nothing" do
+      assert Verification.reason_label("something_new") == "something_new"
+      assert Verification.reason_label(nil) == ""
+    end
+  end
+
   describe "Tab.localized_label/1 against the module's catalogue" do
     test "ru locale resolves the parent 'Newsletters' tab to 'Рассылки'" do
       Gettext.put_locale(NewslettersGettext, "ru")
