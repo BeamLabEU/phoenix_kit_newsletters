@@ -29,6 +29,7 @@ defmodule PhoenixKit.Newsletters.EmailVerificationTest do
       refute EmailVerification.enabled?()
       refute EmailVerification.queue_configured?()
       assert EmailVerification.results_for(["a@x.com"]) == %{}
+      assert EmailVerification.statuses_for(["a@x.com"]) == %{}
       assert EmailVerification.latest_batch("newsletters_crm_list", "ref") == nil
       assert EmailVerification.get_batch(Ecto.UUID.generate()) == nil
       assert EmailVerification.max_batch_size() == nil
@@ -62,6 +63,11 @@ defmodule PhoenixKit.Newsletters.EmailVerificationTest do
       def subscribe_batch(_uuid), do: exit(:noproc)
     end
 
+    defmodule Exiting do
+      def verify(_email, _opts), do: :ok
+      def start_batch(_emails, _type, _ref, _opts), do: exit(:noproc)
+    end
+
     setup do
       use_engine(Raising)
     end
@@ -71,12 +77,33 @@ defmodule PhoenixKit.Newsletters.EmailVerificationTest do
         capture_log(fn ->
           refute EmailVerification.enabled?()
           assert EmailVerification.results_for(["a@x.com"]) == %{}
-
-          assert EmailVerification.start_batch(["a@x.com"], "newsletters_crm_list", "r") ==
-                   {:error, :unavailable}
         end)
 
       assert log =~ "email verification enabled? failed: boom"
+    end
+
+    test "a raise in start_batch is an engine error, not an absent module" do
+      log =
+        capture_log(fn ->
+          assert EmailVerification.start_batch(["a@x.com"], "newsletters_crm_list", "r") ==
+                   {:error, {:engine_error, "boom"}}
+        end)
+
+      assert log =~ "email verification start_batch failed: boom"
+    end
+
+    test "an exit in start_batch is an engine error too" do
+      use_engine(Exiting)
+
+      log =
+        capture_log(fn ->
+          assert {:error, {:engine_error, message}} =
+                   EmailVerification.start_batch(["a@x.com"], "newsletters_crm_list", "r")
+
+          assert message =~ "noproc"
+        end)
+
+      assert log =~ "start_batch exited"
     end
 
     test "an exit is answered with the neutral value too" do
@@ -87,6 +114,20 @@ defmodule PhoenixKit.Newsletters.EmailVerificationTest do
         end)
 
       assert log =~ "subscribe_batch exited"
+    end
+  end
+
+  describe "with an engine release that predates statuses_for/1" do
+    defmodule OldEngine do
+      def verify(_email, _opts), do: :ok
+      def results_for(emails), do: Map.new(emails, &{&1, %{status: "valid", log: []}})
+    end
+
+    test "statuses_for/1 falls back to results_for/1" do
+      use_engine(OldEngine)
+
+      assert EmailVerification.statuses_for(["a@x.com"]) ==
+               %{"a@x.com" => %{status: "valid", log: []}}
     end
   end
 
@@ -119,6 +160,16 @@ defmodule PhoenixKit.Newsletters.EmailVerificationTest do
       assert EmailVerification.subscribe_batch("u") == :ok
       assert_received {:subscribe_batch, "u"}
       assert EmailVerification.max_batch_size() == 100
+    end
+
+    test "statuses_for/1 asks the engine for the statuses, not the full verdicts" do
+      Fake.put(:results, %{"a@x.com" => %{status: "valid", level: "smtp", log: [:big]}})
+
+      assert EmailVerification.statuses_for(["a@x.com", "b@x.com"]) ==
+               %{"a@x.com" => %{status: "valid", level: "smtp"}}
+
+      assert_received {:statuses_for, ["a@x.com", "b@x.com"]}
+      refute_received {:results_for, _}
     end
 
     test "passes an engine error through untouched" do
@@ -154,6 +205,17 @@ defmodule PhoenixKit.Newsletters.EmailVerificationTest do
 
       assert EmailVerification.summary(emails) ==
                %{valid: 0, invalid: 0, temp: 0, not_sure: 1, unchecked: 1}
+    end
+
+    test "statuses_for/1 reads the stored status and reason without the step log" do
+      {:ok, _} = engine().verify("someone@example.com")
+
+      assert %{"someone@example.com" => info} =
+               map = EmailVerification.statuses_for(["someone@example.com", "never@example.com"])
+
+      assert %{status: "not_sure", level: "mx"} = info
+      refute Map.has_key?(info, :log)
+      refute Map.has_key?(map, "never@example.com")
     end
 
     test "start_batch/4, latest_batch/2 and get_batch/1 round-trip through the engine" do

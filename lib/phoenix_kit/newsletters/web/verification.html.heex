@@ -39,31 +39,25 @@
 
     <form id="verification-audience-form" phx-change="select_audience" class="mb-4">
       <fieldset class="fieldset">
-        <label class="label">{gettext("Audience")}</label>
+        <legend class="fieldset-legend">{gettext("Audience")}</legend>
         <div class="join mb-2">
-          <label class={["btn btn-sm join-item", @source == "user_group" && "btn-active"]}>
-            <input
-              type="radio"
-              name="source"
-              value="user_group"
-              checked={@source == "user_group"}
-              class="hidden"
-            />
-            {gettext("Roles")}
-          </label>
-          <label
+          <input
+            type="radio"
+            name="source"
+            value="user_group"
+            checked={@source == "user_group"}
+            class="join-item btn btn-sm"
+            aria-label={gettext("Roles")}
+          />
+          <input
             :if={@crm_available}
-            class={["btn btn-sm join-item", @source == "crm_list" && "btn-active"]}
-          >
-            <input
-              type="radio"
-              name="source"
-              value="crm_list"
-              checked={@source == "crm_list"}
-              class="hidden"
-            />
-            {gettext("CRM list")}
-          </label>
+            type="radio"
+            name="source"
+            value="crm_list"
+            checked={@source == "crm_list"}
+            class="join-item btn btn-sm"
+            aria-label={gettext("CRM list")}
+          />
         </div>
 
         <label :if={@source == "crm_list"} class="select w-full max-w-md">
@@ -120,6 +114,7 @@
           type="button"
           class="btn btn-primary btn-sm"
           phx-click="start_batch"
+          disabled={batch_active?(@batch)}
           phx-disable-with={gettext("Starting...")}
         >
           <.icon name="hero-play" class="w-4 h-4" /> {gettext("Verify the list")}
@@ -155,7 +150,7 @@
         <.link
           :for={status <- ~w(valid invalid temp not_sure unchecked)a}
           id={"verification-summary-#{status}"}
-          patch={Paths.verification_index(page_params(assigns) |> Map.put("status", Atom.to_string(status)) |> Map.delete("page"))}
+          patch={Paths.verification_index(page_params(@source, @crm_list_uuid, @role_uuids, Atom.to_string(status)))}
           class={["stat hover:bg-base-200", @status_filter == Atom.to_string(status) && "bg-base-200"]}
         >
           <div class="stat-title">{status_label(status)}</div>
@@ -256,7 +251,7 @@
       <div :if={@total_pages > 1} id="verification-pagination" class="flex items-center justify-center gap-2 mt-4">
         <.link
           :if={@page > 1}
-          patch={Paths.verification_index(Map.put(page_params(assigns), "page", @page - 1))}
+          patch={Paths.verification_index(Map.put(page_params(@source, @crm_list_uuid, @role_uuids, @status_filter), "page", @page - 1))}
           class="btn btn-sm"
         >
           {gettext("Previous")}
@@ -266,7 +261,7 @@
         </span>
         <.link
           :if={@page < @total_pages}
-          patch={Paths.verification_index(Map.put(page_params(assigns), "page", @page + 1))}
+          patch={Paths.verification_index(Map.put(page_params(@source, @crm_list_uuid, @role_uuids, @status_filter), "page", @page + 1))}
           class="btn btn-sm"
         >
           {gettext("Next")}

@@ -36,6 +36,15 @@ defmodule PhoenixKitNewsletters.Test.FakeVerificationEngine do
     Map.take(get(:results, %{}), emails)
   end
 
+  def statuses_for(emails) do
+    send(self(), {:statuses_for, emails})
+    maybe_raise()
+
+    get(:results, %{})
+    |> Map.take(emails)
+    |> Map.new(fn {email, result} -> {email, Map.take(result, [:status, :reason, :level])} end)
+  end
+
   def summary(emails) do
     results = get(:results, %{})
     counts = Enum.frequencies_by(emails, &status(results[&1]))
@@ -69,7 +78,10 @@ defmodule PhoenixKitNewsletters.Test.FakeVerificationEngine do
     get(:latest_batch, nil)
   end
 
-  def get_batch(_uuid), do: get(:batch, nil)
+  def get_batch(uuid) do
+    send(self(), {:get_batch, uuid})
+    get(:batch, nil)
+  end
 
   def subscribe_batch(uuid) do
     send(self(), {:subscribe_batch, uuid})

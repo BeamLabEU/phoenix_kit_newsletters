@@ -3,7 +3,7 @@ defmodule PhoenixKit.Newsletters.VerificationRows do
   The table behind the address-verification page, as plain data: one row per
   audience address joined with its stored verdict, the status filter over those
   rows, and their pagination. No engine calls and no database — `Web.Verification`
-  feeds it the audience's addresses and `EmailVerification.results_for/1`.
+  feeds it the audience's addresses and `EmailVerification.statuses_for/1` / `results_for/1`.
   """
 
   @statuses ~w(valid invalid temp not_sure unchecked)
@@ -38,27 +38,33 @@ defmodule PhoenixKit.Newsletters.VerificationRows do
   @doc """
   One page of the table for `emails`: `{rows, %{page:, total_pages:, total:}}`.
 
-  `fetch_results` is called with the addresses whose verdicts are needed (the
-  engine's `results_for/1`). Without a status filter only the shown page is
-  looked up; with one every address is, because the status decides which rows
-  belong on the page.
+  `fetch_statuses` (the engine's `statuses_for/1`, light maps without the step
+  logs) and `fetch_results` (`results_for/1`, full verdicts) are called with the
+  addresses they are needed for. Without a status filter only the shown page is
+  looked up, for full results. With one, every address is looked up for its
+  status, because the status decides which rows belong on the page; the full
+  results are then loaded for the page's rows only.
   """
   @spec table(
           [String.t()],
           String.t(),
           pos_integer(),
           ([String.t()] -> %{String.t() => map()}),
+          ([String.t()] -> %{String.t() => map()}),
           pos_integer()
         ) ::
           {[row()], %{page: pos_integer(), total_pages: pos_integer(), total: non_neg_integer()}}
-  def table(emails, status, page, fetch_results, per_page \\ @default_per_page) do
-    if parse_status(status) == "" do
-      {page_rows, meta} = emails |> build(%{}) |> paginate(page, per_page)
-      page_emails = Enum.map(page_rows, & &1.email)
-      {build(page_emails, fetch_results.(page_emails)), meta}
-    else
-      emails |> build(fetch_results.(emails)) |> filter(status) |> paginate(page, per_page)
-    end
+  def table(emails, status, page, fetch_statuses, fetch_results, per_page \\ @default_per_page) do
+    rows =
+      if parse_status(status) == "" do
+        build(emails, %{})
+      else
+        emails |> build(fetch_statuses.(emails)) |> filter(status)
+      end
+
+    {page_rows, meta} = paginate(rows, page, per_page)
+    page_emails = Enum.map(page_rows, & &1.email)
+    {build(page_emails, fetch_results.(page_emails)), meta}
   end
 
   @doc "The status atom of a stored verdict; `:unchecked` for none."

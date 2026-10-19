@@ -106,33 +106,63 @@ defmodule PhoenixKit.Newsletters.VerificationRowsTest do
     end
   end
 
-  describe "table/5" do
-    defp fetch(emails) do
+  describe "table/6" do
+    defp fetch_statuses(emails) do
+      send(self(), {:statuses, emails})
+
+      emails
+      |> then(&Map.take(results(), &1))
+      |> Map.new(fn {email, result} -> {email, Map.take(result, [:status, :reason, :level])} end)
+    end
+
+    defp fetch_results(emails) do
       send(self(), {:fetched, emails})
       Map.take(results(), emails)
     end
 
-    test "without a filter only the shown page is looked up" do
-      {rows, meta} = VerificationRows.table(@emails, "", 2, &fetch/1, 4)
+    defp table(status, page, per_page \\ 50) do
+      VerificationRows.table(
+        @emails,
+        status,
+        page,
+        &fetch_statuses/1,
+        &fetch_results/1,
+        per_page
+      )
+    end
+
+    test "without a filter only the shown page is looked up, and only for full results" do
+      {rows, meta} = table("", 2, 4)
 
       assert_received {:fetched, fetched}
       assert fetched == ~w(e@x.com f@x.com)
       refute_received {:fetched, _}
+      refute_received {:statuses, _}
       assert Enum.map(rows, & &1.status) == [:temp, :unchecked]
       assert meta.total == 6
     end
 
-    test "with a filter every address is looked up, then filtered and paged" do
-      {rows, meta} = VerificationRows.table(@emails, "not_sure", 1, &fetch/1, 1)
+    test "with a filter every address is looked up for its status, the full result only for the page" do
+      {rows, meta} = table("not_sure", 1, 1)
+
+      assert_received {:statuses, statuses}
+      assert length(statuses) == 6
 
       assert_received {:fetched, fetched}
-      assert length(fetched) == 6
+      assert fetched == ["c@x.com"]
+      refute_received {:fetched, _}
+
       assert Enum.map(rows, & &1.email) == ["c@x.com"]
       assert meta == %{page: 1, total_pages: 2, total: 2}
     end
 
+    test "a filtered row carries the full result, not the status-only map" do
+      {[row], _meta} = table("valid", 1)
+      assert row.result == results()["a@x.com"]
+    end
+
     test "the unchecked filter lists addresses with no verdict" do
-      {rows, _meta} = VerificationRows.table(@emails, "unchecked", 1, &fetch/1)
+      {rows, _meta} = table("unchecked", 1)
       assert Enum.map(rows, & &1.email) == ["f@x.com"]
     end
   end

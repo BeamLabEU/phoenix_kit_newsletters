@@ -115,29 +115,33 @@ defmodule PhoenixKit.Newsletters.Web.Verification do
   end
 
   def handle_event("filter_status", %{"status" => status}, socket) do
+    %{source: source, crm_list_uuid: list_uuid, role_uuids: role_uuids} = socket.assigns
+
     {:noreply,
      push_patch(socket,
-       to: Paths.verification_index(url_params(socket.assigns, %{"status" => status}))
+       to: Paths.verification_index(page_params(source, list_uuid, role_uuids, status))
      )}
   end
 
-  def handle_event("start_batch", _params, socket) do
+  def handle_event("start_batch", _params, %{assigns: %{engine: :ready}} = socket) do
+    # The audience and its latest batch are read again: the click may be stale
+    # (another tab or a double click started a batch since the page was drawn).
     socket = refresh_audience(socket, force: true)
-    {type, ref, title} = batch_source(socket.assigns)
 
-    opts = [title: title, created_by_uuid: current_user_uuid(socket)]
+    cond do
+      socket.assigns.emails == [] ->
+        {:noreply, put_flash(socket, :error, start_error(:no_emails))}
 
-    case EmailVerification.start_batch(socket.assigns.emails, type, ref, opts) do
-      {:ok, batch} ->
-        {:noreply,
-         socket
-         |> track_batch(batch)
-         |> load_table(socket.assigns.page)
-         |> put_flash(:info, gettext("Verification started"))}
+      batch_active?(socket.assigns.batch) ->
+        {:noreply, put_flash(socket, :error, start_error(:already_running))}
 
-      {:error, reason} ->
-        {:noreply, put_flash(socket, :error, start_error(reason))}
+      true ->
+        {:noreply, start_batch(socket)}
     end
+  end
+
+  def handle_event("start_batch", _params, socket) do
+    {:noreply, put_flash(socket, :error, start_error(:unavailable))}
   end
 
   @impl true
@@ -213,17 +217,6 @@ defmodule PhoenixKit.Newsletters.Web.Verification do
 
   defp parse_roles(_roles), do: []
 
-  defp url_params(assigns, extra) do
-    Map.merge(
-      %{
-        "source" => assigns.source,
-        "list" => assigns.crm_list_uuid,
-        "roles" => assigns.role_uuids
-      },
-      extra
-    )
-  end
-
   # Resolves the audience again only when it changed (or when forced): the
   # status filter and the page are patches over the same addresses.
   defp refresh_audience(socket, opts \\ []) do
@@ -258,6 +251,7 @@ defmodule PhoenixKit.Newsletters.Web.Verification do
         socket.assigns.emails,
         socket.assigns.status_filter,
         page,
+        &EmailVerification.statuses_for/1,
         &EmailVerification.results_for/1
       )
 
@@ -270,6 +264,22 @@ defmodule PhoenixKit.Newsletters.Web.Verification do
   end
 
   ## --- Batches ---
+
+  defp start_batch(socket) do
+    {type, ref, title} = batch_source(socket.assigns)
+    opts = [title: title, created_by_uuid: current_user_uuid(socket)]
+
+    case EmailVerification.start_batch(socket.assigns.emails, type, ref, opts) do
+      {:ok, batch} ->
+        socket
+        |> track_batch(batch)
+        |> load_table(socket.assigns.page)
+        |> put_flash(:info, gettext("Verification started"))
+
+      {:error, reason} ->
+        put_flash(socket, :error, start_error(reason))
+    end
+  end
 
   # The batch's source: what `source_type` / `source_ref` the engine stores it
   # under, and a title for the engine's own listings. Roles go in as a digest of
@@ -323,17 +333,24 @@ defmodule PhoenixKit.Newsletters.Web.Verification do
     end
   end
 
-  # Subscribes once per batch, and only while it can still change.
+  # Subscribes once per batch, and only while it can still change. The batch is
+  # read again after the subscription: one that finished between the read that
+  # found it and the subscribe would otherwise leave the page following a
+  # batch whose last message it never got.
   defp track_batch(socket, batch) do
-    socket = assign(socket, :batch, batch)
-
-    if connected?(socket) and batch.state in @active_batch_states and
-         socket.assigns.subscribed_batch != batch.uuid do
-      EmailVerification.subscribe_batch(batch.uuid)
-      assign(socket, :subscribed_batch, batch.uuid)
+    if connected?(socket) and batch.state in @active_batch_states do
+      socket = subscribe_once(socket, batch.uuid)
+      assign(socket, :batch, EmailVerification.get_batch(batch.uuid) || batch)
     else
-      socket
+      assign(socket, :batch, batch)
     end
+  end
+
+  defp subscribe_once(%{assigns: %{subscribed_batch: uuid}} = socket, uuid), do: socket
+
+  defp subscribe_once(socket, uuid) do
+    EmailVerification.subscribe_batch(uuid)
+    assign(socket, :subscribed_batch, uuid)
   end
 
   defp progress_of(snapshot), do: Map.take(snapshot, [:state, :processed, :total, :counts])
@@ -353,7 +370,14 @@ defmodule PhoenixKit.Newsletters.Web.Verification do
     )
   end
 
+  defp start_error(:already_running),
+    do: gettext("A verification of this audience is already running")
+
   defp start_error(:unavailable), do: gettext("The Emails module is not available")
+
+  defp start_error({:engine_error, _message}),
+    do: gettext("The verification failed to start: the Emails module reported an error")
+
   defp start_error(_reason), do: gettext("Could not start the verification")
 
   ## --- Presentation ---
@@ -410,7 +434,7 @@ defmodule PhoenixKit.Newsletters.Web.Verification do
   def checked_at(_row, _tz), do: "-"
 
   @doc false
-  def page_params(assigns) do
-    assigns |> url_params(%{"status" => assigns.status_filter}) |> Map.new()
+  def page_params(source, crm_list_uuid, role_uuids, status) do
+    %{"source" => source, "list" => crm_list_uuid, "roles" => role_uuids, "status" => status}
   end
 end

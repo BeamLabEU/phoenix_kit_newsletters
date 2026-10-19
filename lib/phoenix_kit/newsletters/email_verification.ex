@@ -14,9 +14,11 @@ defmodule PhoenixKit.Newsletters.EmailVerification do
   lists of addresses and this module only forwards them. Every function
   degrades when Emails (or a release that has the engine) is not installed:
   a read gives a neutral value (`%{}`, `nil`, all-unchecked counts, `false`),
-  an action gives `{:error, :unavailable}`. A failure inside the engine is
-  logged and treated the same way, so a broken engine never takes the page
-  down.
+  an action gives `{:error, :unavailable}`. A failure inside a read is logged
+  and treated the same way, so a broken engine never takes the page down.
+  Starting a batch is told apart: when the engine is loaded and raises (or
+  exits), `start_batch/4` answers `{:error, {:engine_error, message}}` — the
+  module is there, it is the batch that did not start.
   """
 
   require Logger
@@ -52,17 +54,36 @@ defmodule PhoenixKit.Newsletters.EmailVerification do
   @spec results_for([String.t()]) :: %{String.t() => map()}
   def results_for(emails) when is_list(emails), do: call(:results_for, [emails], %{})
 
+  @doc """
+  Stored `%{status:, reason:, level:}` by address, without the step logs: for
+  filtering and counting a whole audience. An engine release that predates
+  `statuses_for/1` is asked for `results_for/1` instead.
+  """
+  @spec statuses_for([String.t()]) :: %{String.t() => map()}
+  def statuses_for(emails) when is_list(emails) do
+    if available?() and function_exported?(engine(), :statuses_for, 1) do
+      call(:statuses_for, [emails], %{})
+    else
+      results_for(emails)
+    end
+  end
+
   @doc "Counts of `emails` by stored status; everything `unchecked` without the engine."
   @spec summary([String.t()]) :: summary()
   def summary(emails) when is_list(emails) do
     call(:summary, [emails], unchecked_summary(emails))
   end
 
-  @doc "Starts a background batch. `{:error, :unavailable}` without the engine."
+  @doc """
+  Starts a background batch. `{:error, :unavailable}` without the engine;
+  `{:error, {:engine_error, message}}` when the engine is there and raised.
+  """
   @spec start_batch([String.t()], String.t(), term(), keyword()) ::
           {:ok, map()} | {:error, term()}
   def start_batch(emails, source_type, source_ref, opts \\ []) when is_list(emails) do
-    call(:start_batch, [emails, source_type, source_ref, opts], {:error, :unavailable})
+    call(:start_batch, [emails, source_type, source_ref, opts], {:error, :unavailable}, fn
+      message -> {:error, {:engine_error, message}}
+    end)
   end
 
   @doc "The newest batch of one source, or `nil`."
@@ -95,7 +116,9 @@ defmodule PhoenixKit.Newsletters.EmailVerification do
     %{valid: 0, invalid: 0, temp: 0, not_sure: 0, unchecked: length(emails)}
   end
 
-  defp call(function, args, default) do
+  # `on_failure` turns the message of a raise or exit inside the engine into
+  # the answer; by default the failure reads like the engine's absence.
+  defp call(function, args, default, on_failure \\ nil) do
     if available?() and function_exported?(engine(), function, length(args)) do
       apply(engine(), function, args)
     else
@@ -103,14 +126,15 @@ defmodule PhoenixKit.Newsletters.EmailVerification do
     end
   rescue
     e ->
-      Logger.warning(
-        "[Newsletters] email verification #{function} failed: #{Exception.message(e)}"
-      )
-
-      default
+      message = Exception.message(e)
+      Logger.warning("[Newsletters] email verification #{function} failed: #{message}")
+      failure(on_failure, message, default)
   catch
     :exit, reason ->
       Logger.warning("[Newsletters] email verification #{function} exited: #{inspect(reason)}")
-      default
+      failure(on_failure, "exited: " <> inspect(reason), default)
   end
+
+  defp failure(nil, _message, default), do: default
+  defp failure(on_failure, message, _default), do: on_failure.(message)
 end

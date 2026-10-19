@@ -199,6 +199,27 @@ defmodule PhoenixKit.Newsletters.Web.VerificationTest do
       assert socket.assigns.summary.valid == 1
     end
 
+    test "a filtered view reads statuses for the audience and full results for the page only" do
+      role = audience(["a@example.com", "b@example.com", "c@example.com"])
+
+      Fake.put(:results, %{
+        "a@example.com" => result("invalid", %{reason: "no_mx"}),
+        "b@example.com" => result("valid"),
+        "c@example.com" => result("invalid", %{reason: "syntax"})
+      })
+
+      socket = visit(%{"source" => "user_group", "roles" => [role.uuid], "status" => "invalid"})
+
+      assert_received {:statuses_for, audience}
+      assert Enum.sort(audience) == ["a@example.com", "b@example.com", "c@example.com"]
+      assert_received {:results_for, page}
+      assert Enum.sort(page) == ["a@example.com", "c@example.com"]
+      refute_received {:results_for, _}
+
+      assert Enum.map(socket.assigns.rows, &{&1.email, &1.result.reason}) ==
+               [{"a@example.com", "no_mx"}, {"c@example.com", "syntax"}]
+    end
+
     test "an unknown status in the URL is ignored" do
       role = audience(["a@example.com"])
       socket = visit(%{"source" => "user_group", "roles" => [role.uuid], "status" => "bogus"})
@@ -406,6 +427,71 @@ defmodule PhoenixKit.Newsletters.Web.VerificationTest do
       {:noreply, socket} = Verification.handle_event("start_batch", %{}, socket)
 
       assert socket.assigns.flash["error"] =~ "no sendable addresses"
+      refute_received {:start_batch, _, _, _, _}
+    end
+
+    test "does not start while the latest batch is queued or running" do
+      role = audience(["a@example.com"])
+
+      for state <- ~w(queued running) do
+        Fake.put(:latest_batch, %{
+          uuid: Ecto.UUID.generate(),
+          state: state,
+          processed: 0,
+          total: 1,
+          counts: %{},
+          finished_at: nil
+        })
+
+        socket = visit(%{"source" => "user_group", "roles" => [role.uuid]})
+        {:noreply, socket} = Verification.handle_event("start_batch", %{}, socket)
+
+        assert socket.assigns.flash["error"] =~ "already running"
+        refute_received {:start_batch, _, _, _, _}
+      end
+    end
+
+    test "starts again once the latest batch is done" do
+      role = audience(["a@example.com"])
+
+      Fake.put(:latest_batch, %{
+        uuid: Ecto.UUID.generate(),
+        state: "done",
+        processed: 1,
+        total: 1,
+        counts: %{},
+        finished_at: DateTime.utc_now()
+      })
+
+      socket = visit(%{"source" => "user_group", "roles" => [role.uuid]})
+      {:noreply, _socket} = Verification.handle_event("start_batch", %{}, socket)
+      assert_received {:start_batch, ["a@example.com"], _, _, _}
+    end
+
+    test "does not start unless the engine is ready" do
+      role = audience(["a@example.com"])
+      socket = visit(%{"source" => "user_group", "roles" => [role.uuid]})
+      assert_received {:latest_batch, _, _}
+
+      for engine <- [:disabled, :unavailable] do
+        socket = %{socket | assigns: %{socket.assigns | engine: engine}}
+        {:noreply, socket} = Verification.handle_event("start_batch", %{}, socket)
+
+        assert socket.assigns.flash["error"]
+        refute_received {:start_batch, _, _, _, _}
+        refute_received {:latest_batch, _, _}
+      end
+    end
+
+    test "says the verification failed to start when the engine raised" do
+      role = audience(["a@example.com"])
+      socket = visit(%{"source" => "user_group", "roles" => [role.uuid]})
+
+      Fake.put(:start_batch, {:error, {:engine_error, "boom"}})
+      {:noreply, socket} = Verification.handle_event("start_batch", %{}, socket)
+
+      assert socket.assigns.flash["error"] =~ "failed to start"
+      refute socket.assigns.flash["error"] =~ "not available"
     end
 
     test "turns the engine's errors into messages" do
@@ -522,6 +608,31 @@ defmodule PhoenixKit.Newsletters.Web.VerificationTest do
       assert {:noreply, ^socket} = Verification.handle_info(:something_else, socket)
     end
 
+    test "subscribes to the batch before reading its state, so a finish in between is seen", %{
+      batch: batch
+    } do
+      done = %{batch | state: "done", processed: 2, finished_at: DateTime.utc_now()}
+      Fake.put(:batch, done)
+      role = audience(["y@example.com"])
+
+      socket =
+        visit(%{"source" => "user_group", "roles" => [role.uuid]}, mounted(connected_socket()))
+
+      # The setup's own visit left its messages in the mailbox; look at the last pair.
+      messages = Process.info(self(), :messages) |> elem(1)
+
+      subscribed =
+        messages |> Enum.with_index() |> Enum.filter(&match?({{:subscribe_batch, _}, _}, &1))
+
+      read = messages |> Enum.with_index() |> Enum.filter(&match?({{:get_batch, _}, _}, &1))
+
+      assert {_, subscribe_at} = List.last(subscribed)
+      assert {_, read_at} = List.last(read)
+      assert subscribe_at < read_at
+      assert socket.assigns.batch.state == "done"
+      assert render_page(socket) =~ "Last verification finished"
+    end
+
     test "a finished batch is shown but not followed" do
       # The describe's setup already followed a running batch; take that message out.
       assert_received {:subscribe_batch, _running}
@@ -544,6 +655,11 @@ defmodule PhoenixKit.Newsletters.Web.VerificationTest do
     end
   end
 
+  defp start_button(html) do
+    [tag] = Regex.run(~r{<button[^>]*id="verification-start"[^>]*>}, html)
+    tag
+  end
+
   describe "rendering" do
     test "the status filter and the audience selector are forms, and the rows are linked to the summary" do
       role = audience(["a@example.com"])
@@ -555,6 +671,43 @@ defmodule PhoenixKit.Newsletters.Web.VerificationTest do
       assert html =~ ~r{<form[^>]*id="verification-status-filter"[^>]*phx-change="filter_status"}
       assert html =~ ~s(id="verification-summary-valid")
       assert html =~ ~s(id="verification-start")
+    end
+
+    test "the start button is enabled when no batch runs" do
+      role = audience(["a@example.com"])
+      html = visit(%{"source" => "user_group", "roles" => [role.uuid]}) |> render_page()
+      refute start_button(html) =~ "disabled"
+    end
+
+    test "the start button is disabled while the latest batch is queued or running" do
+      role = audience(["a@example.com"])
+
+      for state <- ~w(queued running) do
+        Fake.put(:latest_batch, %{
+          uuid: Ecto.UUID.generate(),
+          state: state,
+          processed: 0,
+          total: 1,
+          counts: %{},
+          finished_at: nil
+        })
+
+        html = visit(%{"source" => "user_group", "roles" => [role.uuid]}) |> render_page()
+        assert start_button(html) =~ "disabled"
+      end
+    end
+
+    test "the audience source radios are visible controls a keyboard can reach" do
+      html = visit(%{"source" => "user_group"}) |> render_page()
+
+      radios = Regex.scan(~r{<input[^>]*type="radio"[^>]*>}, html) |> List.flatten()
+      assert length(radios) == 2
+
+      for radio <- radios do
+        refute radio =~ ~r{class="[^"]*\bhidden\b}
+        assert radio =~ "btn"
+        assert radio =~ "aria-label="
+      end
     end
 
     test "the page is translated" do
@@ -583,6 +736,16 @@ defmodule PhoenixKit.Newsletters.Web.VerificationTest do
 
       assert html =~ "No addresses with this status."
       assert html =~ "verification-status-filter"
+    end
+
+    test "page_params/4 takes explicit values, not the assigns" do
+      assert Verification.page_params("user_group", "", [@role_uuid], "valid") ==
+               %{
+                 "source" => "user_group",
+                 "list" => "",
+                 "roles" => [@role_uuid],
+                 "status" => "valid"
+               }
     end
 
     test "pagination links keep the audience and the filter" do
@@ -626,6 +789,21 @@ defmodule PhoenixKit.Newsletters.Web.VerificationTest do
       html = render_page(socket)
       assert html =~ "Domain OK (no SMTP)"
       assert html =~ "Unknown top-level domain"
+    end
+
+    test "a filtered view works on the real statuses and still shows the full verdict" do
+      role = audience(["real-ok@example.com", "real-bad@example.zzzz"])
+      {:ok, _} = engine().verify("real-ok@example.com")
+      {:ok, _} = engine().verify("real-bad@example.zzzz")
+
+      socket =
+        visit(%{"source" => "user_group", "roles" => [role.uuid], "status" => "invalid"})
+
+      assert [%{email: "real-bad@example.zzzz", status: :invalid, result: result}] =
+               socket.assigns.rows
+
+      assert result.reason == "bad_tld"
+      assert Map.has_key?(result, :log)
     end
 
     test "runs a batch end to end and follows it to the end" do
