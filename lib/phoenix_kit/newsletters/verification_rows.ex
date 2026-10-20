@@ -82,13 +82,18 @@ defmodule PhoenixKit.Newsletters.VerificationRows do
   end
 
   @doc """
-  What the status badge says. `:mx_ok` is the verdict of an address that passed
-  syntax, word lists and DNS but whose mailbox was not probed — `not_sure` at
-  level `"mx"` — not a plain "not sure".
+  What the status badge says. `:smtp_pending` is an address whose mailbox is
+  queued for the SMTP check (`not_sure`, reason `"smtp_pending"`). `:mx_ok` is
+  the verdict of an address that passed syntax, word lists and DNS but whose
+  mailbox was not probed — `not_sure` at level `"mx"` — not a plain "not sure".
   """
-  @spec badge_kind(row()) :: status() | :mx_ok
+  @spec badge_kind(row()) :: status() | :mx_ok | :smtp_pending
   def badge_kind(%{status: :not_sure, result: result}) when is_map(result) do
-    if Map.get(result, :level) == "mx", do: :mx_ok, else: :not_sure
+    case result do
+      %{reason: "smtp_pending"} -> :smtp_pending
+      %{level: "mx"} -> :mx_ok
+      _ -> :not_sure
+    end
   end
 
   def badge_kind(%{status: status}), do: status

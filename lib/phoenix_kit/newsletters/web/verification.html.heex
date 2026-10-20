@@ -123,14 +123,36 @@
 
       <div :if={@batch} id="verification-batch" class="mb-4">
         <div :if={batch_active?(@batch)} class="alert alert-info flex-col items-stretch gap-2">
-          <span class="text-sm">
+          <span id="verification-progress-label" class="text-sm">
             {gettext("Verifying: %{processed} of %{total}",
               processed: @batch.processed,
               total: @batch.total
             )}
           </span>
-          <progress class="progress progress-primary w-full" value={percent(@batch)} max="100">
+          <progress
+            class="progress progress-primary w-full"
+            value={percent(@batch)}
+            max="100"
+            aria-labelledby="verification-progress-label"
+          >
+            {percent(@batch)}%
           </progress>
+          <span :if={awaiting_smtp(@batch) > 0} id="verification-awaiting-smtp" class="text-sm">
+            {ngettext(
+              "%{count} address waiting for the SMTP check",
+              "%{count} addresses waiting for the SMTP check",
+              awaiting_smtp(@batch),
+              count: awaiting_smtp(@batch)
+            )}
+          </span>
+          <.link
+            :if={@smtp_wait}
+            id="verification-runner-offline"
+            navigate={Paths.email_sending_settings()}
+            class="link text-sm"
+          >
+            {gettext("SMTP is waiting for the runner - see Settings → Emails")}
+          </.link>
         </div>
         <p :if={@batch.state == "done"} class="text-sm text-base-content/70">
           {gettext("Last verification finished: %{at} (%{total} addresses)",

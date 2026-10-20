@@ -109,9 +109,24 @@ unless emails_verification_available do
   """)
 end
 
+# The SMTP stage (`smtp_mode/0`, `runner_status/0`) is newer still: a checkout
+# with the engine but without it is the hex 0.5.x shape.
+emails_smtp_available =
+  emails_verification_available and
+    function_exported?(PhoenixKit.Modules.Emails.Verification, :smtp_mode, 0) and
+    function_exported?(PhoenixKit.Modules.Emails.Verification, :runner_status, 0)
+
+if emails_verification_available and not emails_smtp_available do
+  IO.puts("""
+  \n⚠  The loaded Emails verification engine has no SMTP stage (smtp_mode/0,
+     runner_status/0) — tests tagged :requires_emails_smtp are excluded.
+  """)
+end
+
 exclude =
   if(repo_available, do: [], else: [:integration]) ++
     if(v158_available, do: [], else: [:requires_v158]) ++
-    if emails_verification_available, do: [], else: [:requires_emails_verification]
+    if(emails_verification_available, do: [], else: [:requires_emails_verification]) ++
+    if emails_smtp_available, do: [], else: [:requires_emails_smtp]
 
 ExUnit.start(exclude: exclude)

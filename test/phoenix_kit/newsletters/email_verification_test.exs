@@ -33,6 +33,9 @@ defmodule PhoenixKit.Newsletters.EmailVerificationTest do
       assert EmailVerification.latest_batch("newsletters_crm_list", "ref") == nil
       assert EmailVerification.get_batch(Ecto.UUID.generate()) == nil
       assert EmailVerification.max_batch_size() == nil
+      assert EmailVerification.smtp_mode() == "off"
+      assert EmailVerification.runner_status() == nil
+      refute EmailVerification.smtp_runner_waiting?()
     end
 
     test "summary counts everything as unchecked" do
@@ -68,6 +71,12 @@ defmodule PhoenixKit.Newsletters.EmailVerificationTest do
       def start_batch(_emails, _type, _ref, _opts), do: exit(:noproc)
     end
 
+    defmodule Quoting do
+      def verify(_email, _opts), do: :ok
+      def results_for(_emails), do: raise("insert failed for alice@example.com")
+      def subscribe_batch(_uuid), do: exit({:bad, "bob.smith@example.org"})
+    end
+
     setup do
       use_engine(Raising)
     end
@@ -80,6 +89,21 @@ defmodule PhoenixKit.Newsletters.EmailVerificationTest do
         end)
 
       assert log =~ "email verification enabled? failed: boom"
+    end
+
+    test "the log lines mask the addresses an engine message quotes" do
+      use_engine(Quoting)
+
+      log =
+        capture_log(fn ->
+          assert EmailVerification.results_for(["alice@example.com"]) == %{}
+          assert EmailVerification.subscribe_batch(Ecto.UUID.generate()) == {:error, :unavailable}
+        end)
+
+      assert log =~ "a***@example.com"
+      assert log =~ "b***@example.org"
+      refute log =~ "alice"
+      refute log =~ "bob.smith"
     end
 
     test "a raise in start_batch is an engine error, not an absent module" do
@@ -123,6 +147,15 @@ defmodule PhoenixKit.Newsletters.EmailVerificationTest do
       def results_for(emails), do: Map.new(emails, &{&1, %{status: "valid", log: []}})
     end
 
+    test "the SMTP stage reads as off: no mode, no runner, nothing to wait for" do
+      use_engine(OldEngine)
+
+      assert EmailVerification.available?()
+      assert EmailVerification.smtp_mode() == "off"
+      assert EmailVerification.runner_status() == nil
+      refute EmailVerification.smtp_runner_waiting?()
+    end
+
     test "statuses_for/1 falls back to results_for/1" do
       use_engine(OldEngine)
 
@@ -160,6 +193,38 @@ defmodule PhoenixKit.Newsletters.EmailVerificationTest do
       assert EmailVerification.subscribe_batch("u") == :ok
       assert_received {:subscribe_batch, "u"}
       assert EmailVerification.max_batch_size() == 100
+    end
+
+    test "smtp_mode/0 and runner_status/0 forward to the engine" do
+      Fake.put(:smtp_mode, "runner")
+      Fake.put(:runner_status, %{state: :online})
+
+      assert EmailVerification.smtp_mode() == "runner"
+      assert EmailVerification.runner_status() == %{state: :online}
+    end
+
+    test "smtp_runner_waiting?/1 is true only in runner mode with a runner that is not online" do
+      Fake.put(:smtp_mode, "runner")
+
+      for state <- [:never_connected, :offline] do
+        Fake.put(:runner_status, %{state: state})
+        assert EmailVerification.smtp_runner_waiting?(), inspect(state)
+      end
+
+      Fake.put(:runner_status, %{state: :online})
+      refute EmailVerification.smtp_runner_waiting?()
+
+      for mode <- ["off", "local"] do
+        Fake.put(:smtp_mode, mode)
+        Fake.put(:runner_status, %{state: :offline})
+        refute EmailVerification.smtp_runner_waiting?(), mode
+      end
+    end
+
+    test "an unreadable runner status is not a reason to warn" do
+      Fake.put(:smtp_mode, "runner")
+      Fake.put(:runner_status, nil)
+      refute EmailVerification.smtp_runner_waiting?()
     end
 
     test "statuses_for/1 asks the engine for the statuses, not the full verdicts" do
@@ -236,6 +301,13 @@ defmodule PhoenixKit.Newsletters.EmailVerificationTest do
       assert EmailVerification.get_batch(batch.uuid).uuid == batch.uuid
       assert EmailVerification.latest_batch("newsletters_crm_list", "other") == nil
       assert EmailVerification.subscribe_batch(batch.uuid) == :ok
+    end
+
+    @tag :requires_emails_smtp
+    test "the SMTP stage is off by default and the runner never connected" do
+      assert EmailVerification.smtp_mode() == "off"
+      assert %{state: :never_connected} = EmailVerification.runner_status()
+      refute EmailVerification.smtp_runner_waiting?()
     end
 
     test "start_batch/4 with nothing to verify is the engine's own error" do

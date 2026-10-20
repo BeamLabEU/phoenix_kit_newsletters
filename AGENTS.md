@@ -378,6 +378,15 @@ and raised). The page has three states: `:unavailable` (no engine),
 - Progress arrives over the engine's PubSub topic. Subscribe first, then
   re-read the batch (a batch finishing in between is not missed); the table is
   re-read only when the batch ends.
+- SMTP stage (Emails engine with `smtp_mode/0` and `runner_status/0`; both are
+  guarded, so on Emails 0.5.x they read `"off"` / `nil`). An address with
+  `not_sure` + reason `smtp_pending` gets its own "Waiting for SMTP" badge,
+  apart from "Domain OK (no SMTP)" (`smtp_disabled`). The progress shows the
+  batch's `awaiting_smtp` count, and in `runner` mode with a runner that is not
+  online (`EmailVerification.smtp_runner_waiting?/0`, re-read every 10 s while a
+  batch runs) a link to `Paths.email_sending_settings/0`. The soft bridge masks
+  addresses in its log lines and in the message of `{:engine_error, msg}`.
+  Tests tagged `:requires_emails_smtp` need an engine that has the SMTP stage.
 
 ### Public flows
 

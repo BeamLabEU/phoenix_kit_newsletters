@@ -17,7 +17,7 @@ msgstr ""
 #: lib/phoenix_kit/newsletters/web/broadcast_editor.ex:52
 #: lib/phoenix_kit/newsletters/web/broadcasts.ex:26
 #: lib/phoenix_kit/newsletters/web/layouts_index.ex:28
-#: lib/phoenix_kit/newsletters/web/verification.ex:48
+#: lib/phoenix_kit/newsletters/web/verification.ex:50
 #, elixir-autogen
 msgid "Newsletters"
 msgstr "Рассылки"
@@ -43,7 +43,7 @@ msgstr "Редактирование выпуска"
 msgid "Layouts"
 msgstr "Шаблоны оформления"
 
-#: lib/phoenix_kit/newsletters/web/verification.ex:46
+#: lib/phoenix_kit/newsletters/web/verification.ex:48
 #, elixir-autogen
 msgid "Address verification"
 msgstr "Проверка адресов"
@@ -77,7 +77,7 @@ msgstr "Редактирование профиля отправки"
 #: lib/phoenix_kit/newsletters/web/layout_editor.ex:63
 #: lib/phoenix_kit/newsletters/web/layouts_index.ex:38
 #: lib/phoenix_kit/newsletters/web/preference_center_live.ex:42
-#: lib/phoenix_kit/newsletters/web/verification.ex:72
+#: lib/phoenix_kit/newsletters/web/verification.ex:76
 #, elixir-autogen
 msgid "Newsletters module is not enabled"
 msgstr "Модуль рассылок не включён"
@@ -111,7 +111,7 @@ msgstr "Обновить"
 #: lib/phoenix_kit/newsletters/web/broadcast_details.html.heex:235
 #: lib/phoenix_kit/newsletters/web/broadcasts.html.heex:95
 #: lib/phoenix_kit/newsletters/web/layouts_index.html.heex:55
-#: lib/phoenix_kit/newsletters/web/verification.html.heex:209
+#: lib/phoenix_kit/newsletters/web/verification.html.heex:231
 #, elixir-autogen
 msgid "Status"
 msgstr "Статус"
@@ -207,7 +207,7 @@ msgstr "Создание и управление почтовыми рассыл
 
 #: lib/phoenix_kit/newsletters/web/broadcasts.ex:92
 #: lib/phoenix_kit/newsletters/web/layouts_index.html.heex:21
-#: lib/phoenix_kit/newsletters/web/verification.html.heex:184
+#: lib/phoenix_kit/newsletters/web/verification.html.heex:206
 #, elixir-autogen
 msgid "All statuses"
 msgstr "Все статусы"
@@ -606,7 +606,7 @@ msgstr "Запланировано на"
 #: lib/phoenix_kit/newsletters/web/broadcast_details.html.heex:75
 #: lib/phoenix_kit/newsletters/web/broadcast_details.html.heex:225
 #: lib/phoenix_kit/newsletters/web/broadcasts.html.heex:38
-#: lib/phoenix_kit/newsletters/web/verification.html.heex:162
+#: lib/phoenix_kit/newsletters/web/verification.html.heex:184
 #, elixir-autogen, elixir-format
 msgid "Times shown in %{tz}"
 msgstr "Время в %{tz}"
@@ -1013,88 +1013,88 @@ msgstr "Для проверки адресов требуется модуль E
 msgid "Audience"
 msgstr "Аудитория"
 
-#: lib/phoenix_kit/newsletters/web/verification.ex:47
+#: lib/phoenix_kit/newsletters/web/verification.ex:49
 #, elixir-autogen, elixir-format
 msgid "Check the addresses of a broadcast audience"
 msgstr "Проверка адресов аудитории рассылки"
 
-#: lib/phoenix_kit/newsletters/web/verification.html.heex:175
-#: lib/phoenix_kit/newsletters/web/verification.html.heex:212
+#: lib/phoenix_kit/newsletters/web/verification.html.heex:197
+#: lib/phoenix_kit/newsletters/web/verification.html.heex:234
 #, elixir-autogen, elixir-format
 msgid "Checked"
 msgstr "Проверен"
 
-#: lib/phoenix_kit/newsletters/web/verification.ex:386
+#: lib/phoenix_kit/newsletters/web/verification.ex:430
 #, elixir-autogen, elixir-format
 msgid "Could not start the verification"
 msgstr "Не удалось запустить проверку"
 
-#: lib/phoenix_kit/newsletters/web/verification.ex:421
+#: lib/phoenix_kit/newsletters/web/verification.ex:473
 #, elixir-autogen, elixir-format
 msgid "DNS error"
 msgstr "Ошибка DNS"
 
-#: lib/phoenix_kit/newsletters/web/verification.html.heex:236
+#: lib/phoenix_kit/newsletters/web/verification.html.heex:258
 #, elixir-autogen, elixir-format
 msgid "Disposable"
 msgstr "Одноразовый"
 
-#: lib/phoenix_kit/newsletters/web/verification.ex:419
+#: lib/phoenix_kit/newsletters/web/verification.ex:471
 #, elixir-autogen, elixir-format
 msgid "Disposable domain"
 msgstr "Одноразовый домен"
 
-#: lib/phoenix_kit/newsletters/web/verification.ex:406
+#: lib/phoenix_kit/newsletters/web/verification.ex:455
 #, elixir-autogen, elixir-format
 msgid "Domain OK (no SMTP)"
 msgstr "Домен OK (без SMTP)"
 
-#: lib/phoenix_kit/newsletters/web/verification.html.heex:208
+#: lib/phoenix_kit/newsletters/web/verification.html.heex:230
 #, elixir-autogen, elixir-format
 msgid "Email"
 msgstr "Email"
 
-#: lib/phoenix_kit/newsletters/web/verification.html.heex:211
+#: lib/phoenix_kit/newsletters/web/verification.html.heex:233
 #, elixir-autogen, elixir-format
 msgid "Flags"
 msgstr "Признаки"
 
-#: lib/phoenix_kit/newsletters/web/verification.html.heex:230
+#: lib/phoenix_kit/newsletters/web/verification.html.heex:252
 #, elixir-autogen, elixir-format
 msgid "Free"
 msgstr "Бесплатный"
 
-#: lib/phoenix_kit/newsletters/web/verification.ex:402
+#: lib/phoenix_kit/newsletters/web/verification.ex:451
 #, elixir-autogen, elixir-format
 msgid "Invalid"
 msgstr "Невалидный"
 
-#: lib/phoenix_kit/newsletters/web/verification.ex:417
+#: lib/phoenix_kit/newsletters/web/verification.ex:469
 #, elixir-autogen, elixir-format
 msgid "Invalid syntax"
 msgstr "Неверный синтаксис"
 
-#: lib/phoenix_kit/newsletters/web/verification.html.heex:136
+#: lib/phoenix_kit/newsletters/web/verification.html.heex:158
 #, elixir-autogen, elixir-format
 msgid "Last verification finished: %{at} (%{total} addresses)"
 msgstr "Последняя проверка завершена: %{at} (адресов: %{total})"
 
-#: lib/phoenix_kit/newsletters/web/verification.ex:423
+#: lib/phoenix_kit/newsletters/web/verification.ex:475
 #, elixir-autogen, elixir-format
 msgid "Mailbox not probed (SMTP check is off)"
 msgstr "Ящик не проверялся (проверка SMTP выключена)"
 
-#: lib/phoenix_kit/newsletters/web/verification.ex:425
+#: lib/phoenix_kit/newsletters/web/verification.ex:477
 #, elixir-autogen, elixir-format
 msgid "Mailbox not probed (SMTP error)"
 msgstr "Ящик не проверялся (ошибка SMTP)"
 
-#: lib/phoenix_kit/newsletters/web/verification.ex:424
+#: lib/phoenix_kit/newsletters/web/verification.ex:476
 #, elixir-autogen, elixir-format
 msgid "Mailbox not probed (SMTP unavailable)"
 msgstr "Ящик не проверялся (SMTP недоступен)"
 
-#: lib/phoenix_kit/newsletters/web/verification.html.heex:267
+#: lib/phoenix_kit/newsletters/web/verification.html.heex:289
 #, elixir-autogen, elixir-format
 msgid "Next"
 msgstr "Далее"
@@ -1104,22 +1104,22 @@ msgstr "Далее"
 msgid "No addresses to verify"
 msgstr "Нет адресов для проверки"
 
-#: lib/phoenix_kit/newsletters/web/verification.html.heex:248
+#: lib/phoenix_kit/newsletters/web/verification.html.heex:270
 #, elixir-autogen, elixir-format
 msgid "No addresses with this status."
 msgstr "Нет адресов с таким статусом."
 
-#: lib/phoenix_kit/newsletters/web/verification.ex:405
+#: lib/phoenix_kit/newsletters/web/verification.ex:454
 #, elixir-autogen, elixir-format
 msgid "Not checked"
 msgstr "Не проверен"
 
-#: lib/phoenix_kit/newsletters/web/verification.ex:404
+#: lib/phoenix_kit/newsletters/web/verification.ex:453
 #, elixir-autogen, elixir-format
 msgid "Not sure"
 msgstr "Не уверен"
 
-#: lib/phoenix_kit/newsletters/web/verification.html.heex:260
+#: lib/phoenix_kit/newsletters/web/verification.html.heex:282
 #, elixir-autogen, elixir-format
 msgid "Page %{page} of %{total_pages}"
 msgstr "Страница %{page} из %{total_pages}"
@@ -1129,18 +1129,18 @@ msgstr "Страница %{page} из %{total_pages}"
 msgid "Pick a CRM list or roles that have subscribed members with an email address."
 msgstr "Выберите CRM-список или роли, где есть подписанные участники с адресом email."
 
-#: lib/phoenix_kit/newsletters/web/verification.html.heex:257
+#: lib/phoenix_kit/newsletters/web/verification.html.heex:279
 #, elixir-autogen, elixir-format
 msgid "Previous"
 msgstr "Назад"
 
-#: lib/phoenix_kit/newsletters/web/verification.html.heex:174
-#: lib/phoenix_kit/newsletters/web/verification.html.heex:210
+#: lib/phoenix_kit/newsletters/web/verification.html.heex:196
+#: lib/phoenix_kit/newsletters/web/verification.html.heex:232
 #, elixir-autogen, elixir-format
 msgid "Reason"
 msgstr "Причина"
 
-#: lib/phoenix_kit/newsletters/web/verification.html.heex:233
+#: lib/phoenix_kit/newsletters/web/verification.html.heex:255
 #, elixir-autogen, elixir-format
 msgid "Role"
 msgstr "Ролевой"
@@ -1150,22 +1150,22 @@ msgstr "Ролевой"
 msgid "Starting..."
 msgstr "Запуск..."
 
-#: lib/phoenix_kit/newsletters/web/verification.ex:403
+#: lib/phoenix_kit/newsletters/web/verification.ex:452
 #, elixir-autogen, elixir-format
 msgid "Temporary problem"
 msgstr "Временная ошибка"
 
-#: lib/phoenix_kit/newsletters/web/verification.ex:380
+#: lib/phoenix_kit/newsletters/web/verification.ex:424
 #, elixir-autogen, elixir-format
 msgid "The Emails module is not available"
 msgstr "Модуль Emails недоступен"
 
-#: lib/phoenix_kit/newsletters/web/verification.ex:372
+#: lib/phoenix_kit/newsletters/web/verification.ex:416
 #, elixir-autogen, elixir-format
 msgid "The audience is too large for one batch (at most %{max} addresses)"
 msgstr "Аудитория слишком велика для одного пакета (не более %{max} адресов)"
 
-#: lib/phoenix_kit/newsletters/web/verification.ex:420
+#: lib/phoenix_kit/newsletters/web/verification.ex:472
 #, elixir-autogen, elixir-format
 msgid "The domain accepts no mail"
 msgstr "Домен не принимает почту"
@@ -1175,27 +1175,27 @@ msgstr "Домен не принимает почту"
 msgid "The host's Oban configuration has no email_verification queue, so a started batch would never run. Add the queue (for example email_verification: 5) to the Oban queues of the host application."
 msgstr "В настройках Oban хост-приложения нет очереди email_verification, поэтому запущенный пакет никогда не выполнится. Добавьте очередь (например, email_verification: 5) в queues Oban хост-приложения."
 
-#: lib/phoenix_kit/newsletters/web/verification.html.heex:142
+#: lib/phoenix_kit/newsletters/web/verification.html.heex:164
 #, elixir-autogen, elixir-format
 msgid "The last verification was cancelled after %{processed} of %{total} addresses"
 msgstr "Последняя проверка отменена после %{processed} из %{total} адресов"
 
-#: lib/phoenix_kit/newsletters/web/verification.ex:369
+#: lib/phoenix_kit/newsletters/web/verification.ex:413
 #, elixir-autogen, elixir-format
 msgid "There are no sendable addresses to verify"
 msgstr "Нет адресов, пригодных для отправки"
 
-#: lib/phoenix_kit/newsletters/web/verification.ex:418
+#: lib/phoenix_kit/newsletters/web/verification.ex:470
 #, elixir-autogen, elixir-format
 msgid "Unknown top-level domain"
 msgstr "Неизвестный домен верхнего уровня"
 
-#: lib/phoenix_kit/newsletters/web/verification.ex:401
+#: lib/phoenix_kit/newsletters/web/verification.ex:450
 #, elixir-autogen, elixir-format
 msgid "Valid"
 msgstr "Валидный"
 
-#: lib/phoenix_kit/newsletters/web/verification.ex:281
+#: lib/phoenix_kit/newsletters/web/verification.ex:299
 #, elixir-autogen, elixir-format
 msgid "Verification started"
 msgstr "Проверка запущена"
@@ -1210,22 +1210,85 @@ msgstr "Проверить список"
 msgid "Verifying: %{processed} of %{total}"
 msgstr "Проверка: %{processed} из %{total}"
 
-#: lib/phoenix_kit/newsletters/web/verification.ex:378
+#: lib/phoenix_kit/newsletters/web/verification.ex:422
 #, elixir-autogen, elixir-format
 msgid "A verification of this audience is already running"
 msgstr "Проверка этой аудитории уже выполняется"
 
-#: lib/phoenix_kit/newsletters/web/verification.ex:384
+#: lib/phoenix_kit/newsletters/web/verification.ex:428
 #, elixir-autogen, elixir-format
 msgid "The verification failed to start: the Emails module reported an error"
 msgstr "Не удалось запустить проверку: модуль Emails сообщил об ошибке"
 
-#: lib/phoenix_kit/newsletters/web/verification.ex:381
+#: lib/phoenix_kit/newsletters/web/verification.ex:425
 #, elixir-autogen, elixir-format
 msgid "Address verification is switched off"
 msgstr "Проверка адресов выключена"
 
-#: lib/phoenix_kit/newsletters/web/verification.ex:422
+#: lib/phoenix_kit/newsletters/web/verification.ex:474
 #, elixir-autogen, elixir-format
 msgid "Verification failed, will need a re-run"
 msgstr "Проверка не удалась, нужен повторный запуск"
+
+#: lib/phoenix_kit/newsletters/web/verification.html.heex:141
+#, elixir-autogen, elixir-format
+msgid "%{count} address waiting for the SMTP check"
+msgid_plural "%{count} addresses waiting for the SMTP check"
+msgstr[0] "%{count} адрес ждёт проверки SMTP"
+msgstr[1] "%{count} адреса ждут проверки SMTP"
+msgstr[2] "%{count} адресов ждут проверки SMTP"
+
+#: lib/phoenix_kit/newsletters/web/verification.ex:479
+#, elixir-autogen, elixir-format
+msgid "Catch-all"
+msgstr "Catch-all"
+
+#: lib/phoenix_kit/newsletters/web/verification.ex:485
+#, elixir-autogen, elixir-format
+msgid "Could not connect to the mail server"
+msgstr "Не удалось подключиться к почтовому серверу"
+
+#: lib/phoenix_kit/newsletters/web/verification.ex:482
+#, elixir-autogen, elixir-format
+msgid "Greylisted"
+msgstr "Грейлистинг (повтор позже)"
+
+#: lib/phoenix_kit/newsletters/web/verification.ex:483
+#, elixir-autogen, elixir-format
+msgid "Mail server blocked the check"
+msgstr "Почтовый сервер заблокировал проверку"
+
+#: lib/phoenix_kit/newsletters/web/verification.ex:486
+#, elixir-autogen, elixir-format
+msgid "Mail server rejected the sender"
+msgstr "Почтовый сервер отклонил отправителя"
+
+#: lib/phoenix_kit/newsletters/web/verification.ex:480
+#, elixir-autogen, elixir-format
+msgid "Mailbox does not exist"
+msgstr "Ящика не существует"
+
+#: lib/phoenix_kit/newsletters/web/verification.ex:481
+#, elixir-autogen, elixir-format
+msgid "Mailbox is full"
+msgstr "Ящик переполнен"
+
+#: lib/phoenix_kit/newsletters/web/verification.ex:484
+#, elixir-autogen, elixir-format
+msgid "SMTP check timed out"
+msgstr "Проверка SMTP: превышено время ожидания"
+
+#: lib/phoenix_kit/newsletters/web/verification.html.heex:154
+#, elixir-autogen, elixir-format
+msgid "SMTP is waiting for the runner - see Settings → Emails"
+msgstr "SMTP ждёт раннер — см. Settings → Emails"
+
+#: lib/phoenix_kit/newsletters/web/verification.ex:456
+#, elixir-autogen, elixir-format
+msgid "Waiting for SMTP"
+msgstr "Ждёт SMTP"
+
+#: lib/phoenix_kit/newsletters/web/verification.ex:478
+#, elixir-autogen, elixir-format
+msgid "Waiting for the SMTP check"
+msgstr "Ждёт проверки SMTP"

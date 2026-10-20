@@ -37,6 +37,8 @@ defmodule PhoenixKit.Newsletters.Web.Verification do
 
   @active_batch_states ~w(queued running)
   @terminal_batch_states ~w(done cancelled)
+  # How often a running batch re-reads whether the SMTP runner is still online.
+  @runner_refresh_ms 10_000
 
   @impl true
   def mount(_params, _session, socket) do
@@ -65,7 +67,9 @@ defmodule PhoenixKit.Newsletters.Web.Verification do
        |> assign(:total, 0)
        |> assign(:summary, nil)
        |> assign(:batch, nil)
-       |> assign(:subscribed_batch, nil)}
+       |> assign(:subscribed_batch, nil)
+       |> assign(:smtp_wait, false)
+       |> assign(:runner_tick, false)}
     else
       {:ok,
        socket
@@ -160,6 +164,7 @@ defmodule PhoenixKit.Newsletters.Web.Verification do
         {:noreply,
          socket
          |> assign(:batch, fresh)
+         |> refresh_smtp_wait()
          |> load_table(socket.assigns.page)}
 
       # Workers run in parallel, so a snapshot can arrive after a newer one.
@@ -168,6 +173,16 @@ defmodule PhoenixKit.Newsletters.Web.Verification do
 
       true ->
         {:noreply, assign(socket, :batch, Map.merge(batch, progress_of(snapshot)))}
+    end
+  end
+
+  def handle_info(:refresh_runner, socket) do
+    socket = socket |> assign(:runner_tick, false) |> refresh_smtp_wait()
+
+    if connected?(socket) and batch_active?(socket.assigns.batch) do
+      {:noreply, schedule_runner_refresh(socket)}
+    else
+      {:noreply, socket}
     end
   end
 
@@ -347,10 +362,35 @@ defmodule PhoenixKit.Newsletters.Web.Verification do
   defp track_batch(socket, batch) do
     if connected?(socket) and batch.state in @active_batch_states do
       socket = subscribe_once(socket, batch.uuid)
-      assign(socket, :batch, EmailVerification.get_batch(batch.uuid) || batch)
+
+      socket
+      |> assign(:batch, EmailVerification.get_batch(batch.uuid) || batch)
+      |> refresh_smtp_wait()
+      |> schedule_runner_refresh()
     else
-      assign(socket, :batch, batch)
+      socket
+      |> assign(:batch, batch)
+      |> refresh_smtp_wait()
     end
+  end
+
+  # Whether the progress should say that SMTP is waiting for a runner that is
+  # not online. Only a running batch can wait, so a finished one costs no read.
+  defp refresh_smtp_wait(socket) do
+    assign(
+      socket,
+      :smtp_wait,
+      batch_active?(socket.assigns.batch) and EmailVerification.smtp_runner_waiting?()
+    )
+  end
+
+  # The runner can go offline without any batch message arriving, so a running
+  # batch re-reads it on a timer (one pending timer at most).
+  defp schedule_runner_refresh(%{assigns: %{runner_tick: true}} = socket), do: socket
+
+  defp schedule_runner_refresh(socket) do
+    Process.send_after(self(), :refresh_runner, @runner_refresh_ms)
+    assign(socket, :runner_tick, true)
   end
 
   defp subscribe_once(%{assigns: %{subscribed_batch: uuid}} = socket, uuid), do: socket
@@ -360,7 +400,8 @@ defmodule PhoenixKit.Newsletters.Web.Verification do
     assign(socket, :subscribed_batch, uuid)
   end
 
-  defp progress_of(snapshot), do: Map.take(snapshot, [:state, :processed, :total, :counts])
+  defp progress_of(snapshot),
+    do: Map.take(snapshot, [:state, :processed, :total, :counts, :awaiting_smtp])
 
   defp current_user_uuid(socket) do
     case socket.assigns[:phoenix_kit_current_user] do
@@ -394,6 +435,11 @@ defmodule PhoenixKit.Newsletters.Web.Verification do
   def batch_active?(%{state: state}), do: state in @active_batch_states
   def batch_active?(_batch), do: false
 
+  # Addresses past the DNS step that wait for the SMTP stage; none on an engine
+  # without it (its batches have no such field).
+  @doc false
+  def awaiting_smtp(batch), do: Map.get(batch, :awaiting_smtp) || 0
+
   @doc false
   def percent(%{total: total, processed: processed}) when total > 0,
     do: min(round(processed * 100 / total), 100)
@@ -407,13 +453,16 @@ defmodule PhoenixKit.Newsletters.Web.Verification do
   def status_label(:not_sure), do: gettext("Not sure")
   def status_label(:unchecked), do: gettext("Not checked")
   def status_label(:mx_ok), do: gettext("Domain OK (no SMTP)")
+  def status_label(:smtp_pending), do: gettext("Waiting for SMTP")
 
-  defp status_badge_class(:valid), do: "badge-success"
-  defp status_badge_class(:invalid), do: "badge-error"
-  defp status_badge_class(:temp), do: "badge-warning"
-  defp status_badge_class(:mx_ok), do: "badge-info"
-  defp status_badge_class(:not_sure), do: "badge-ghost"
-  defp status_badge_class(:unchecked), do: "badge-ghost badge-outline"
+  @doc false
+  def status_badge_class(:valid), do: "badge-success"
+  def status_badge_class(:invalid), do: "badge-error"
+  def status_badge_class(:temp), do: "badge-warning"
+  def status_badge_class(:mx_ok), do: "badge-info"
+  def status_badge_class(:not_sure), do: "badge-ghost"
+  def status_badge_class(:smtp_pending), do: "badge-accent badge-outline"
+  def status_badge_class(:unchecked), do: "badge-ghost badge-outline"
 
   @doc false
   def reason_label(nil), do: ""
@@ -426,6 +475,15 @@ defmodule PhoenixKit.Newsletters.Web.Verification do
   def reason_label("smtp_disabled"), do: gettext("Mailbox not probed (SMTP check is off)")
   def reason_label("smtp_unavailable"), do: gettext("Mailbox not probed (SMTP unavailable)")
   def reason_label("smtp_error"), do: gettext("Mailbox not probed (SMTP error)")
+  def reason_label("smtp_pending"), do: gettext("Waiting for the SMTP check")
+  def reason_label("catch_all"), do: gettext("Catch-all")
+  def reason_label("mailbox_unknown"), do: gettext("Mailbox does not exist")
+  def reason_label("mailbox_full"), do: gettext("Mailbox is full")
+  def reason_label("greylisted"), do: gettext("Greylisted")
+  def reason_label("smtp_blocked"), do: gettext("Mail server blocked the check")
+  def reason_label("smtp_timeout"), do: gettext("SMTP check timed out")
+  def reason_label("smtp_connect_failed"), do: gettext("Could not connect to the mail server")
+  def reason_label("mail_from_rejected"), do: gettext("Mail server rejected the sender")
   def reason_label(other), do: other
 
   @doc false

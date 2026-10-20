@@ -12,6 +12,7 @@ defmodule PhoenixKit.Newsletters.Web.VerificationTest do
   import Phoenix.LiveViewTest, only: [rendered_to_string: 1]
 
   alias PhoenixKit.Newsletters
+  alias PhoenixKit.Newsletters.Paths
   alias PhoenixKit.Newsletters.Web.Verification
   alias PhoenixKit.Users.Auth.User
   alias PhoenixKit.Users.Roles
@@ -181,6 +182,53 @@ defmodule PhoenixKit.Newsletters.Web.VerificationTest do
       assert html =~ "Free"
       assert html =~ "Mailbox not probed (SMTP check is off)"
       assert html =~ "a@example.com"
+    end
+
+    test "an address waiting for the SMTP stage has its own badge, apart from smtp_disabled" do
+      role = audience(["a@example.com", "b@example.com"])
+
+      Fake.put(:results, %{
+        "a@example.com" => result("not_sure", %{reason: "smtp_pending"}),
+        "b@example.com" => result("not_sure", %{reason: "smtp_disabled"})
+      })
+
+      socket = visit(%{"source" => "user_group", "roles" => [role.uuid]})
+      html = render_page(socket)
+
+      assert html =~ "Waiting for SMTP"
+      assert html =~ "Domain OK (no SMTP)"
+      assert html =~ "Waiting for the SMTP check"
+      assert html =~ "Mailbox not probed (SMTP check is off)"
+      refute html =~ "smtp_pending"
+
+      assert Verification.status_badge_class(:smtp_pending) !=
+               Verification.status_badge_class(:mx_ok)
+
+      assert Verification.status_badge_class(:smtp_pending) !=
+               Verification.status_badge_class(:not_sure)
+    end
+
+    test "the SMTP verdict reasons are spelled out, never shown as codes" do
+      reasons =
+        ~w(catch_all mailbox_unknown mailbox_full greylisted smtp_blocked smtp_timeout
+           smtp_connect_failed mail_from_rejected smtp_unavailable)
+
+      role = audience(Enum.map(reasons, &"#{&1}@example.com"))
+
+      Fake.put(
+        :results,
+        Map.new(reasons, &{"#{&1}@example.com", result("not_sure", %{reason: &1})})
+      )
+
+      html = render_page(visit(%{"source" => "user_group", "roles" => [role.uuid]}))
+
+      for reason <- reasons do
+        label = Verification.reason_label(reason)
+        assert label != reason
+        assert html =~ label
+      end
+
+      assert html =~ "Catch-all"
     end
 
     test "a verdict a batch job gave up on (temp, no level) is shown with its reason" do
@@ -588,6 +636,117 @@ defmodule PhoenixKit.Newsletters.Web.VerificationTest do
       assert html =~ ~s(value="50")
     end
 
+    test "the bar is labelled by the progress text", %{socket: socket} do
+      html = render_page(socket)
+
+      assert html =~ ~s(aria-labelledby="verification-progress-label")
+      assert html =~ ~s(id="verification-progress-label")
+      assert html =~ "50%"
+    end
+
+    test "the number of addresses waiting for SMTP is shown", %{socket: socket, batch: batch} do
+      refute render_page(socket) =~ "waiting for the SMTP check"
+
+      {:noreply, socket} =
+        Verification.handle_info(
+          {:email_verify_batch,
+           %{
+             uuid: batch.uuid,
+             state: "running",
+             processed: 1,
+             total: 5,
+             counts: %{},
+             awaiting_smtp: 3
+           }},
+          socket
+        )
+
+      assert socket.assigns.batch.awaiting_smtp == 3
+      assert render_page(socket) =~ "3 addresses waiting for the SMTP check"
+    end
+
+    test "a batch snapshot from an engine without the SMTP stage shows no count", %{
+      socket: socket,
+      batch: batch
+    } do
+      {:noreply, socket} =
+        Verification.handle_info(
+          {:email_verify_batch,
+           %{uuid: batch.uuid, state: "running", processed: 2, total: 3, counts: %{}}},
+          socket
+        )
+
+      refute render_page(socket) =~ "waiting for the SMTP check"
+    end
+
+    test "a runner that is not online is named in the progress, with a link to the settings",
+         %{batch: batch} do
+      role = audience(["w@example.com"])
+      Fake.put(:smtp_mode, "runner")
+      Fake.put(:runner_status, %{state: :offline})
+      Fake.put(:latest_batch, Map.put(batch, :awaiting_smtp, 2))
+
+      socket =
+        visit(%{"source" => "user_group", "roles" => [role.uuid]}, mounted(connected_socket()))
+
+      assert socket.assigns.smtp_wait
+      html = render_page(socket)
+
+      assert html =~ "SMTP is waiting for the runner"
+      assert html =~ "Settings"
+
+      assert Paths.email_sending_settings() =~
+               "/admin/settings/email-sending"
+
+      assert html =~ ~s(href="#{Paths.email_sending_settings()}")
+    end
+
+    test "no runner hint when the runner is online, or the mode is not runner", %{batch: batch} do
+      role = audience(["w@example.com"])
+      Fake.put(:latest_batch, Map.put(batch, :awaiting_smtp, 2))
+
+      for {mode, state} <- [{"runner", :online}, {"local", :offline}, {"off", :never_connected}] do
+        Fake.put(:smtp_mode, mode)
+        Fake.put(:runner_status, %{state: state})
+
+        socket =
+          visit(%{"source" => "user_group", "roles" => [role.uuid]}, mounted(connected_socket()))
+
+        refute socket.assigns.smtp_wait, "#{mode} #{state}"
+        refute render_page(socket) =~ "waiting for the runner", "#{mode} #{state}"
+      end
+    end
+
+    test "the runner state is read again on a timer while the batch runs", %{
+      socket: socket,
+      batch: batch
+    } do
+      Fake.put(:smtp_mode, "runner")
+      Fake.put(:runner_status, %{state: :offline})
+
+      refute socket.assigns.smtp_wait
+      {:noreply, socket} = Verification.handle_info(:refresh_runner, socket)
+      assert socket.assigns.smtp_wait
+
+      Fake.put(:runner_status, %{state: :online})
+      {:noreply, socket} = Verification.handle_info(:refresh_runner, socket)
+      refute socket.assigns.smtp_wait
+
+      # A finished batch has nothing to wait for.
+      Fake.put(:runner_status, %{state: :offline})
+      Fake.put(:batch, %{batch | state: "done", finished_at: DateTime.utc_now()})
+
+      {:noreply, socket} =
+        Verification.handle_info(
+          {:email_verify_batch,
+           %{uuid: batch.uuid, state: "done", processed: 2, total: 2, counts: %{}}},
+          socket
+        )
+
+      refute socket.assigns.smtp_wait
+      refute render_page(socket) =~ "waiting for the runner"
+    end
+
     test "a progress message moves the bar without re-reading the table", %{
       socket: socket,
       batch: batch
@@ -832,6 +991,15 @@ defmodule PhoenixKit.Newsletters.Web.VerificationTest do
       html = render_page(socket)
       assert html =~ "Domain OK (no SMTP)"
       assert html =~ "Unknown top-level domain"
+    end
+
+    @tag :requires_emails_smtp
+    test "with the SMTP stage off the page offers no runner hint and no waiting count" do
+      role = audience(["real-ok@example.com"])
+      socket = visit(%{"source" => "user_group", "roles" => [role.uuid]})
+
+      refute socket.assigns.smtp_wait
+      refute render_page(socket) =~ "waiting for the runner"
     end
 
     test "a filtered view works on the real statuses and still shows the full verdict" do

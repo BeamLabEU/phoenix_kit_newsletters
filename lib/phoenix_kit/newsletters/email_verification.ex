@@ -106,6 +106,32 @@ defmodule PhoenixKit.Newsletters.EmailVerification do
   @spec max_batch_size() :: pos_integer() | nil
   def max_batch_size, do: call(:max_batch_size, [], nil)
 
+  @doc """
+  The engine's SMTP mode (`"off"`, `"runner"` or `"local"`). `"off"` without the
+  engine and on a release that predates the SMTP stage.
+  """
+  @spec smtp_mode() :: String.t()
+  def smtp_mode, do: call(:smtp_mode, [], "off")
+
+  @doc """
+  What the engine knows about the SMTP runner (a map with at least `:state`:
+  `:online`, `:offline` or `:never_connected`), or `nil` when it cannot say: no
+  engine, a release without the SMTP stage, or a failed read.
+  """
+  @spec runner_status() :: map() | nil
+  def runner_status, do: call(:runner_status, [], nil)
+
+  @doc """
+  Whether addresses are queued for a remote runner that is not online: the mode
+  is `"runner"` and the runner has never connected or has stopped answering.
+  `false` when the engine cannot say.
+  """
+  @spec smtp_runner_waiting?() :: boolean()
+  def smtp_runner_waiting? do
+    smtp_mode() == "runner" and
+      match?(%{state: state} when state != :online, runner_status())
+  end
+
   # Resolved at call time so the tests can stand in for the engine (or for its
   # absence); nothing sets it in a host.
   defp engine do
@@ -126,13 +152,27 @@ defmodule PhoenixKit.Newsletters.EmailVerification do
     end
   rescue
     e ->
-      message = Exception.message(e)
+      message = e |> Exception.message() |> mask_addresses()
       Logger.warning("[Newsletters] email verification #{function} failed: #{message}")
       failure(on_failure, message, default)
   catch
     :exit, reason ->
-      Logger.warning("[Newsletters] email verification #{function} exited: #{inspect(reason)}")
-      failure(on_failure, "exited: " <> inspect(reason), default)
+      message = reason |> inspect() |> mask_addresses()
+      Logger.warning("[Newsletters] email verification #{function} exited: #{message}")
+      failure(on_failure, "exited: " <> message, default)
+  end
+
+  # An engine message may quote the addresses of a failed insert; a log line and
+  # an error tuple that travels on must not carry them.
+  @address ~r/[^\s<>()"',;=]+@[^\s<>()"',;=]+/
+
+  defp mask_addresses(message), do: Regex.replace(@address, message, &mask/1)
+
+  defp mask(address) do
+    case String.split(address, "@") do
+      [local, domain] when local != "" -> String.first(local) <> "***@" <> domain
+      _ -> "***"
+    end
   end
 
   defp failure(nil, _message, default), do: default

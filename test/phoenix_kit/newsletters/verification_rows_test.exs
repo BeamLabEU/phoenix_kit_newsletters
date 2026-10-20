@@ -58,6 +58,36 @@ defmodule PhoenixKit.Newsletters.VerificationRowsTest do
     end
   end
 
+  describe "badge_kind/1 for the SMTP stage" do
+    test "not_sure waiting for the SMTP stage is its own badge, still a not_sure row" do
+      pending = result("not_sure", %{reason: "smtp_pending"})
+      [row] = VerificationRows.build(["g@x.com"], %{"g@x.com" => pending})
+
+      assert row.status == :not_sure
+      assert VerificationRows.badge_kind(row) == :smtp_pending
+    end
+
+    test "the SMTP verdict reasons do not change the badge of their status" do
+      for {status, reason} <- [{"not_sure", "catch_all"}, {"invalid", "mailbox_unknown"}] do
+        [row] =
+          VerificationRows.build(["g@x.com"], %{
+            "g@x.com" => result(status, %{reason: reason, level: "smtp"})
+          })
+
+        assert VerificationRows.badge_kind(row) == String.to_existing_atom(status)
+      end
+    end
+
+    test "a verdict from a statuses_for/1 map (no flags, no log) reads the same" do
+      [row] =
+        VerificationRows.build(["g@x.com"], %{
+          "g@x.com" => %{status: "not_sure", reason: "smtp_pending", level: "mx"}
+        })
+
+      assert VerificationRows.badge_kind(row) == :smtp_pending
+    end
+  end
+
   describe "filter/2" do
     test "keeps one status; blank or unknown keeps all" do
       rows = VerificationRows.build(@emails, results())
