@@ -1292,3 +1292,13 @@ msgstr "Ждёт SMTP"
 #, elixir-autogen, elixir-format
 msgid "Waiting for the SMTP check"
 msgstr "Ждёт проверки SMTP"
+
+#: lib/phoenix_kit/newsletters/web/verification.ex:488
+#, elixir-autogen, elixir-format
+msgid "Mail server reset the connection"
+msgstr "Почтовый сервер сбросил соединение"
+
+#: lib/phoenix_kit/newsletters/web/verification.ex:487
+#, elixir-autogen, elixir-format
+msgid "Mailbox confirmed by the SMTP check"
+msgstr "Ящик подтверждён проверкой SMTP"

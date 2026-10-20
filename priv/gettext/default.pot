@@ -1284,3 +1284,13 @@ msgstr ""
 #, elixir-autogen, elixir-format
 msgid "Waiting for the SMTP check"
 msgstr ""
+
+#: lib/phoenix_kit/newsletters/web/verification.ex:488
+#, elixir-autogen, elixir-format
+msgid "Mail server reset the connection"
+msgstr ""
+
+#: lib/phoenix_kit/newsletters/web/verification.ex:487
+#, elixir-autogen, elixir-format
+msgid "Mailbox confirmed by the SMTP check"
+msgstr ""

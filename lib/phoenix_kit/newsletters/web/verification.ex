@@ -484,6 +484,8 @@ defmodule PhoenixKit.Newsletters.Web.Verification do
   def reason_label("smtp_timeout"), do: gettext("SMTP check timed out")
   def reason_label("smtp_connect_failed"), do: gettext("Could not connect to the mail server")
   def reason_label("mail_from_rejected"), do: gettext("Mail server rejected the sender")
+  def reason_label("smtp_ok"), do: gettext("Mailbox confirmed by the SMTP check")
+  def reason_label("smtp_reset"), do: gettext("Mail server reset the connection")
   def reason_label(other), do: other
 
   @doc false

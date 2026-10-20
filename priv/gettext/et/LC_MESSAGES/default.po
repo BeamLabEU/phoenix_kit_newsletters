@@ -1287,3 +1287,13 @@ msgstr "Ootab SMTP-d"
 #, elixir-autogen, elixir-format
 msgid "Waiting for the SMTP check"
 msgstr "Ootab SMTP-kontrolli"
+
+#: lib/phoenix_kit/newsletters/web/verification.ex:488
+#, elixir-autogen, elixir-format
+msgid "Mail server reset the connection"
+msgstr "Postiserver katkestas ühenduse"
+
+#: lib/phoenix_kit/newsletters/web/verification.ex:487
+#, elixir-autogen, elixir-format
+msgid "Mailbox confirmed by the SMTP check"
+msgstr "Postkasti olemasolu kinnitas SMTP-kontroll"

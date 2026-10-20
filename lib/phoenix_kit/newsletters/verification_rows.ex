@@ -9,6 +9,10 @@ defmodule PhoenixKit.Newsletters.VerificationRows do
   @statuses ~w(valid invalid temp not_sure unchecked)
   @default_per_page 50
 
+  # The SMTP check was tried and gave up on the connection: the verdict is a
+  # not_sure at level "mx", but "Domain OK (no SMTP)" would say it was not tried.
+  @smtp_transport_failures ~w(smtp_timeout smtp_connect_failed smtp_reset smtp_unavailable)
+
   @type status :: :valid | :invalid | :temp | :not_sure | :unchecked
   @type row :: %{email: String.t(), status: status(), result: map() | nil}
 
@@ -86,11 +90,14 @@ defmodule PhoenixKit.Newsletters.VerificationRows do
   queued for the SMTP check (`not_sure`, reason `"smtp_pending"`). `:mx_ok` is
   the verdict of an address that passed syntax, word lists and DNS but whose
   mailbox was not probed — `not_sure` at level `"mx"` — not a plain "not sure".
+  An SMTP check that was tried and lost its connection is also `not_sure` at
+  level `"mx"`, but it is a plain "not sure": it did probe.
   """
   @spec badge_kind(row()) :: status() | :mx_ok | :smtp_pending
   def badge_kind(%{status: :not_sure, result: result}) when is_map(result) do
     case result do
       %{reason: "smtp_pending"} -> :smtp_pending
+      %{reason: reason} when reason in @smtp_transport_failures -> :not_sure
       %{level: "mx"} -> :mx_ok
       _ -> :not_sure
     end

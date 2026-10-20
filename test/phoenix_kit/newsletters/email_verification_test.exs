@@ -71,6 +71,11 @@ defmodule PhoenixKit.Newsletters.EmailVerificationTest do
       def start_batch(_emails, _type, _ref, _opts), do: exit(:noproc)
     end
 
+    defmodule Rambling do
+      def verify(_email, _opts), do: :ok
+      def results_for(_emails), do: raise(String.duplicate("a", 100_000) <> "@")
+    end
+
     defmodule Quoting do
       def verify(_email, _opts), do: :ok
       def results_for(_emails), do: raise("insert failed for alice@example.com")
@@ -104,6 +109,34 @@ defmodule PhoenixKit.Newsletters.EmailVerificationTest do
       assert log =~ "b***@example.org"
       refute log =~ "alice"
       refute log =~ "bob.smith"
+    end
+
+    test "masking a very long message without an address stays fast" do
+      use_engine(Rambling)
+
+      {microseconds, _log} =
+        :timer.tc(fn ->
+          capture_log(fn -> assert EmailVerification.results_for(["a@x.com"]) == %{} end)
+        end)
+
+      assert microseconds < 2_000_000
+    end
+
+    test "a bracketed address is masked inside its brackets" do
+      defmodule Bracketed do
+        def verify(_email, _opts), do: :ok
+
+        def results_for(_emails),
+          do: raise("failed for [john@example.com] and <jane@example.org>")
+      end
+
+      use_engine(Bracketed)
+
+      log = capture_log(fn -> EmailVerification.results_for(["a@x.com"]) end)
+
+      assert log =~ "[j***@example.com]"
+      assert log =~ "<j***@example.org>"
+      refute log =~ "john"
     end
 
     test "a raise in start_batch is an engine error, not an absent module" do

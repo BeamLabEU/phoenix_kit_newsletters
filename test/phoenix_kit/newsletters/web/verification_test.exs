@@ -211,7 +211,7 @@ defmodule PhoenixKit.Newsletters.Web.VerificationTest do
     test "the SMTP verdict reasons are spelled out, never shown as codes" do
       reasons =
         ~w(catch_all mailbox_unknown mailbox_full greylisted smtp_blocked smtp_timeout
-           smtp_connect_failed mail_from_rejected smtp_unavailable)
+           smtp_connect_failed mail_from_rejected smtp_unavailable smtp_ok smtp_reset)
 
       role = audience(Enum.map(reasons, &"#{&1}@example.com"))
 
@@ -715,6 +715,36 @@ defmodule PhoenixKit.Newsletters.Web.VerificationTest do
         refute socket.assigns.smtp_wait, "#{mode} #{state}"
         refute render_page(socket) =~ "waiting for the runner", "#{mode} #{state}"
       end
+    end
+
+    test "a running batch has a runner timer pending, a dead render or a finished one none", %{
+      socket: socket,
+      batch: batch
+    } do
+      assert socket.assigns.runner_tick
+
+      # An unconnected (dead-render) page never schedules one.
+      refute visit(%{"source" => "user_group", "roles" => socket.assigns.role_uuids}).assigns.runner_tick
+
+      # A tick clears the pending flag and schedules the next while the batch runs.
+      {:noreply, ticked} = Verification.handle_info(:refresh_runner, socket)
+      assert ticked.assigns.runner_tick
+
+      # Visiting the page again with a timer pending does not schedule another.
+      assert visit(%{"source" => "user_group", "roles" => ticked.assigns.role_uuids}, ticked).assigns.runner_tick
+
+      done = %{batch | state: "done", finished_at: DateTime.utc_now()}
+      Fake.put(:batch, done)
+
+      {:noreply, ticked} =
+        Verification.handle_info(
+          {:email_verify_batch,
+           %{uuid: batch.uuid, state: "done", processed: 2, total: 2, counts: %{}}},
+          ticked
+        )
+
+      {:noreply, ticked} = Verification.handle_info(:refresh_runner, ticked)
+      refute ticked.assigns.runner_tick
     end
 
     test "the runner state is read again on a timer while the batch runs", %{

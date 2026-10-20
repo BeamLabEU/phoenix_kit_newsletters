@@ -121,7 +121,7 @@ defmodule PhoenixKit.Newsletters.I18nTest do
       assert Verification.reason_label("catch_all") == "Catch-all"
 
       for reason <- ~w(smtp_pending mailbox_unknown mailbox_full greylisted smtp_blocked
-                       smtp_timeout smtp_connect_failed mail_from_rejected) do
+                       smtp_timeout smtp_connect_failed mail_from_rejected smtp_ok smtp_reset) do
         assert Verification.reason_label(reason) =~ ~r/\p{Cyrillic}/u, reason
       end
     end
@@ -129,7 +129,7 @@ defmodule PhoenixKit.Newsletters.I18nTest do
     test "the SMTP stage labels are translated into Estonian" do
       reasons =
         ~w(smtp_pending mailbox_unknown mailbox_full greylisted smtp_blocked
-           smtp_timeout smtp_connect_failed mail_from_rejected)
+           smtp_timeout smtp_connect_failed mail_from_rejected smtp_ok smtp_reset)
 
       Gettext.put_locale(NewslettersGettext, "en")
       english = Map.new(reasons, &{&1, Verification.reason_label(&1)})

@@ -78,6 +78,17 @@ defmodule PhoenixKit.Newsletters.VerificationRowsTest do
       end
     end
 
+    test "a transport failure of the SMTP check is a plain not-sure, not a domain-ok badge" do
+      for reason <- ~w(smtp_timeout smtp_connect_failed smtp_reset smtp_unavailable) do
+        [row] =
+          VerificationRows.build(["g@x.com"], %{
+            "g@x.com" => result("not_sure", %{reason: reason, level: "mx"})
+          })
+
+        assert VerificationRows.badge_kind(row) == :not_sure, reason
+      end
+    end
+
     test "a verdict from a statuses_for/1 map (no flags, no log) reads the same" do
       [row] =
         VerificationRows.build(["g@x.com"], %{

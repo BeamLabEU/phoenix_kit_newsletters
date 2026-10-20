@@ -164,7 +164,9 @@ defmodule PhoenixKit.Newsletters.EmailVerification do
 
   # An engine message may quote the addresses of a failed insert; a log line and
   # an error tuple that travels on must not carry them.
-  @address ~r/[^\s<>()"',;=]+@[^\s<>()"',;=]+/
+  # An address starts only at a token boundary (the lookbehind), and '@' is not
+  # a token character, so a long run of text cannot make the scan quadratic.
+  @address ~r/(?<![^\s<>()\[\]"',;=])[^\s<>()\[\]"',;=@]+@[^\s<>()\[\]"',;=@]+/
 
   defp mask_addresses(message), do: Regex.replace(@address, message, &mask/1)
 
