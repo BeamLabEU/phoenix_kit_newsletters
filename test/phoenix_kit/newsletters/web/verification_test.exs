@@ -297,6 +297,19 @@ defmodule PhoenixKit.Newsletters.Web.VerificationTest do
       %{list: list, contact: contact}
     end
 
+    test "offers a non-subscribable list in the picker and keeps it selected" do
+      {:ok, ops} =
+        Lists.create_list(%{
+          name: "Ops #{System.unique_integer([:positive])}",
+          subscribable: false
+        })
+
+      socket = visit(%{"source" => "crm_list", "list" => ops.uuid})
+
+      assert ops.uuid in Enum.map(socket.assigns.crm_lists, & &1.uuid)
+      assert socket.assigns.crm_list_uuid == ops.uuid
+    end
+
     test "resolves the list's sendable recipients", %{list: list, contact: contact} do
       socket = visit(%{"source" => "crm_list", "list" => list.uuid})
       assert socket.assigns.source == "crm_list"

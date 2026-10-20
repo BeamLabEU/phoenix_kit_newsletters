@@ -195,7 +195,10 @@ defmodule PhoenixKit.Newsletters.Web.Verification do
   defp assign_audience_options(%{assigns: %{available_roles: nil}} = socket) do
     socket
     |> assign(:available_roles, UserGroupSource.list_roles())
-    |> assign(:crm_lists, if(socket.assigns.crm_available, do: CRMSource.list_lists(), else: []))
+    |> assign(
+      :crm_lists,
+      if(socket.assigns.crm_available, do: CRMSource.list_active_lists(), else: [])
+    )
   end
 
   defp assign_audience_options(socket), do: socket

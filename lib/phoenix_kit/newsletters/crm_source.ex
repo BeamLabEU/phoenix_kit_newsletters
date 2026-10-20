@@ -58,6 +58,23 @@ defmodule PhoenixKit.Newsletters.CRMSource do
   @spec list_lists() :: [struct()]
   def list_lists, do: list_subscribable_lists()
 
+  @doc """
+  Every active (non-archived) CRM list, subscribable or not, for the address
+  verification picker.
+
+  Verification sends nothing, so an operational segment (suppliers, imports)
+  is as worth cleaning as a mailing audience; the broadcast picker keeps
+  `list_lists/0`. Recipients still resolve through `sendable_recipients/1`.
+  """
+  @spec list_active_lists() :: [struct()]
+  def list_active_lists do
+    if available?() do
+      soft_call(@lists_mod, :list_lists, [[status: "active"]])
+    else
+      []
+    end
+  end
+
   @doc "Fetches a CRM list by uuid. Returns nil if not found, invalid, or CRM isn't installed."
   @spec get_list(String.t() | nil) :: struct() | nil
   def get_list(nil), do: nil
