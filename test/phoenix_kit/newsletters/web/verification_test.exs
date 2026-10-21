@@ -298,6 +298,27 @@ defmodule PhoenixKit.Newsletters.Web.VerificationTest do
       assert Enum.sort(emails) == ["a@example.com", "b@example.com"]
     end
 
+    test "a filter or page patch over the same audience does not count the audience again" do
+      role = audience(["a@example.com", "b@example.com"])
+      Fake.put(:results, %{"a@example.com" => result("invalid", %{reason: "no_mx"})})
+      params = %{"source" => "user_group", "roles" => [role.uuid]}
+
+      socket = visit(params)
+      assert_received {:summary, counted}
+      assert Enum.sort(counted) == ["a@example.com", "b@example.com"]
+
+      filtered = visit(Map.put(params, "status", "invalid"), socket)
+
+      assert Enum.map(filtered.assigns.rows, & &1.email) == ["a@example.com"]
+      assert filtered.assigns.summary == socket.assigns.summary
+      refute_received {:summary, _}
+
+      # Another audience is counted afresh.
+      other = audience(["c@example.com"])
+      visit(%{"source" => "user_group", "roles" => [other.uuid]}, filtered)
+      assert_received {:summary, ["c@example.com"]}
+    end
+
     test "a status or page change does not resolve the audience again" do
       role = audience(["a@example.com"])
       params = %{"source" => "user_group", "roles" => [role.uuid]}

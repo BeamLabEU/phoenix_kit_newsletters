@@ -46,6 +46,7 @@ defmodule PhoenixKitNewsletters.Test.FakeVerificationEngine do
   end
 
   def summary(emails) do
+    send(self(), {:summary, emails})
     results = get(:results, %{})
     counts = Enum.frequencies_by(emails, &status(results[&1]))
 

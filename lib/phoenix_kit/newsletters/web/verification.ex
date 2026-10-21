@@ -165,7 +165,8 @@ defmodule PhoenixKit.Newsletters.Web.Verification do
          socket
          |> assign(:batch, fresh)
          |> refresh_smtp_wait()
-         |> load_table(socket.assigns.page)}
+         |> load_table(socket.assigns.page)
+         |> load_summary()}
 
       # Workers run in parallel, so a snapshot can arrive after a newer one.
       snapshot.processed < batch.processed ->
@@ -254,6 +255,7 @@ defmodule PhoenixKit.Newsletters.Web.Verification do
       |> assign(:audience_key, key)
       |> assign(:emails, emails)
       |> load_batch()
+      |> load_summary()
     end
   end
 
@@ -282,7 +284,14 @@ defmodule PhoenixKit.Newsletters.Web.Verification do
     |> assign(:page, meta.page)
     |> assign(:total_pages, meta.total_pages)
     |> assign(:total, meta.total)
-    |> assign(:summary, EmailVerification.summary(socket.assigns.emails))
+  end
+
+  # The counts cover the whole audience, so they change only when the audience
+  # does or a batch settles verdicts. A page or filter patch re-reads the table
+  # and leaves them alone: that would be a status read of every address on each
+  # click.
+  defp load_summary(socket) do
+    assign(socket, :summary, EmailVerification.summary(socket.assigns.emails))
   end
 
   ## --- Batches ---
@@ -296,6 +305,7 @@ defmodule PhoenixKit.Newsletters.Web.Verification do
         socket
         |> track_batch(batch)
         |> load_table(socket.assigns.page)
+        |> load_summary()
         |> put_flash(:info, gettext("Verification started"))
 
       {:error, reason} ->
