@@ -141,6 +141,19 @@ defmodule PhoenixKit.Newsletters do
         gettext_backend: PhoenixKit.Newsletters.Gettext
       ),
       Tab.new!(
+        id: :admin_newsletters_verification,
+        label: "Address verification",
+        icon: "hero-shield-check",
+        path: "newsletters/verification",
+        priority: 523,
+        level: :admin,
+        permission: "newsletters",
+        parent: :admin_newsletters,
+        match: :prefix,
+        live_view: {Web.Verification, :index},
+        gettext_backend: PhoenixKit.Newsletters.Gettext
+      ),
+      Tab.new!(
         id: :admin_newsletters_layout_new,
         label: "New layout",
         path: "newsletters/layouts/new",

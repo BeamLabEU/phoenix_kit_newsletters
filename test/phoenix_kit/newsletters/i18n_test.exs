@@ -99,6 +99,55 @@ defmodule PhoenixKit.Newsletters.I18nTest do
     end
   end
 
+  describe "address verification messages" do
+    alias PhoenixKit.Newsletters.Web.Verification
+
+    test "the gave-up reason is translated" do
+      for {locale, text} <- [
+            {"en", "Verification failed, will need a re-run"},
+            {"et", "Kontroll ebaõnnestus, vaja uuesti käivitada"},
+            {"ru", "Проверка не удалась, нужен повторный запуск"}
+          ] do
+        Gettext.put_locale(NewslettersGettext, locale)
+        assert Verification.reason_label("job_failed") == text, locale
+      end
+    end
+
+    test "the SMTP stage labels are translated into Russian" do
+      Gettext.put_locale(NewslettersGettext, "ru")
+
+      assert Verification.status_label(:smtp_pending) == "Ждёт SMTP"
+      assert Verification.status_label(:mx_ok) == "Домен OK (без SMTP)"
+      assert Verification.reason_label("catch_all") == "Catch-all"
+
+      for reason <- ~w(smtp_pending mailbox_unknown mailbox_full greylisted smtp_blocked
+                       smtp_timeout smtp_connect_failed mail_from_rejected smtp_ok smtp_reset) do
+        assert Verification.reason_label(reason) =~ ~r/\p{Cyrillic}/u, reason
+      end
+    end
+
+    test "the SMTP stage labels are translated into Estonian" do
+      reasons =
+        ~w(smtp_pending mailbox_unknown mailbox_full greylisted smtp_blocked
+           smtp_timeout smtp_connect_failed mail_from_rejected smtp_ok smtp_reset)
+
+      Gettext.put_locale(NewslettersGettext, "en")
+      english = Map.new(reasons, &{&1, Verification.reason_label(&1)})
+      Gettext.put_locale(NewslettersGettext, "et")
+
+      for reason <- reasons do
+        assert Verification.reason_label(reason) != english[reason], reason
+      end
+
+      assert Verification.status_label(:smtp_pending) != "Waiting for SMTP"
+    end
+
+    test "an unknown reason is shown as it is, and no reason as nothing" do
+      assert Verification.reason_label("something_new") == "something_new"
+      assert Verification.reason_label(nil) == ""
+    end
+  end
+
   describe "Tab.localized_label/1 against the module's catalogue" do
     test "ru locale resolves the parent 'Newsletters' tab to 'Рассылки'" do
       Gettext.put_locale(NewslettersGettext, "ru")

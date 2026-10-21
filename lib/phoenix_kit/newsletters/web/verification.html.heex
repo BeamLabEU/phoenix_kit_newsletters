@@ -1,0 +1,295 @@
+<PhoenixKitWeb.Components.LayoutWrapper.app_layout
+  flash={@flash}
+  phoenix_kit_current_scope={assigns[:phoenix_kit_current_scope]}
+  page_title={@page_title}
+  page_subtitle={@page_subtitle}
+  page_section={@page_section}
+  page_section_path={@page_section_path}
+  current_path={@url_path}
+  project_title={@project_title}
+>
+<div class="container flex-col mx-auto px-4 py-6">
+  <div :if={@engine == :unavailable} id="verification-unavailable" class="alert alert-warning">
+    <.icon name="hero-exclamation-triangle" class="w-5 h-5" />
+    <span>
+      {gettext(
+        "Address verification needs the Emails module. Install phoenix_kit_emails (a release that includes verification) and enable it, then come back."
+      )}
+    </span>
+  </div>
+
+  <div :if={@engine == :disabled} id="verification-disabled" class="alert alert-warning">
+    <.icon name="hero-exclamation-triangle" class="w-5 h-5" />
+    <span>
+      {gettext(
+        "Address verification is switched off. The Emails module requires the setting email_verify_enabled to be on."
+      )}
+    </span>
+  </div>
+
+  <div :if={@engine == :ready}>
+    <div :if={not @queue_configured} id="verification-queue-warning" class="alert alert-warning mb-4">
+      <.icon name="hero-exclamation-triangle" class="w-5 h-5" />
+      <span>
+        {gettext(
+          "The host's Oban configuration has no email_verification queue, so a started batch would never run. Add the queue (for example email_verification: 5) to the Oban queues of the host application."
+        )}
+      </span>
+    </div>
+
+    <form id="verification-audience-form" phx-change="select_audience" class="mb-4">
+      <fieldset class="fieldset">
+        <legend class="fieldset-legend">{gettext("Audience")}</legend>
+        <div class="join mb-2">
+          <input
+            type="radio"
+            name="source"
+            value="user_group"
+            checked={@source == "user_group"}
+            class="join-item btn btn-sm"
+            aria-label={gettext("Roles")}
+          />
+          <input
+            :if={@crm_available}
+            type="radio"
+            name="source"
+            value="crm_list"
+            checked={@source == "crm_list"}
+            class="join-item btn btn-sm"
+            aria-label={gettext("CRM list")}
+          />
+        </div>
+
+        <label :if={@source == "crm_list"} class="select w-full max-w-md">
+          <select name="list">
+            <option value="">{gettext("Select a list...")}</option>
+            <option :for={list <- @crm_lists} value={list.uuid} selected={@crm_list_uuid == list.uuid}>
+              {ngettext(
+                "%{name} (%{count} member)",
+                "%{name} (%{count} members)",
+                list.subscriber_count,
+                name: list.name,
+                count: list.subscriber_count
+              )}
+            </option>
+          </select>
+        </label>
+
+        <div :if={@source == "user_group"} class="flex flex-col gap-1">
+          <label :for={role <- @available_roles} class="flex items-center gap-2 cursor-pointer">
+            <input
+              type="checkbox"
+              name="roles[]"
+              value={role.uuid}
+              checked={role.uuid in @role_uuids}
+              class="checkbox checkbox-sm"
+            />
+            <span>{role.name}</span>
+          </label>
+        </div>
+      </fieldset>
+    </form>
+
+    <.empty_state
+      :if={@emails == []}
+      icon="hero-shield-check"
+      title={gettext("No addresses to verify")}
+      description={
+        gettext("Pick a CRM list or roles that have subscribed members with an email address.")
+      }
+    />
+
+    <div :if={@emails != []}>
+      <div class="flex flex-wrap items-center justify-between gap-2 mb-4">
+        <p class="text-sm text-base-content/70">
+          {ngettext(
+            "%{count} sendable address",
+            "%{count} sendable addresses",
+            length(@emails),
+            count: length(@emails)
+          )}
+        </p>
+        <button
+          id="verification-start"
+          type="button"
+          class="btn btn-primary btn-sm"
+          phx-click="start_batch"
+          disabled={batch_active?(@batch)}
+          phx-disable-with={gettext("Starting...")}
+        >
+          <.icon name="hero-play" class="w-4 h-4" /> {gettext("Verify the list")}
+        </button>
+      </div>
+
+      <div :if={@batch} id="verification-batch" class="mb-4">
+        <div :if={batch_active?(@batch)} class="alert alert-info flex-col items-stretch gap-2">
+          <span id="verification-progress-label" class="text-sm">
+            {gettext("Verifying: %{processed} of %{total}",
+              processed: @batch.processed,
+              total: @batch.total
+            )}
+          </span>
+          <progress
+            class="progress progress-primary w-full"
+            value={percent(@batch)}
+            max="100"
+            aria-labelledby="verification-progress-label"
+          >
+            {percent(@batch)}%
+          </progress>
+          <span :if={awaiting_smtp(@batch) > 0} id="verification-awaiting-smtp" class="text-sm">
+            {ngettext(
+              "%{count} address waiting for the SMTP check",
+              "%{count} addresses waiting for the SMTP check",
+              awaiting_smtp(@batch),
+              count: awaiting_smtp(@batch)
+            )}
+          </span>
+          <.link
+            :if={@smtp_wait}
+            id="verification-runner-offline"
+            navigate={Paths.email_sending_settings()}
+            class="link text-sm"
+          >
+            {gettext("SMTP is waiting for the runner - see Settings → Emails")}
+          </.link>
+        </div>
+        <p :if={@batch.state == "done"} class="text-sm text-base-content/70">
+          {gettext("Last verification finished: %{at} (%{total} addresses)",
+            at: format_datetime(@batch.finished_at, @tz),
+            total: @batch.total
+          )}
+        </p>
+        <p :if={@batch.state == "cancelled"} class="text-sm text-warning">
+          {gettext("The last verification was cancelled after %{processed} of %{total} addresses",
+            processed: @batch.processed,
+            total: @batch.total
+          )}
+        </p>
+      </div>
+
+      <div :if={@summary} id="verification-summary" class="stats stats-vertical sm:stats-horizontal shadow w-full mb-4">
+        <.link
+          :for={status <- ~w(valid invalid temp not_sure unchecked)a}
+          id={"verification-summary-#{status}"}
+          patch={Paths.verification_index(page_params(@source, @crm_list_uuid, @role_uuids, Atom.to_string(status)))}
+          class={["stat hover:bg-base-200", @status_filter == Atom.to_string(status) && "bg-base-200"]}
+        >
+          <div class="stat-title">{status_label(status)}</div>
+          <div class="stat-value text-2xl">{Map.fetch!(@summary, status)}</div>
+        </.link>
+      </div>
+
+      <p class="text-xs text-base-content/50 mb-2">
+        {gettext("Times shown in %{tz}", tz: @tz_label)}
+      </p>
+
+      <.table_default
+        id="verification-table"
+        variant="zebra"
+        size="sm"
+        class="w-full"
+        items={@rows}
+        card_fields={
+          fn row ->
+            [
+              %{label: gettext("Reason"), value: reason_of(row)},
+              %{label: gettext("Checked"), value: checked_at(row, @tz)}
+            ]
+          end
+        }
+      >
+        <:toolbar_title>
+          <form id="verification-status-filter" phx-change="filter_status">
+            <label class="select select-sm">
+              <select name="status">
+                <option value="" selected={@status_filter == ""}>{gettext("All statuses")}</option>
+                <option
+                  :for={status <- VerificationRows.statuses()}
+                  value={status}
+                  selected={@status_filter == status}
+                >
+                  {status_label(String.to_existing_atom(status))}
+                </option>
+              </select>
+            </label>
+          </form>
+        </:toolbar_title>
+
+        <:card_header :let={row}>
+          <div class="flex items-start justify-between gap-2">
+            <span class="font-medium text-sm truncate">{row.email}</span>
+            <span class={"badge badge-sm shrink-0 whitespace-nowrap #{status_badge_class(VerificationRows.badge_kind(row))}"}>
+              {status_label(VerificationRows.badge_kind(row))}
+            </span>
+          </div>
+        </:card_header>
+
+        <.table_default_header>
+          <.table_default_row>
+            <.table_default_header_cell>{gettext("Email")}</.table_default_header_cell>
+            <.table_default_header_cell>{gettext("Status")}</.table_default_header_cell>
+            <.table_default_header_cell>{gettext("Reason")}</.table_default_header_cell>
+            <.table_default_header_cell>{gettext("Flags")}</.table_default_header_cell>
+            <.table_default_header_cell>{gettext("Checked")}</.table_default_header_cell>
+          </.table_default_row>
+        </.table_default_header>
+
+        <.table_default_body>
+          <.table_default_row :for={row <- @rows} id={"verification-row-#{row.email}"}>
+            <.table_default_cell class="font-medium max-w-xs truncate">{row.email}</.table_default_cell>
+            <.table_default_cell>
+              <span class={"badge badge-sm shrink-0 whitespace-nowrap #{status_badge_class(VerificationRows.badge_kind(row))}"}>
+                {status_label(VerificationRows.badge_kind(row))}
+              </span>
+            </.table_default_cell>
+            <.table_default_cell class="text-sm text-base-content/70">
+              {reason_of(row)}
+            </.table_default_cell>
+            <.table_default_cell>
+              <div class="flex flex-wrap gap-1">
+                <span :if={flag?(row, :free)} class="badge badge-outline badge-sm whitespace-nowrap">
+                  {gettext("Free")}
+                </span>
+                <span :if={flag?(row, :role)} class="badge badge-outline badge-sm whitespace-nowrap">
+                  {gettext("Role")}
+                </span>
+                <span :if={flag?(row, :disposable)} class="badge badge-outline badge-sm whitespace-nowrap">
+                  {gettext("Disposable")}
+                </span>
+              </div>
+            </.table_default_cell>
+            <.table_default_cell class="text-sm text-base-content/70 whitespace-nowrap">
+              {checked_at(row, @tz)}
+            </.table_default_cell>
+          </.table_default_row>
+        </.table_default_body>
+      </.table_default>
+
+      <p :if={@rows == []} id="verification-no-rows" class="text-sm text-base-content/70 mt-4">
+        {gettext("No addresses with this status.")}
+      </p>
+
+      <div :if={@total_pages > 1} id="verification-pagination" class="flex items-center justify-center gap-2 mt-4">
+        <.link
+          :if={@page > 1}
+          patch={Paths.verification_index(Map.put(page_params(@source, @crm_list_uuid, @role_uuids, @status_filter), "page", @page - 1))}
+          class="btn btn-sm"
+        >
+          {gettext("Previous")}
+        </.link>
+        <span class="text-sm">
+          {gettext("Page %{page} of %{total_pages}", page: @page, total_pages: @total_pages)}
+        </span>
+        <.link
+          :if={@page < @total_pages}
+          patch={Paths.verification_index(Map.put(page_params(@source, @crm_list_uuid, @role_uuids, @status_filter), "page", @page + 1))}
+          class="btn btn-sm"
+        >
+          {gettext("Next")}
+        </.link>
+      </div>
+    </div>
+  </div>
+</div>
+</PhoenixKitWeb.Components.LayoutWrapper.app_layout>

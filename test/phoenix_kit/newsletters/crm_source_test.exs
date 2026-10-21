@@ -404,6 +404,31 @@ defmodule PhoenixKit.Newsletters.CRMSourceTest do
     end
   end
 
+  describe "list_active_lists/0 — every active list, for the verification picker" do
+    test "offers subscribable and operational lists, never archived ones" do
+      {:ok, sub} =
+        Lists.create_list(%{
+          name: "Mailing #{System.unique_integer([:positive])}",
+          subscribable: true
+        })
+
+      {:ok, ops} =
+        Lists.create_list(%{
+          name: "Suppliers #{System.unique_integer([:positive])}",
+          subscribable: false
+        })
+
+      {:ok, archived} = Lists.create_list(%{name: "Old #{System.unique_integer([:positive])}"})
+      {:ok, _} = Lists.archive_list(archived)
+
+      uuids = CRMSource.list_active_lists() |> Enum.map(& &1.uuid)
+
+      assert sub.uuid in uuids
+      assert ops.uuid in uuids
+      refute archived.uuid in uuids
+    end
+  end
+
   describe "list_lists/0 — picker offers only subscribable lists" do
     test "a subscribable list appears, a non-subscribable one does not" do
       {:ok, sub} =

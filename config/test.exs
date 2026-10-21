@@ -56,3 +56,9 @@ config :phoenix_kit_newsletters, PhoenixKitNewsletters.Test.DeadRenderEndpoint,
   secret_key_base:
     "test_secret_key_base_at_least_64_bytes_long_for_phoenix_kit_newsletters_dead_render",
   live_view: [signing_salt: "newsletters_test_live_view"]
+
+# The address-verification engine (phoenix_kit_emails, test-only dep) resolves
+# DNS through this module in the suite, so no test can reach live DNS. Its SMTP
+# client stays the engine's default, which never opens a socket.
+config :phoenix_kit_emails,
+  verification_resolver: PhoenixKitNewsletters.Test.NoDnsResolver
