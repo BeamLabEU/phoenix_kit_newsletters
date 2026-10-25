@@ -1,5 +1,32 @@
 # Changelog
 
+## 0.5.0 - 2026-10-24
+
+### Added
+
+- **Address verification page** (Newsletters → Address verification,
+  `/admin/newsletters/verification`). Pick a broadcast audience, a CRM list
+  or a set of roles, resolved with the same functions the sender uses, and
+  see each address with its stored verdict, including the SMTP stage. Filter
+  by status, page through the addresses, and start a verification batch with
+  live progress. The start is guarded against a batch already running. The
+  picker offers every active CRM list, not only subscribable ones, since
+  verification sends nothing. Verdicts come from the Emails module's
+  verification engine (`PhoenixKit.Modules.Emails.Verification`) through a
+  soft bridge, so there is no runtime dependency on `phoenix_kit_emails`.
+  Without the module, or with verification switched off, the page says what
+  is missing, and a missing `email_verification` Oban queue gets its own
+  warning. Addresses are masked in log lines. (#40)
+- `CrmSource.list_active_lists/0` and `Paths.verification_index/1`.
+
+### Changed
+
+- `phoenix_kit_emails ~> 0.5` is a new **test-only** dependency for the
+  verification tests. The engine needs an Emails release newer than 0.5.5.
+- Locked dependencies refreshed (`phoenix_kit` 2.64.1). The runtime
+  requirements are unchanged (`phoenix_kit ~> 2.52`, `phoenix_kit_templates
+  ~> 0.2.2`).
+
 ## 0.4.2 - 2026-10-06
 
 ### Fixed
