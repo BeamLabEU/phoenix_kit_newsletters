@@ -129,16 +129,7 @@ defmodule PhoenixKit.Newsletters.Web.BroadcastDetails do
 
     case socket.assigns.confirm_action do
       :cancel_broadcast ->
-        case Newsletters.update_broadcast(socket.assigns.broadcast, %{status: "cancelled"}) do
-          {:ok, broadcast} ->
-            {:noreply,
-             socket
-             |> assign(:broadcast, broadcast)
-             |> put_flash(:info, gettext("Broadcast cancelled"))}
-
-          {:error, _changeset} ->
-            {:noreply, put_flash(socket, :error, gettext("Failed to cancel broadcast"))}
-        end
+        with :ok <- authorize_send(socket), do: cancel_broadcast(socket)
 
       :retry_send ->
         with :ok <- authorize_retry(socket), do: retry_send(socket)
@@ -157,6 +148,30 @@ defmodule PhoenixKit.Newsletters.Web.BroadcastDetails do
   end
 
   # --- Private ---
+
+  defp cancel_broadcast(socket) do
+    case Newsletters.update_broadcast(socket.assigns.broadcast, %{status: "cancelled"}) do
+      {:ok, broadcast} ->
+        {:noreply,
+         socket
+         |> assign(:broadcast, broadcast)
+         |> put_flash(:info, gettext("Broadcast cancelled"))}
+
+      {:error, _changeset} ->
+        {:noreply, put_flash(socket, :error, gettext("Failed to cancel broadcast"))}
+    end
+  end
+
+  # Cancelling stops a send, so it needs the same `newsletters.send` that
+  # starts one.
+  defp authorize_send(socket) do
+    if Access.can_send?(Access.scope(socket)) do
+      :ok
+    else
+      {:noreply,
+       put_flash(socket, :error, gettext("You don't have permission to send broadcasts"))}
+    end
+  end
 
   # Retrying is sending: it needs `newsletters.send`, and for a CRM-list
   # broadcast the CRM module's key too, since the send resolves the list.

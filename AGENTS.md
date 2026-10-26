@@ -427,7 +427,7 @@ LiveViews themselves through `PhoenixKit.Newsletters.Access`
 
 | Key | Allows | Checked in |
 |-----|--------|------------|
-| `newsletters.send` | Send now, Schedule, Retry send | `BroadcastEditor` `send_now`/`schedule` (before anything is saved); `BroadcastDetails` `confirm_action` for `:retry_send` |
+| `newsletters.send` | Send now, Schedule, Retry send, Cancel broadcast | `BroadcastEditor` `send_now`/`schedule` (before anything is saved); `BroadcastDetails` `confirm_action` for `:retry_send` and `:cancel_broadcast` |
 | `newsletters.audiences` | Recipient addresses | `BroadcastDetails` loads the delivery list only with it; `Verification` at mount and in its single `handle_event/3` (the tab also carries it) |
 
 A CRM contact list is offered, previewed, saved or sent only when the viewer

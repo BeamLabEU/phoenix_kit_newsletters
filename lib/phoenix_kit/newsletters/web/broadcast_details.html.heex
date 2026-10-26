@@ -41,7 +41,7 @@
           </.pk_link>
         <% end %>
 
-        <%= if @broadcast.status == "sending" do %>
+        <%= if @broadcast.status == "sending" and @can_send do %>
           <button
             type="button"
             phx-click="show_confirm"

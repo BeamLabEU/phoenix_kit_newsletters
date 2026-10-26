@@ -195,6 +195,28 @@ defmodule PhoenixKit.Newsletters.Web.PermissionsTest do
                details(scope_with(["newsletters", "newsletters.audiences"]), broadcast).assigns.deliveries
     end
 
+    test "cancelling a sending broadcast needs newsletters.send" do
+      broadcast = broadcast_with_delivery()
+      {:ok, broadcast} = Newsletters.update_broadcast(broadcast, %{status: "sending"})
+
+      refused =
+        scope_with(["newsletters"])
+        |> details(broadcast)
+        |> Phoenix.Component.assign(:confirm_action, :cancel_broadcast)
+
+      {:noreply, s} = BroadcastDetails.handle_event("confirm_action", %{}, refused)
+      assert error_flash(s) =~ "permission to send"
+      assert Newsletters.get_broadcast!(broadcast.uuid).status == "sending"
+
+      allowed =
+        scope_with(["newsletters", "newsletters.send"])
+        |> details(broadcast)
+        |> Phoenix.Component.assign(:confirm_action, :cancel_broadcast)
+
+      {:noreply, _} = BroadcastDetails.handle_event("confirm_action", %{}, allowed)
+      assert Newsletters.get_broadcast!(broadcast.uuid).status == "cancelled"
+    end
+
     test "retrying a failed send needs newsletters.send" do
       broadcast = broadcast_with_delivery()
       {:ok, broadcast} = Newsletters.update_broadcast(broadcast, %{status: "failed"})
