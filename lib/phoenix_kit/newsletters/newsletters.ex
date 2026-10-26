@@ -16,6 +16,7 @@ defmodule PhoenixKit.Newsletters do
   require Logger
 
   alias PhoenixKit.Dashboard.Tab
+  alias PhoenixKit.Newsletters.PermissionBackfill
   alias PhoenixKit.Settings
 
   # ============================================================================
@@ -57,8 +58,51 @@ defmodule PhoenixKit.Newsletters do
       key: "newsletters",
       label: "Newsletters",
       icon: "📨",
-      description: "Email broadcasts and subscription management"
+      description: "Email broadcasts and subscription management",
+      # The base key used to let its holder send a broadcast to any audience
+      # and read every recipient's address. Those rights are split out here;
+      # Admin gets them from core's boot-time auto-grant, Owner through "*",
+      # and `migrate_legacy/0` carries every other role that already held
+      # `newsletters`, so nobody loses access.
+      sub_permissions: [
+        %{
+          key: "send",
+          label: "Send broadcasts",
+          description: "Send a broadcast now, schedule it, or retry a failed send"
+        },
+        %{
+          key: "audiences",
+          label: "See recipients",
+          description:
+            "See the recipient addresses of a broadcast and use the address verification page"
+        }
+      ]
     }
+  end
+
+  # One flag per sub-key, so a later split gets its own pass.
+  @sub_key_backfills [
+    {"newsletters.send", "newsletters_send_backfilled"},
+    {"newsletters.audiences", "newsletters_audiences_backfilled"}
+  ]
+
+  @doc """
+  One-time data repairs, run by core at every boot.
+
+  Grants each sub-permission split out of the base `newsletters` key
+  (`newsletters.send`, `newsletters.audiences`) once to every role that
+  already holds `newsletters`, so the split takes nothing away. Each pass has
+  its own flag and is retried on the next boot when it did not finish; see
+  `PhoenixKit.Newsletters.PermissionBackfill`.
+  """
+  @impl PhoenixKit.Module
+  def migrate_legacy do
+    results =
+      Enum.map(@sub_key_backfills, fn {key, flag} ->
+        PermissionBackfill.run(module_key(), key, flag)
+      end)
+
+    Enum.find(results, :ok, &(&1 != :ok))
   end
 
   @impl PhoenixKit.Module
@@ -147,7 +191,7 @@ defmodule PhoenixKit.Newsletters do
         path: "newsletters/verification",
         priority: 523,
         level: :admin,
-        permission: "newsletters",
+        permission: "newsletters.audiences",
         parent: :admin_newsletters,
         match: :prefix,
         live_view: {Web.Verification, :index},

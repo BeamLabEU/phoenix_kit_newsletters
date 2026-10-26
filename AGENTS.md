@@ -38,7 +38,8 @@ work goes through Oban workers.
   priority 520, group `:admin_modules`, permission `"newsletters"`) with
   subtabs Broadcasts (`/broadcasts`), New (`/broadcasts/new`, hidden), Edit
   (`/broadcasts/:id/edit`, hidden), Details (`/broadcasts/:id`, hidden),
-  Layouts (`/layouts`), Address verification (`/verification`), New layout
+  Layouts (`/layouts`), Address verification (`/verification`, permission
+  `"newsletters.audiences"`), New layout
   (`/layouts/new`, hidden), Edit layout (`/layouts/:id/edit`, hidden). One
   user-dashboard tab `:dashboard_newsletters_preferences` (group `:account`,
   absolute path `/newsletters/preferences`, no `live_view`, visible only when
@@ -419,7 +420,28 @@ do not re-add it. Rate control is queue concurrency
 `rate_per_hour`/`rate_per_day`/`pause_seconds`, which
 `Broadcaster.send_interval_seconds/1` turns into per-job scheduling.
 
-Permission: single key `"newsletters"` on every admin tab; no sub-permissions.
+Permissions: base key `"newsletters"` (drafting broadcasts, layouts, the
+broadcast list and its counts) plus two sub-permissions, checked by the
+LiveViews themselves through `PhoenixKit.Newsletters.Access`
+(`Scope.can?/2`, never raw key membership):
+
+| Key | Allows | Checked in |
+|-----|--------|------------|
+| `newsletters.send` | Send now, Schedule, Retry send | `BroadcastEditor` `send_now`/`schedule` (before anything is saved); `BroadcastDetails` `confirm_action` for `:retry_send` |
+| `newsletters.audiences` | Recipient addresses | `BroadcastDetails` loads the delivery list only with it; `Verification` at mount and in its single `handle_event/3` (the tab also carries it) |
+
+A CRM contact list is offered, previewed, saved or sent only when the viewer
+also holds CRM's own `crm` key (`Access.crm_lists?/1`, which also requires
+`CRMSource.available?/0`); without it the editor and the verification page
+offer role audiences only and refuse a crafted `crm_list` source. The worker
+and the scheduled sweep run with no scope and are not gated. Admin gets the
+sub-keys from core's boot auto-grant, Owner through `"*"`; `migrate_legacy/0`
+grants each once to every role that already held `"newsletters"`
+(`PermissionBackfill`, flags `newsletters_send_backfilled` /
+`newsletters_audiences_backfilled`, set only after every grant succeeded so a
+failed pass retries next boot). A role given `"newsletters"` later gets the
+narrow meaning.
+
 PubSub: none.
 
 ## Database & migrations
@@ -498,8 +520,14 @@ verbatim — it is core-owned DDL, not something to fix here.
   `:requires_v158` when absent (every core ≥ 2.0 has it, so in practice both
   tags skip together).
 - `PhoenixKitNewsletters.DataCase` tags `:integration`, checks out the
-  sandbox, and provides `errors_on/1`. Support modules: `DataCase`,
-  `Test.Repo`. LiveView tests call `mount/3`, `handle_params/3` and
+  sandbox, and provides `errors_on/1` and `TestScopes` (`full_scope/1`,
+  `scope_with/2`, `enable_crm/0`). Support modules: `DataCase`,
+  `Test.Repo`. The admin LiveViews read `@phoenix_kit_current_scope`, so a
+  hand-built socket needs one (`full_scope/0` holds every key they check);
+  `test_helper.exs` starts `ModuleRegistry` and registers this module and
+  CRM, because `Scope.can?/2` asks the registry whether a key's module is on,
+  and the dead-render admin `live_session` mounts through the `:admin` hook,
+  which assigns `full_scope/0`. LiveView tests call `mount/3`, `handle_params/3` and
   `handle_event/3` directly on a hand-built `%Phoenix.LiveView.Socket{}`;
   controller tests build a `Plug.Test` conn with a cookie session and
   `fetch_flash`. Those never reach `Phoenix.Controller.render/3`, which a

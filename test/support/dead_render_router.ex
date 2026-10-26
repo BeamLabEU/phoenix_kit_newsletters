@@ -23,7 +23,7 @@ defmodule PhoenixKitNewsletters.Test.DeadRenderRouter do
     pipe_through(:browser)
 
     live_session :newsletters_admin,
-      on_mount: [{PhoenixKitNewsletters.Test.DeadRenderHooks, :default}] do
+      on_mount: [{PhoenixKitNewsletters.Test.DeadRenderHooks, :admin}] do
       live("/broadcasts", Web.Broadcasts, :index, as: :broadcasts_index)
       live("/broadcasts/new", Web.BroadcastEditor, :new, as: :broadcast_new)
       live("/broadcasts/:id/edit", Web.BroadcastEditor, :edit, as: :broadcast_edit)

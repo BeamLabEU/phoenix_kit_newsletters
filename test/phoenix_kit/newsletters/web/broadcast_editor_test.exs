@@ -14,6 +14,12 @@ defmodule PhoenixKit.Newsletters.Web.BroadcastEditorTest do
   alias PhoenixKit.Newsletters.Web.BroadcastEditor
   alias PhoenixKitCRM.Lists
 
+  setup do
+    Newsletters.enable_system()
+    enable_crm()
+    :ok
+  end
+
   defp socket(assigns) do
     base = %{
       subject: "",
@@ -34,6 +40,9 @@ defmodule PhoenixKit.Newsletters.Web.BroadcastEditorTest do
       attachments: [],
       tz: "0",
       tz_label: "UTC+0",
+      crm_available: true,
+      can_send: true,
+      phoenix_kit_current_scope: full_scope(),
       flash: %{},
       __changed__: %{}
     }

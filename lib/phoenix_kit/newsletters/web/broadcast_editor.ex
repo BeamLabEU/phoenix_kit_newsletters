@@ -13,6 +13,7 @@ defmodule PhoenixKit.Newsletters.Web.BroadcastEditor do
   alias PhoenixKit.Newsletters
 
   alias PhoenixKit.Newsletters.{
+    Access,
     Broadcast,
     Broadcaster,
     Content,
@@ -42,6 +43,10 @@ defmodule PhoenixKit.Newsletters.Web.BroadcastEditor do
   @impl true
   def mount(_params, _session, socket) do
     if Newsletters.enabled?() do
+      scope = Access.scope(socket)
+      # CRM lists only for a viewer who also holds the CRM module's key.
+      crm_available = Access.crm_lists?(scope)
+
       socket =
         socket
         |> assign(:page_title, gettext("New broadcast"))
@@ -57,8 +62,9 @@ defmodule PhoenixKit.Newsletters.Web.BroadcastEditor do
         |> assign(:templates, [])
         |> assign(:broadcast, nil)
         |> assign(:subject, "")
-        |> assign(:source_type, "crm_list")
-        |> assign(:crm_available, CRMSource.available?())
+        |> assign(:source_type, if(crm_available, do: "crm_list", else: "user_group"))
+        |> assign(:crm_available, crm_available)
+        |> assign(:can_send, Access.can_send?(scope))
         |> assign(:crm_lists, [])
         |> assign(:crm_list_uuid, "")
         |> assign(:available_roles, [])
@@ -95,7 +101,7 @@ defmodule PhoenixKit.Newsletters.Web.BroadcastEditor do
 
   @impl true
   def handle_params(%{"id" => id}, _url, %{assigns: %{live_action: :edit}} = socket) do
-    crm_lists = CRMSource.list_lists()
+    crm_lists = crm_lists(socket)
     broadcast = Newsletters.get_broadcast!(id)
     templates = load_templates(broadcast.template_uuid)
     socket = socket |> assign_tz() |> assign_preview_languages()
@@ -145,7 +151,7 @@ defmodule PhoenixKit.Newsletters.Web.BroadcastEditor do
   end
 
   def handle_params(_params, _url, socket) do
-    crm_lists = CRMSource.list_lists()
+    crm_lists = crm_lists(socket)
     templates = load_templates(nil)
     default_template_uuid = Layouts.default_layout_uuid()
 
@@ -217,13 +223,46 @@ defmodule PhoenixKit.Newsletters.Web.BroadcastEditor do
   @impl true
   def handle_event("save_draft", params, socket) do
     socket = update_assigns_from_params(socket, params)
-    save_broadcast(socket, "draft")
+
+    with :ok <- authorize_source(socket) do
+      save_broadcast(socket, "draft")
+    end
   end
 
   @impl true
   def handle_event("send_now", params, socket) do
     socket = update_assigns_from_params(socket, params)
 
+    with :ok <- authorize_send(socket),
+         :ok <- authorize_source(socket) do
+      send_now(socket)
+    end
+  end
+
+  @impl true
+  def handle_event("schedule", params, socket) do
+    socket = update_assigns_from_params(socket, params)
+
+    with :ok <- authorize_send(socket),
+         :ok <- authorize_source(socket) do
+      schedule(socket)
+    end
+  end
+
+  @impl true
+  def handle_event("open_attachments_picker", _params, socket) do
+    {:noreply, assign(socket, :show_media_selector, true)}
+  end
+
+  @impl true
+  def handle_event("remove_attachment", %{"uuid" => uuid}, socket) do
+    {:noreply,
+     socket
+     |> assign(:attachments, Enum.reject(socket.assigns.attachments, &(&1 == uuid)))
+     |> load_attachment_files()}
+  end
+
+  defp send_now(socket) do
     case save_broadcast_and_return(socket) do
       {:ok, broadcast} ->
         case Broadcaster.send(broadcast) do
@@ -243,10 +282,7 @@ defmodule PhoenixKit.Newsletters.Web.BroadcastEditor do
     end
   end
 
-  @impl true
-  def handle_event("schedule", params, socket) do
-    socket = update_assigns_from_params(socket, params)
-
+  defp schedule(socket) do
     case socket.assigns.scheduled_at do
       "" ->
         {:noreply, put_flash(socket, :error, gettext("Please select a schedule date and time"))}
@@ -261,19 +297,6 @@ defmodule PhoenixKit.Newsletters.Web.BroadcastEditor do
              put_flash(socket, :error, gettext("Please select a valid schedule date and time"))}
         end
     end
-  end
-
-  @impl true
-  def handle_event("open_attachments_picker", _params, socket) do
-    {:noreply, assign(socket, :show_media_selector, true)}
-  end
-
-  @impl true
-  def handle_event("remove_attachment", %{"uuid" => uuid}, socket) do
-    {:noreply,
-     socket
-     |> assign(:attachments, Enum.reject(socket.assigns.attachments, &(&1 == uuid)))
-     |> load_attachment_files()}
   end
 
   @impl true
@@ -316,6 +339,35 @@ defmodule PhoenixKit.Newsletters.Web.BroadcastEditor do
   def handle_info(_msg, socket), do: {:noreply, socket}
 
   # --- Private ---
+
+  # Sending, scheduling and retrying need `newsletters.send`; the buttons are
+  # hidden without it, and a crafted submit is refused here.
+  defp authorize_send(socket) do
+    if Access.can_send?(Access.scope(socket)) do
+      :ok
+    else
+      {:noreply,
+       put_flash(socket, :error, gettext("You don't have permission to send broadcasts"))}
+    end
+  end
+
+  # A CRM list is saved, sent or previewed only for a viewer who also holds
+  # the CRM module's key — the form never offers one otherwise, so this
+  # refuses a crafted `source_type`/`crm_list_uuid` and an existing CRM-list
+  # broadcast opened by someone without it.
+  defp authorize_source(%{assigns: %{source_type: "crm_list"}} = socket) do
+    if Access.crm_lists?(Access.scope(socket)) do
+      :ok
+    else
+      {:noreply, put_flash(socket, :error, gettext("You don't have permission to use CRM lists"))}
+    end
+  end
+
+  defp authorize_source(_socket), do: :ok
+
+  defp crm_lists(socket) do
+    if Access.crm_lists?(Access.scope(socket)), do: CRMSource.list_lists(), else: []
+  end
 
   # The active layouts, plus the broadcast's own when it has been archived
   # since — otherwise the select would silently show "standard layout" and
@@ -389,7 +441,8 @@ defmodule PhoenixKit.Newsletters.Web.BroadcastEditor do
   # user_group preflight whenever the role selection changes; nil/false
   # for anything else — either source with nothing picked yet.
   defp assign_preflight(
-         %{assigns: %{source_type: "crm_list", crm_list_uuid: crm_list_uuid}} = socket
+         %{assigns: %{source_type: "crm_list", crm_list_uuid: crm_list_uuid, crm_available: true}} =
+           socket
        )
        when is_binary(crm_list_uuid) and crm_list_uuid != "" do
     # One fetch feeds both the archived warning and the stranded-option

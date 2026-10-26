@@ -22,6 +22,7 @@ defmodule PhoenixKit.Newsletters.Web.BroadcastDetailsTest do
 
   setup do
     Newsletters.enable_system()
+    enable_crm()
     :ok
   end
 
@@ -80,6 +81,7 @@ defmodule PhoenixKit.Newsletters.Web.BroadcastDetailsTest do
         crm_preflight: nil,
         user_group_preflight: nil,
         page_title: "",
+        phoenix_kit_current_scope: full_scope(),
         __changed__: %{}
       }
     }

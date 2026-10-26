@@ -35,6 +35,18 @@ repo_available =
     # reason.
     {:ok, _pid} = PhoenixKit.PubSub.Manager.start_link([])
 
+    # `Scope.can?/2` asks the module registry whether a key's module is on,
+    # and `grant_permission/3` validates keys against it: the permission
+    # checks (`newsletters.send`, `newsletters.audiences`, CRM's `crm`) need
+    # both modules registered.
+    {:ok, _pid} = PhoenixKit.ModuleRegistry.start_link([])
+
+    for mod <- [PhoenixKit.Newsletters, PhoenixKitCRM],
+        Code.ensure_loaded?(mod),
+        mod not in PhoenixKit.ModuleRegistry.all_modules() do
+      :ok = PhoenixKit.ModuleRegistry.register(mod)
+    end
+
     # Endpoint behind the dead-render tests (test/support/dead_render_*.ex).
     {:ok, _pid} = PhoenixKitNewsletters.Test.DeadRenderEndpoint.start_link()
     true

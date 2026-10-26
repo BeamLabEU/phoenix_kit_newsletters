@@ -8,6 +8,15 @@ defmodule PhoenixKitNewsletters.Test.DeadRenderHooks do
 
   import Phoenix.Component, only: [assign: 3]
 
+  # The admin pages check `newsletters.send` / `newsletters.audiences`, so
+  # they get a scope holding every key; the public pages get no one.
+  def on_mount(:admin, params, session, socket) do
+    {:cont, socket} = on_mount(:default, params, session, socket)
+
+    {:cont,
+     assign(socket, :phoenix_kit_current_scope, PhoenixKitNewsletters.TestScopes.full_scope())}
+  end
+
   def on_mount(:default, _params, _session, socket) do
     {:cont,
      socket

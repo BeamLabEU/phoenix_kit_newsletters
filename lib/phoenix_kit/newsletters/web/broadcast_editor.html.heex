@@ -254,6 +254,7 @@
                the role checkboxes on send/schedule — see the "submit"
                handler's comment. --%>
           <button
+            :if={@can_send}
             type="submit"
             name="action"
             value="send_now"
@@ -263,7 +264,7 @@
             <.icon name="hero-paper-airplane" class="w-4 h-4" /> {gettext("Send now")}
           </button>
 
-          <div class="flex flex-col items-end gap-1 ml-auto">
+          <div :if={@can_send} class="flex flex-col items-end gap-1 ml-auto">
             <div class="flex items-center gap-2">
               <input
                 type="datetime-local"
