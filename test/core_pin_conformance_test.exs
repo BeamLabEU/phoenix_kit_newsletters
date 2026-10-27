@@ -19,8 +19,8 @@ defmodule PhoenixKitNewsletters.CorePinConformanceTest do
   as before.
   """
 
-  @must_admit ["2.52.0", "2.52.1", "2.99.4"]
-  @must_reject ["1.7.189", "1.9.4", "2.0.0", "2.48.0", "2.51.9", "3.0.0"]
+  @must_admit ["2.65.0", "2.65.1", "2.99.4", "3.0.0", "3.9.9"]
+  @must_reject ["1.7.189", "1.9.4", "2.0.0", "2.48.0", "2.51.9", "2.64.9", "4.0.0"]
 
   test "the :phoenix_kit requirement admits every core 2.x from 2.52 and nothing else" do
     requirement = core_requirement()

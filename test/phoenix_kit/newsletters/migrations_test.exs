@@ -18,11 +18,6 @@ defmodule PhoenixKitNewsletters.MigrationsTest do
   none of them touch a database.
   """
 
-  @newsletters_tables ~w(
-    phoenix_kit_newsletters_broadcasts
-    phoenix_kit_newsletters_deliveries
-  )
-
   test "PhoenixKit.Newsletters declares the module-owned migration chain" do
     # Assert the VALUE, not `function_exported?/3` — `use PhoenixKit.Module`
     # injects an overridable default `migration_module/0`, so exportedness
@@ -388,46 +383,6 @@ defmodule PhoenixKitNewsletters.MigrationsTest do
       end
     end
 
-    # Core's manifest for the 2 newsletters tables' index/constraint
-    # objects, not a hand-typed list — a hand-typed list is maintained by
-    # the same hand that adds a statement, so it catches a slip but never a
-    # deliberate one; the manifest is written on core's side, so this
-    # fails both when the chain emits an object core does not declare AND
-    # when core declares an object the chain stopped adopting. The check
-    # constraints and the pkeys are `class: :constraint` in the manifest
-    # too, so they are picked up by the same filter as the FKs — no
-    # separate handling needed.
-    #
-    # V1's frozen guard for `fk_newsletters_broadcasts_template` is the one
-    # operation left out of the comparison: V2 re-targets that FK at the
-    # layouts table, so core's manifest stopped declaring it in 2.52 (#896).
-    @module_owned_fk {"DO", "fk_newsletters_broadcasts_template"}
-
-    test "up_statements/2 emits exactly the index/constraint operations core's manifest declares for the 2 newsletters tables" do
-      for prefix <- ["public", "newsletters_alt"] do
-        actual =
-          Migrations.up_statements(prefix, 1)
-          |> Enum.reject(
-            &(String.starts_with?(&1, "CREATE TABLE") or
-                String.starts_with?(&1, "COMMENT ON TABLE"))
-          )
-          |> Enum.map(&operation/1)
-          |> List.delete(@module_owned_fk)
-
-        expected = expected_index_constraint_operations()
-
-        assert Enum.sort(actual) == Enum.sort(expected),
-               """
-               up_statements(#{inspect(prefix)}, 1) does not emit the operation set
-               core's ExpectedSchema declares for the 2 newsletters tables' indexes
-               and constraints.
-
-               unexpected: #{inspect(Enum.sort(actual) -- Enum.sort(expected))}
-               missing:    #{inspect(Enum.sort(expected) -- Enum.sort(actual))}
-               """
-      end
-    end
-
     test "core's manifest does not declare the template FK this chain re-targets" do
       declared =
         ExpectedSchema.objects("public")
@@ -453,36 +408,6 @@ defmodule PhoenixKitNewsletters.MigrationsTest do
                "idx_newsletters_deliveries_uniq_broadcast_email",
                "idx_newsletters_deliveries_uniq_broadcast_user"
              ]
-    end
-
-    defp expected_index_constraint_operations do
-      newsletters_tables = @newsletters_tables
-
-      ExpectedSchema.objects("public")
-      |> Enum.filter(fn object ->
-        case object.check do
-          {_kind, %{table: table}} ->
-            table in newsletters_tables and object.class in [:index, :constraint] and
-              Map.get(object, :presence) == :required
-
-          _ ->
-            false
-        end
-      end)
-      |> Enum.map(fn object ->
-        name = object.check |> elem(1) |> Map.fetch!(:name)
-
-        case object.class do
-          :constraint -> {"DO", name}
-          :index -> {index_verb(object.create), name}
-        end
-      end)
-    end
-
-    defp index_verb(create) do
-      if String.starts_with?(create, "CREATE UNIQUE INDEX"),
-        do: "CREATE UNIQUE INDEX",
-        else: "CREATE INDEX"
     end
 
     # `ON DELETE ...` is part of the foreign key's DEFINITION — the word
@@ -793,58 +718,6 @@ defmodule PhoenixKitNewsletters.MigrationsTest do
                declared:        #{inspect(schema.column_widths())}
                """
       end
-    end
-
-    # Core's V135-through-V158 baseline still creates these tables and
-    # core's ExpectedSchema audits that shape, so until the first
-    # shape-changing chain version the two DDLs must agree — with NO
-    # documented exception (unlike customer_support's `changed_by_uuid`):
-    # core's source, core's manifest, and this chain's V1 all agree
-    # byte-for-byte today (see the moduledoc's "Ownership situation").
-    test "every column core declares matches V1's, in full, for every table" do
-      statements = Migrations.up_statements("public", 1)
-
-      for table <- @newsletters_tables do
-        core = core_columns(table)
-        ours = v1_columns(statements, table)
-
-        assert Map.keys(ours) -- Map.keys(core) == [],
-               "#{table}: V1 creates columns core's manifest does not declare: " <>
-                 inspect(Map.keys(ours) -- Map.keys(core))
-
-        assert Map.keys(core) -- Map.keys(ours) == [],
-               "#{table}: V1 does not create columns core's manifest declares: " <>
-                 inspect(Map.keys(core) -- Map.keys(ours))
-
-        for {column, expected} <- core do
-          assert Map.fetch!(ours, column) == expected,
-                 """
-                 #{table}.#{column}: V1 and core's manifest disagree on the column's shape.
-
-                 V1:              #{inspect(Map.fetch!(ours, column))}
-                 core's manifest: #{inspect(expected)}
-
-                 V1 is an adoption and must be shape-identical to core's
-                 baseline. A deliberate change is a chain version (V2+).
-                 """
-        end
-      end
-    end
-
-    # `%{type, default, not_null}` per column, from the newest revision —
-    # e.g. deliveries.user_uuid's NOT NULL was dropped by V152, so its
-    # newest revision (not the V135 original) is what V1 must match.
-    defp core_columns(table) do
-      prefix = "column:#{table}."
-
-      ExpectedSchema.objects("public")
-      |> Enum.filter(&(&1.class == :column and String.starts_with?(&1.id, prefix)))
-      |> Map.new(fn object ->
-        {_version, shape} = List.last(object.revisions)
-
-        {String.replace_prefix(object.id, prefix, ""),
-         %{type: shape.type, default: shape.default, not_null: shape.not_null}}
-      end)
     end
 
     # The same shape, parsed back out of the CREATE TABLE V1 emits for

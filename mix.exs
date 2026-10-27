@@ -65,7 +65,9 @@ defmodule PhoenixKitNewsletters.MixProject do
       # longer declares `fk_newsletters_broadcasts_template` (#896), the FK
       # migration V2 re-targets at the layouts table — see
       # `PhoenixKitNewsletters.Migrations`' moduledoc ("Core's manifest").
-      {:phoenix_kit, "~> 2.52"},
+      # Floor 2.65.0: the first core with the `file_references/0` and `expected_schema/0`
+      # callbacks this module implements (`@impl`). The ceiling is open through core 3.x.
+      {:phoenix_kit, ">= 2.65.0 and < 4.0.0"},
       # `PhoenixKit.Templates.Substitution` is called directly (the one
       # substitution pass a broadcast gets), so it is declared rather than
       # reached through core.

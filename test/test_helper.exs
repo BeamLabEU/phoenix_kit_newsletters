@@ -11,6 +11,13 @@ repo_available =
     {:ok, _} = PhoenixKitNewsletters.Test.Repo.start_link()
     PhoenixKit.Migration.ensure_current(PhoenixKitNewsletters.Test.Repo, log: false)
 
+    # The tables other modules own (core 3.0 no longer creates them): their real
+    # chains, in dependency order.
+    for chain <- [PhoenixKitCRM.Migrations],
+        stmt <- chain.up_statements("public") do
+      PhoenixKitNewsletters.Test.Repo.query!(stmt)
+    end
+
     # This module's own chain (PhoenixKitNewsletters.Migrations) stamps
     # phoenix_kit_newsletters_broadcasts with pknl_schema:1 on top of what
     # core's chain above already created — every test run starts from a
