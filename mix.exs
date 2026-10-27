@@ -1,7 +1,7 @@
 defmodule PhoenixKitNewsletters.MixProject do
   use Mix.Project
 
-  @version "0.5.0"
+  @version "0.6.0"
   @source_url "https://github.com/BeamLabEU/phoenix_kit_newsletters"
 
   def project do
@@ -96,7 +96,7 @@ defmodule PhoenixKitNewsletters.MixProject do
       # test suite can build real fixtures instead of only covering the
       # "CRM not installed" degrade path. The contact-lists feature
       # (Lists/ContactList/ListMember) shipped upstream in 0.3.0.
-      {:phoenix_kit_crm, "~> 0.6", only: :test},
+      {:phoenix_kit_crm, "~> 0.18", only: :test},
 
       # Test-only — `EmailVerification` reaches the address-verification
       # engine (`PhoenixKit.Modules.Emails.Verification`) through
@@ -112,7 +112,7 @@ defmodule PhoenixKitNewsletters.MixProject do
   # requirement. Test-only either way, so publish and CI resolve the Hex pin.
   defp emails_test_dep do
     case System.get_env("PHOENIX_KIT_EMAILS_PATH") do
-      nil -> {:phoenix_kit_emails, "~> 0.5", only: :test}
+      nil -> {:phoenix_kit_emails, "~> 0.7", only: :test}
       path -> {:phoenix_kit_emails, path: path, override: true, only: :test}
     end
   end
