@@ -32,6 +32,10 @@ defmodule PhoenixKit.Newsletters.EmailVerification do
 
   @engine_key :email_verification_engine
 
+  # An absolute path of this site: a `/`, then no second `/` or backslash right
+  # after it, then no backslash, control character or white space at all.
+  @site_path ~r{\A/(?![/\\])[^\\[:cntrl:]\s]*\z}
+
   @type summary :: VerificationEngine.summary()
 
   @doc """
@@ -134,14 +138,15 @@ defmodule PhoenixKit.Newsletters.EmailVerification do
 
   @doc """
   The path of the engine's own settings page, or `nil` when the engine has none
-  (or has no `settings_path/0`, or answers something that is not an absolute path
-  of this site: a link built from the answer must not leave it).
+  (or has no `settings_path/0`, or answers anything but an absolute path of this
+  site without backslashes, control characters and white space). A browser reads
+  `/\\host`, and a `/` followed by a tab, a newline or a carriage return and another
+  `/`, as a link to another host; a link built from the answer must not carry them.
   """
   @spec settings_path() :: String.t() | nil
   def settings_path do
     case call(:settings_path, [], nil) do
-      "//" <> _ -> nil
-      "/" <> _ = path -> path
+      path when is_binary(path) -> if Regex.match?(@site_path, path), do: path
       _ -> nil
     end
   end

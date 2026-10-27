@@ -342,8 +342,37 @@ defmodule PhoenixKit.Newsletters.EmailVerificationTest do
       assert EmailVerification.settings_path() == "/admin/verification/settings"
     end
 
-    test "settings_path/0 passes on only a path of this site" do
-      for value <- [nil, "", "settings", "https://example.com/settings", "//example.com", 42] do
+    test "settings_path/0 passes on any absolute path of this site" do
+      for value <- ["/", "/admin/verification/settings", "/admin/x?tab=smtp&a=b%20c", "/x#runner"] do
+        Fake.put(:settings_path, value)
+        assert EmailVerification.settings_path() == value, inspect(value)
+      end
+    end
+
+    test "settings_path/0 passes on nothing a browser could read as another site" do
+      refused = [
+        nil,
+        42,
+        "",
+        "settings",
+        " /x",
+        "https://example.com/settings",
+        "//example.com",
+        # A browser drops a tab, a newline and a carriage return anywhere in a URL
+        # and reads a backslash as a slash: each of these is `//example.com` to it.
+        "/\\example.com",
+        "/\t/example.com",
+        "/\n/example.com",
+        "/\r/example.com",
+        "/x\\y",
+        "/x\ty",
+        "/x y",
+        "/x\0y",
+        "/x\x7fy",
+        "/x\n"
+      ]
+
+      for value <- refused do
         Fake.put(:settings_path, value)
         assert EmailVerification.settings_path() == nil, inspect(value)
       end

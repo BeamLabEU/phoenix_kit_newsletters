@@ -390,7 +390,8 @@ exist with this API, so change them only additively (a new callback goes in
   online (`EmailVerification.smtp_runner_waiting?/0`, re-read every 10 s while a
   batch runs) a hint that links to the engine's own settings page when it has
   one (the optional `settings_path/0`, passed on only as an absolute path of this
-  site) and is plain text when it has not: the runner is configured on the
+  site without backslashes, control characters and white space: a browser reads
+  `/\host` and `/<tab>/host` as another host) and is plain text when it has not: the runner is configured on the
   engine's page, so there is no core page to fall back to. The soft bridge masks
   addresses in its log lines and in the message of `{:engine_error, msg}`.
 

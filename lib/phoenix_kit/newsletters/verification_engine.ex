@@ -227,8 +227,8 @@ defmodule PhoenixKit.Newsletters.VerificationEngine do
   The path of the engine's own settings page (for example
   `PhoenixKit.Utils.Routes.path("/admin/verification/settings")`), or `nil` when
   it has none. The page links to it from the SMTP-runner hint; only an absolute
-  path of this site (starting with a single `/`) is used. Optional; read as `nil`
-  without it.
+  path of this site without backslashes, control characters and white space is
+  used (anything else reads as `nil`). Optional; read as `nil` without it.
   """
   @callback settings_path() :: String.t() | nil
 
