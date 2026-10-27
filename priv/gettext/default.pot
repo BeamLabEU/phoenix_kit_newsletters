@@ -993,12 +993,12 @@ msgstr[1] ""
 
 #: lib/phoenix_kit/newsletters/web/verification.html.heex:24
 #, elixir-autogen, elixir-format
-msgid "Address verification is switched off. The Emails module requires the setting email_verify_enabled to be on."
+msgid "Address verification is switched off. The verification engine has to be switched on for this page to work."
 msgstr ""
 
 #: lib/phoenix_kit/newsletters/web/verification.html.heex:15
 #, elixir-autogen, elixir-format
-msgid "Address verification needs the Emails module. Install phoenix_kit_emails (a release that includes verification) and enable it, then come back."
+msgid "The address verification engine is not configured. Set :email_verification_engine for :phoenix_kit_newsletters to an engine module in the host application's configuration, then come back."
 msgstr ""
 
 #: lib/phoenix_kit/newsletters/web/verification.html.heex:42
@@ -1150,7 +1150,7 @@ msgstr ""
 
 #: lib/phoenix_kit/newsletters/web/verification.ex:458
 #, elixir-autogen, elixir-format
-msgid "The Emails module is not available"
+msgid "The address verification engine is not available"
 msgstr ""
 
 #: lib/phoenix_kit/newsletters/web/verification.ex:450
@@ -1165,7 +1165,7 @@ msgstr ""
 
 #: lib/phoenix_kit/newsletters/web/verification.html.heex:34
 #, elixir-autogen, elixir-format
-msgid "The host's Oban configuration has no email_verification queue, so a started batch would never run. Add the queue (for example email_verification: 5) to the Oban queues of the host application."
+msgid "The host's Oban configuration does not declare the queue the verification engine runs its batches in, so a started batch would never run. Add that queue (its name is in the engine's documentation) to the Oban queues of the host application."
 msgstr ""
 
 #: lib/phoenix_kit/newsletters/web/verification.html.heex:164
@@ -1210,7 +1210,7 @@ msgstr ""
 
 #: lib/phoenix_kit/newsletters/web/verification.ex:462
 #, elixir-autogen, elixir-format
-msgid "The verification failed to start: the Emails module reported an error"
+msgid "The verification failed to start: the verification engine reported an error"
 msgstr ""
 
 #: lib/phoenix_kit/newsletters/web/verification.ex:459
@@ -1272,7 +1272,7 @@ msgstr ""
 
 #: lib/phoenix_kit/newsletters/web/verification.html.heex:154
 #, elixir-autogen, elixir-format
-msgid "SMTP is waiting for the runner - see Settings → Emails"
+msgid "SMTP is waiting for the runner - see the email sending settings"
 msgstr ""
 
 #: lib/phoenix_kit/newsletters/web/verification.ex:490

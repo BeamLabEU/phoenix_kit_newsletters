@@ -1,8 +1,9 @@
 defmodule PhoenixKit.Newsletters.EmailVerificationTest do
   @moduledoc """
-  The soft bridge to the Emails module's verification engine: with the engine
-  absent, with an engine that breaks, with a scripted stand-in, and (tagged,
-  skipped when `phoenix_kit_emails` has no engine) with the real one.
+  The soft bridge to the host-configured verification engine: with no engine
+  configured, with a configured module that is not an engine, with an engine
+  that breaks, with an engine that implements only the required callbacks, and
+  with a scripted stand-in that implements all of them.
   """
 
   use PhoenixKitNewsletters.DataCase, async: false
@@ -19,9 +20,9 @@ defmodule PhoenixKit.Newsletters.EmailVerificationTest do
     on_exit(fn -> Application.delete_env(:phoenix_kit_newsletters, @engine_key) end)
   end
 
-  describe "without the engine" do
+  describe "without an engine configured" do
     setup do
-      use_engine(PhoenixKit.Modules.Emails.NoSuchVerification)
+      Application.delete_env(:phoenix_kit_newsletters, @engine_key)
     end
 
     test "reads are neutral" do
@@ -50,10 +51,41 @@ defmodule PhoenixKit.Newsletters.EmailVerificationTest do
       assert EmailVerification.subscribe_batch(Ecto.UUID.generate()) == {:error, :unavailable}
     end
 
+    test "there is no default engine to fall back on" do
+      assert Application.get_env(:phoenix_kit_newsletters, @engine_key) == nil
+      refute EmailVerification.available?()
+    end
+  end
+
+  describe "with a configuration that names no engine" do
+    test "a module that is not loaded is not an engine" do
+      use_engine(PhoenixKitNewsletters.Test.NoSuchEngine)
+
+      refute EmailVerification.available?()
+      refute EmailVerification.enabled?()
+      assert EmailVerification.results_for(["a@x.com"]) == %{}
+
+      assert EmailVerification.start_batch(["a@x.com"], "newsletters_crm_list", "ref") ==
+               {:error, :unavailable}
+    end
+
     test "a module without the engine's functions is not an engine" do
       use_engine(Enum)
       refute EmailVerification.available?()
       assert EmailVerification.results_for(["a@x.com"]) == %{}
+    end
+
+    test "a value that is not a module name reads as no engine, not as a crash" do
+      for value <- ["PhoenixKit.Whatever", 42, [:not, :a, :module], %{}] do
+        use_engine(value)
+
+        refute EmailVerification.available?(), inspect(value)
+        assert EmailVerification.results_for(["a@x.com"]) == %{}, inspect(value)
+
+        assert EmailVerification.start_batch(["a@x.com"], "newsletters_crm_list", "ref") ==
+                 {:error, :unavailable},
+               inspect(value)
+      end
     end
   end
 
@@ -197,6 +229,58 @@ defmodule PhoenixKit.Newsletters.EmailVerificationTest do
     end
   end
 
+  describe "with an engine that implements only the required callbacks" do
+    defmodule Minimal do
+      @behaviour PhoenixKit.Newsletters.VerificationEngine
+
+      @impl true
+      def verify(_email, _opts), do: {:ok, %{status: "valid"}}
+      @impl true
+      def enabled?, do: true
+      @impl true
+      def queue_configured?, do: true
+      @impl true
+      def results_for(emails), do: Map.new(emails, &{&1, %{status: "valid", reason: nil}})
+      @impl true
+      def summary(emails),
+        do: %{valid: length(emails), invalid: 0, temp: 0, not_sure: 0, unchecked: 0}
+
+      @impl true
+      def start_batch(emails, _type, _ref, _opts), do: {:ok, %{uuid: "b", total: length(emails)}}
+      @impl true
+      def latest_batch(_type, _ref), do: nil
+      @impl true
+      def get_batch(_uuid), do: nil
+      @impl true
+      def subscribe_batch(_uuid), do: :ok
+      @impl true
+      def max_batch_size, do: 10
+    end
+
+    setup do
+      use_engine(Minimal)
+    end
+
+    test "is an engine, and the required callbacks are forwarded" do
+      assert EmailVerification.available?()
+      assert EmailVerification.enabled?()
+      assert EmailVerification.queue_configured?()
+      assert EmailVerification.max_batch_size() == 10
+      assert EmailVerification.subscribe_batch("u") == :ok
+    end
+
+    test "the optional callbacks it lacks read as neutral values" do
+      assert EmailVerification.smtp_mode() == "off"
+      assert EmailVerification.runner_status() == nil
+      refute EmailVerification.smtp_runner_waiting?()
+    end
+
+    test "statuses_for/1 falls back to results_for/1" do
+      assert EmailVerification.statuses_for(["a@x.com"]) ==
+               %{"a@x.com" => %{status: "valid", reason: nil}}
+    end
+  end
+
   describe "with a scripted engine" do
     setup do
       use_engine(Fake)
@@ -275,77 +359,6 @@ defmodule PhoenixKit.Newsletters.EmailVerificationTest do
 
       assert EmailVerification.start_batch(["a@x.com"], "newsletters_crm_list", "r") ==
                {:error, :too_many_emails}
-    end
-  end
-
-  describe "with the real engine" do
-    @describetag :requires_emails_verification
-
-    # Not an alias: without the engine in the build the module does not exist, and a
-    # literal call would be a compile warning in a suite that skips these tests.
-    defp engine, do: Module.concat(["PhoenixKit.Modules.Emails.Verification"])
-
-    test "is available and enabled by default, and reports the Oban queue honestly" do
-      assert EmailVerification.available?()
-      assert EmailVerification.enabled?()
-      # The test host declares no Oban queues of its own.
-      refute EmailVerification.queue_configured?()
-    end
-
-    test "results_for/1 and summary/1 read what the engine stored" do
-      {:ok, _} = engine().verify("someone@example.com")
-      {:ok, _} = engine().verify("not-an-address")
-
-      emails = ["someone@example.com", "never-checked@example.com"]
-
-      assert %{"someone@example.com" => %{status: "not_sure", level: "mx"}} =
-               EmailVerification.results_for(emails)
-
-      assert EmailVerification.summary(emails) ==
-               %{valid: 0, invalid: 0, temp: 0, not_sure: 1, unchecked: 1}
-    end
-
-    test "statuses_for/1 reads the stored status and reason without the step log" do
-      {:ok, _} = engine().verify("someone@example.com")
-
-      assert %{"someone@example.com" => info} =
-               map = EmailVerification.statuses_for(["someone@example.com", "never@example.com"])
-
-      assert %{status: "not_sure", level: "mx"} = info
-      refute Map.has_key?(info, :log)
-      refute Map.has_key?(map, "never@example.com")
-    end
-
-    test "start_batch/4, latest_batch/2 and get_batch/1 round-trip through the engine" do
-      start_supervised!(
-        {Oban,
-         repo: PhoenixKitNewsletters.Test.Repo, testing: :manual, queues: [], plugins: false}
-      )
-
-      assert {:ok, batch} =
-               EmailVerification.start_batch(
-                 ["a@example.com", "b@example.com"],
-                 "newsletters_crm_list",
-                 "list-1"
-               )
-
-      assert batch.total == 2
-      assert EmailVerification.latest_batch("newsletters_crm_list", "list-1").uuid == batch.uuid
-      assert EmailVerification.get_batch(batch.uuid).uuid == batch.uuid
-      assert EmailVerification.latest_batch("newsletters_crm_list", "other") == nil
-      assert EmailVerification.subscribe_batch(batch.uuid) == :ok
-    end
-
-    @tag :requires_emails_smtp
-    test "the SMTP stage is off by default and the runner never connected" do
-      assert EmailVerification.smtp_mode() == "off"
-      assert %{state: :never_connected} = EmailVerification.runner_status()
-      refute EmailVerification.smtp_runner_waiting?()
-    end
-
-    test "start_batch/4 with nothing to verify is the engine's own error" do
-      assert EmailVerification.start_batch([], "newsletters_crm_list", "r") ==
-               {:error, :no_emails}
     end
   end
 end

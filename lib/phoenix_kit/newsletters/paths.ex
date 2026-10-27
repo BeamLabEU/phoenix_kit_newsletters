@@ -25,7 +25,8 @@ defmodule PhoenixKit.Newsletters.Paths do
     end
   end
 
-  # Core settings page where the Emails module's SMTP runner section lives
+  # Core's email sending settings page; modules contribute their own sections to
+  # it (a verification engine's SMTP runner among them)
   def email_sending_settings, do: Routes.path("/admin/settings/email-sending")
 
   # Public

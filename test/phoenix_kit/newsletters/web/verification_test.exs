@@ -3,8 +3,7 @@ defmodule PhoenixKit.Newsletters.Web.VerificationTest do
   The address-verification page, driven callback by callback on a hand-built
   socket (see `BroadcastsTest` for why), with the engine replaced by
   `FakeVerificationEngine` so the tests are about this page: what it resolves,
-  what it asks the engine for, what it shows. The real engine is exercised
-  by the `:requires_emails_verification` tests at the end.
+  what it asks the engine for, what it shows.
   """
 
   use PhoenixKitNewsletters.DataCase, async: false
@@ -120,19 +119,42 @@ defmodule PhoenixKit.Newsletters.Web.VerificationTest do
       assert mounted().assigns.engine == :disabled
     end
 
-    test "the engine state is :unavailable when the Emails module is absent" do
-      Application.put_env(:phoenix_kit_newsletters, @engine_key, PhoenixKit.Modules.Emails.Nope)
+    test "the engine state is :unavailable when no engine is configured" do
+      Application.delete_env(:phoenix_kit_newsletters, @engine_key)
       assert mounted().assigns.engine == :unavailable
+    end
+
+    test "the engine state is :unavailable when the configured module is not there" do
+      Application.put_env(:phoenix_kit_newsletters, @engine_key, PhoenixKitNewsletters.Test.Nope)
+      assert mounted().assigns.engine == :unavailable
+    end
+
+    test "without an engine the page state is empty and neutral" do
+      Application.delete_env(:phoenix_kit_newsletters, @engine_key)
+      socket = mounted()
+
+      refute socket.assigns.queue_configured
+      assert socket.assigns.summary == nil
+      assert socket.assigns.rows == []
     end
   end
 
   describe "degraded states" do
-    test "an alert explains that the Emails module is required" do
-      Application.put_env(:phoenix_kit_newsletters, @engine_key, PhoenixKit.Modules.Emails.Nope)
+    test "an alert says that no verification engine is configured" do
+      Application.delete_env(:phoenix_kit_newsletters, @engine_key)
       html = socket() |> mounted() |> then(&visit(%{}, &1)) |> render_page()
 
       assert html =~ ~s(id="verification-unavailable")
-      assert html =~ "needs the Emails module"
+      assert html =~ "verification engine is not configured"
+      assert html =~ ":email_verification_engine"
+      refute html =~ "verification-audience-form"
+    end
+
+    test "the same alert for a configured module that is not there" do
+      Application.put_env(:phoenix_kit_newsletters, @engine_key, PhoenixKitNewsletters.Test.Nope)
+      html = socket() |> mounted() |> then(&visit(%{}, &1)) |> render_page()
+
+      assert html =~ ~s(id="verification-unavailable")
       refute html =~ "verification-audience-form"
     end
 
@@ -141,6 +163,7 @@ defmodule PhoenixKit.Newsletters.Web.VerificationTest do
       html = mounted() |> then(&visit(%{}, &1)) |> render_page()
 
       assert html =~ ~s(id="verification-disabled")
+      assert html =~ "verification engine has to be switched on"
       refute html =~ "verification-audience-form"
     end
 
@@ -149,7 +172,7 @@ defmodule PhoenixKit.Newsletters.Web.VerificationTest do
       html = mounted() |> then(&visit(%{}, &1)) |> render_page()
 
       assert html =~ ~s(id="verification-queue-warning")
-      assert html =~ "email_verification"
+      assert html =~ "does not declare the queue the verification engine runs its batches in"
       assert html =~ "verification-audience-form"
     end
 
@@ -158,10 +181,31 @@ defmodule PhoenixKit.Newsletters.Web.VerificationTest do
     end
 
     test "an engine that is not there never gets asked for anything" do
-      Application.put_env(:phoenix_kit_newsletters, @engine_key, PhoenixKit.Modules.Emails.Nope)
+      Application.delete_env(:phoenix_kit_newsletters, @engine_key)
       socket = mounted() |> then(&visit(%{"source" => "user_group"}, &1))
       assert socket.assigns.emails == []
       refute_received {:results_for, _}
+    end
+
+    test "with no engine every event answers with a flash, not a crash" do
+      Application.delete_env(:phoenix_kit_newsletters, @engine_key)
+      role = audience(["a@example.com"])
+      socket = visit(%{"source" => "user_group", "roles" => [role.uuid]})
+
+      assert socket.assigns.emails == []
+
+      {:noreply, socket} = Verification.handle_event("start_batch", %{}, socket)
+      assert socket.assigns.flash["error"] =~ "verification engine is not available"
+
+      {:noreply, socket} =
+        Verification.handle_event("filter_status", %{"status" => "valid"}, socket)
+
+      assert {:live, :patch, _} = socket.redirected
+
+      assert {:noreply, _socket} = Verification.handle_info(:refresh_runner, socket)
+
+      assert {:noreply, _socket} =
+               Verification.handle_info({:email_verify_batch, %{uuid: "x"}}, socket)
     end
   end
 
@@ -602,7 +646,7 @@ defmodule PhoenixKit.Newsletters.Web.VerificationTest do
 
       missing = %{socket | assigns: %{socket.assigns | engine: :unavailable}}
       {:noreply, missing} = Verification.handle_event("start_batch", %{}, missing)
-      assert missing.assigns.flash["error"] =~ "not available"
+      assert missing.assigns.flash["error"] =~ "verification engine is not available"
     end
 
     test "says the verification failed to start when the engine raised" do
@@ -613,6 +657,7 @@ defmodule PhoenixKit.Newsletters.Web.VerificationTest do
       {:noreply, socket} = Verification.handle_event("start_batch", %{}, socket)
 
       assert socket.assigns.flash["error"] =~ "failed to start"
+      assert socket.assigns.flash["error"] =~ "verification engine reported an error"
       refute socket.assigns.flash["error"] =~ "not available"
     end
 
@@ -724,7 +769,7 @@ defmodule PhoenixKit.Newsletters.Web.VerificationTest do
       html = render_page(socket)
 
       assert html =~ "SMTP is waiting for the runner"
-      assert html =~ "Settings"
+      assert html =~ "email sending settings"
 
       assert Paths.email_sending_settings() =~
                "/admin/settings/email-sending"
@@ -1021,89 +1066,6 @@ defmodule PhoenixKit.Newsletters.Web.VerificationTest do
       assert html =~ "page=2"
       assert html =~ "status=unchecked"
       assert html =~ "Page 1 of 2"
-    end
-  end
-
-  describe "against the real engine" do
-    @describetag :requires_emails_verification
-
-    # Not an alias: see EmailVerificationTest.
-    defp engine, do: Module.concat(["PhoenixKit.Modules.Emails.Verification"])
-
-    setup do
-      Application.delete_env(:phoenix_kit_newsletters, @engine_key)
-      :ok
-    end
-
-    test "shows the stored verdicts, with the domain-ok badge for an unprobed mailbox" do
-      role = audience(["real-ok@example.com", "real-bad@example.zzzz", "real-new@example.com"])
-      {:ok, _} = engine().verify("real-ok@example.com")
-      {:ok, _} = engine().verify("real-bad@example.zzzz")
-
-      socket = visit(%{"source" => "user_group", "roles" => [role.uuid]})
-
-      assert Map.new(socket.assigns.rows, &{&1.email, &1.status}) == %{
-               "real-ok@example.com" => :not_sure,
-               "real-bad@example.zzzz" => :invalid,
-               "real-new@example.com" => :unchecked
-             }
-
-      assert socket.assigns.summary == %{valid: 0, invalid: 1, temp: 0, not_sure: 1, unchecked: 1}
-      html = render_page(socket)
-      assert html =~ "Domain OK (no SMTP)"
-      assert html =~ "Unknown top-level domain"
-    end
-
-    @tag :requires_emails_smtp
-    test "with the SMTP stage off the page offers no runner hint and no waiting count" do
-      role = audience(["real-ok@example.com"])
-      socket = visit(%{"source" => "user_group", "roles" => [role.uuid]})
-
-      refute socket.assigns.smtp_wait
-      refute render_page(socket) =~ "waiting for the runner"
-    end
-
-    test "a filtered view works on the real statuses and still shows the full verdict" do
-      role = audience(["real-ok@example.com", "real-bad@example.zzzz"])
-      {:ok, _} = engine().verify("real-ok@example.com")
-      {:ok, _} = engine().verify("real-bad@example.zzzz")
-
-      socket =
-        visit(%{"source" => "user_group", "roles" => [role.uuid], "status" => "invalid"})
-
-      assert [%{email: "real-bad@example.zzzz", status: :invalid, result: result}] =
-               socket.assigns.rows
-
-      assert result.reason == "bad_tld"
-      assert Map.has_key?(result, :log)
-    end
-
-    test "runs a batch end to end and follows it to the end" do
-      start_supervised!({Oban, repo: Repo, testing: :manual, queues: [], plugins: false})
-      role = audience(["e2e-1@example.com", "e2e-2@example.com", "e2e-3@nomx-domain.example"])
-
-      socket =
-        visit(%{"source" => "user_group", "roles" => [role.uuid]}, mounted(connected_socket()))
-
-      {:noreply, socket} = Verification.handle_event("start_batch", %{}, socket)
-      batch = socket.assigns.batch
-      assert batch.total == 3
-
-      assert %{success: 4, failure: 0} =
-               Oban.drain_queue(queue: :email_verification, with_recursion: true)
-
-      final = engine().get_batch(batch.uuid)
-      assert final.state == "done"
-      assert final.processed == 3
-
-      # The last PubSub message is the "done" one; feed it to the page.
-      assert_receive {:email_verify_batch, %{uuid: uuid, state: "done"} = snapshot}, 1_000
-      assert uuid == batch.uuid
-      {:noreply, socket} = Verification.handle_info({:email_verify_batch, snapshot}, socket)
-
-      assert socket.assigns.batch.state == "done"
-      assert socket.assigns.summary == %{valid: 0, invalid: 1, temp: 0, not_sure: 2, unchecked: 0}
-      assert render_page(socket) =~ "Last verification finished"
     end
   end
 end

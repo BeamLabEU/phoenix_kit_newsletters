@@ -13,7 +13,7 @@
     <.icon name="hero-exclamation-triangle" class="w-5 h-5" />
     <span>
       {gettext(
-        "Address verification needs the Emails module. Install phoenix_kit_emails (a release that includes verification) and enable it, then come back."
+        "The address verification engine is not configured. Set :email_verification_engine for :phoenix_kit_newsletters to an engine module in the host application's configuration, then come back."
       )}
     </span>
   </div>
@@ -22,7 +22,7 @@
     <.icon name="hero-exclamation-triangle" class="w-5 h-5" />
     <span>
       {gettext(
-        "Address verification is switched off. The Emails module requires the setting email_verify_enabled to be on."
+        "Address verification is switched off. The verification engine has to be switched on for this page to work."
       )}
     </span>
   </div>
@@ -32,7 +32,7 @@
       <.icon name="hero-exclamation-triangle" class="w-5 h-5" />
       <span>
         {gettext(
-          "The host's Oban configuration has no email_verification queue, so a started batch would never run. Add the queue (for example email_verification: 5) to the Oban queues of the host application."
+          "The host's Oban configuration does not declare the queue the verification engine runs its batches in, so a started batch would never run. Add that queue (its name is in the engine's documentation) to the Oban queues of the host application."
         )}
       </span>
     </div>
@@ -151,7 +151,7 @@
             navigate={Paths.email_sending_settings()}
             class="link text-sm"
           >
-            {gettext("SMTP is waiting for the runner - see Settings → Emails")}
+            {gettext("SMTP is waiting for the runner - see the email sending settings")}
           </.link>
         </div>
         <p :if={@batch.state == "done"} class="text-sm text-base-content/70">

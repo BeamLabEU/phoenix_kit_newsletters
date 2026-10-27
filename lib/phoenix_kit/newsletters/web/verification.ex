@@ -6,8 +6,8 @@ defmodule PhoenixKit.Newsletters.Web.Verification do
   of roles — and resolved with the same functions the sender uses
   (`CRMSource.sendable_recipients/1`, `UserGroupSource.sendable_recipients/1`),
   so the page shows exactly the addresses a send would mail. The verdicts come
-  from the Emails module's verification engine through
-  `PhoenixKit.Newsletters.EmailVerification`; without that module (or with it
+  from the host's verification engine (`PhoenixKit.Newsletters.VerificationEngine`)
+  through `PhoenixKit.Newsletters.EmailVerification`; without an engine (or with it
   switched off) the page says so instead of failing.
 
   The whole state lives in the URL (`?source=&list=&roles[]=&status=&page=`),
@@ -455,11 +455,11 @@ defmodule PhoenixKit.Newsletters.Web.Verification do
   defp start_error(:already_running),
     do: gettext("A verification of this audience is already running")
 
-  defp start_error(:unavailable), do: gettext("The Emails module is not available")
+  defp start_error(:unavailable), do: gettext("The address verification engine is not available")
   defp start_error(:disabled), do: gettext("Address verification is switched off")
 
   defp start_error({:engine_error, _message}),
-    do: gettext("The verification failed to start: the Emails module reported an error")
+    do: gettext("The verification failed to start: the verification engine reported an error")
 
   defp start_error(_reason), do: gettext("Could not start the verification")
 

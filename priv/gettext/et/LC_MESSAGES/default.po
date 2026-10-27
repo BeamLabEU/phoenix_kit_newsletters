@@ -996,13 +996,13 @@ msgstr[1] "%{count} saadetavat aadressi"
 
 #: lib/phoenix_kit/newsletters/web/verification.html.heex:24
 #, elixir-autogen, elixir-format
-msgid "Address verification is switched off. The Emails module requires the setting email_verify_enabled to be on."
-msgstr "Aadresside kontroll on välja lülitatud. Emails-moodul eeldab, et säte email_verify_enabled on sees."
+msgid "Address verification is switched off. The verification engine has to be switched on for this page to work."
+msgstr "Aadresside kontroll on välja lülitatud. Selle lehe töötamiseks tuleb kontrollimootor sisse lülitada."
 
 #: lib/phoenix_kit/newsletters/web/verification.html.heex:15
 #, elixir-autogen, elixir-format
-msgid "Address verification needs the Emails module. Install phoenix_kit_emails (a release that includes verification) and enable it, then come back."
-msgstr "Aadresside kontroll vajab Emails-moodulit. Paigalda phoenix_kit_emails (väljalase, mis sisaldab kontrolli), lülita see sisse ja tule tagasi."
+msgid "The address verification engine is not configured. Set :email_verification_engine for :phoenix_kit_newsletters to an engine module in the host application's configuration, then come back."
+msgstr "Aadresside kontrollimootor pole seadistatud. Määra mootori moodul host-rakenduse konfiguratsioonis rakenduse :phoenix_kit_newsletters seadega :email_verification_engine ja tule tagasi."
 
 #: lib/phoenix_kit/newsletters/web/verification.html.heex:42
 #, elixir-autogen, elixir-format
@@ -1153,8 +1153,8 @@ msgstr "Ajutine probleem"
 
 #: lib/phoenix_kit/newsletters/web/verification.ex:458
 #, elixir-autogen, elixir-format
-msgid "The Emails module is not available"
-msgstr "Emails-moodul pole saadaval"
+msgid "The address verification engine is not available"
+msgstr "Aadresside kontrollimootor pole saadaval"
 
 #: lib/phoenix_kit/newsletters/web/verification.ex:450
 #, elixir-autogen, elixir-format
@@ -1168,8 +1168,8 @@ msgstr "Domeen ei võta posti vastu"
 
 #: lib/phoenix_kit/newsletters/web/verification.html.heex:34
 #, elixir-autogen, elixir-format
-msgid "The host's Oban configuration has no email_verification queue, so a started batch would never run. Add the queue (for example email_verification: 5) to the Oban queues of the host application."
-msgstr "Host-rakenduse Oban-i seadistuses puudub järjekord email_verification, seega käivitatud partii ei jookseks kunagi. Lisa järjekord (näiteks email_verification: 5) host-rakenduse Oban-i queues alla."
+msgid "The host's Oban configuration does not declare the queue the verification engine runs its batches in, so a started batch would never run. Add that queue (its name is in the engine's documentation) to the Oban queues of the host application."
+msgstr "Host-rakenduse Oban-i seadistuses puudub järjekord, milles kontrollimootor oma partiisid käivitab, seega käivitatud partii ei jookseks kunagi. Lisa see järjekord (selle nimi on mootori dokumentatsioonis) host-rakenduse Oban-i queues alla."
 
 #: lib/phoenix_kit/newsletters/web/verification.html.heex:164
 #, elixir-autogen, elixir-format
@@ -1213,8 +1213,8 @@ msgstr "Selle sihtrühma kontroll juba töötab"
 
 #: lib/phoenix_kit/newsletters/web/verification.ex:462
 #, elixir-autogen, elixir-format
-msgid "The verification failed to start: the Emails module reported an error"
-msgstr "Kontrolli käivitamine ebaõnnestus: Emails-moodul teatas veast"
+msgid "The verification failed to start: the verification engine reported an error"
+msgstr "Kontrolli käivitamine ebaõnnestus: kontrollimootor teatas veast"
 
 #: lib/phoenix_kit/newsletters/web/verification.ex:459
 #, elixir-autogen, elixir-format
@@ -1275,8 +1275,8 @@ msgstr "SMTP-kontrolli ooteaeg ületati"
 
 #: lib/phoenix_kit/newsletters/web/verification.html.heex:154
 #, elixir-autogen, elixir-format
-msgid "SMTP is waiting for the runner - see Settings → Emails"
-msgstr "SMTP ootab käivitajat (runner) – vt Settings → Emails"
+msgid "SMTP is waiting for the runner - see the email sending settings"
+msgstr "SMTP ootab käivitajat (runner) – vt e-kirjade saatmise seadeid"
 
 #: lib/phoenix_kit/newsletters/web/verification.ex:490
 #, elixir-autogen, elixir-format
