@@ -1,8 +1,7 @@
 defmodule PhoenixKitNewsletters.Test.FakeVerificationEngine do
   @moduledoc """
-  Stands in for `PhoenixKit.Modules.Emails.Verification` where a test is about
-  this package's side of the bridge, not the engine: it works with or without
-  `phoenix_kit_emails` in the build. Install it with
+  A scripted `PhoenixKit.Newsletters.VerificationEngine`, for tests that are
+  about this package's side of the bridge, not about an engine. Install it with
   `Application.put_env(:phoenix_kit_newsletters, :email_verification_engine, __MODULE__)`.
 
   Answers are scripted in the *calling process's* dictionary (`put/2`), and the
@@ -10,6 +9,8 @@ defmodule PhoenixKitNewsletters.Test.FakeVerificationEngine do
   (`{:start_batch, emails, source_type, source_ref, opts}`,
   `{:subscribe_batch, uuid}`), so a test asserts on what the page asked for.
   """
+
+  @behaviour PhoenixKit.Newsletters.VerificationEngine
 
   @statuses ~w(valid invalid temp not_sure)
 
@@ -25,17 +26,23 @@ defmodule PhoenixKitNewsletters.Test.FakeVerificationEngine do
     end
   end
 
+  @impl true
   def verify(_email, _opts), do: raise("not used")
 
+  @impl true
   def enabled?, do: get(:enabled, true)
+
+  @impl true
   def queue_configured?, do: get(:queue_configured, true)
 
+  @impl true
   def results_for(emails) do
     send(self(), {:results_for, emails})
     maybe_raise()
     Map.take(get(:results, %{}), emails)
   end
 
+  @impl true
   def statuses_for(emails) do
     send(self(), {:statuses_for, emails})
     maybe_raise()
@@ -45,6 +52,7 @@ defmodule PhoenixKitNewsletters.Test.FakeVerificationEngine do
     |> Map.new(fn {email, result} -> {email, Map.take(result, [:status, :reason, :level])} end)
   end
 
+  @impl true
   def summary(emails) do
     send(self(), {:summary, emails})
     results = get(:results, %{})
@@ -55,6 +63,7 @@ defmodule PhoenixKitNewsletters.Test.FakeVerificationEngine do
     end
   end
 
+  @impl true
   def start_batch([], _source_type, _source_ref, _opts), do: {:error, :no_emails}
 
   def start_batch(emails, source_type, source_ref, opts) do
@@ -74,24 +83,31 @@ defmodule PhoenixKitNewsletters.Test.FakeVerificationEngine do
     )
   end
 
+  @impl true
   def latest_batch(source_type, source_ref) do
     send(self(), {:latest_batch, source_type, source_ref})
     get(:latest_batch, nil)
   end
 
+  @impl true
   def get_batch(uuid) do
     send(self(), {:get_batch, uuid})
     get(:batch, nil)
   end
 
+  @impl true
   def subscribe_batch(uuid) do
     send(self(), {:subscribe_batch, uuid})
     :ok
   end
 
+  @impl true
   def max_batch_size, do: 100
 
+  @impl true
   def smtp_mode, do: get(:smtp_mode, "off")
+
+  @impl true
   def runner_status, do: get(:runner_status, %{state: :never_connected})
 
   defp status(nil), do: :unchecked
