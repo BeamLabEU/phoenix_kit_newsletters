@@ -24,7 +24,7 @@ defmodule PhoenixKit.Newsletters.VerificationEngineTest do
 
   # Added to engines after their first release; the bridge reads them as neutral
   # values when an engine lacks them.
-  @optional [statuses_for: 1, smtp_mode: 0, runner_status: 0]
+  @optional [statuses_for: 1, smtp_mode: 0, runner_status: 0, settings_path: 0]
 
   test "declares the callbacks the bridge calls, with the engines' existing arities" do
     assert Enum.sort(VerificationEngine.behaviour_info(:callbacks)) ==

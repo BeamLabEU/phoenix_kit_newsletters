@@ -388,7 +388,10 @@ exist with this API, so change them only additively (a new callback goes in
   apart from "Domain OK (no SMTP)" (`smtp_disabled`). The progress shows the
   batch's `awaiting_smtp` count, and in `runner` mode with a runner that is not
   online (`EmailVerification.smtp_runner_waiting?/0`, re-read every 10 s while a
-  batch runs) a link to `Paths.email_sending_settings/0`. The soft bridge masks
+  batch runs) a hint that links to the engine's own settings page when it has
+  one (the optional `settings_path/0`, passed on only as an absolute path of this
+  site) and is plain text when it has not: the runner is configured on the
+  engine's page, so there is no core page to fall back to. The soft bridge masks
   addresses in its log lines and in the message of `{:engine_error, msg}`.
 
 ### Public flows
@@ -544,7 +547,7 @@ verbatim — it is core-owned DDL, not something to fix here.
   (`Application.put_env(:phoenix_kit_newsletters, :email_verification_engine, Fake)`;
   answers scripted in the test process, calls sent back as messages). The fake
   declares `@behaviour PhoenixKit.Newsletters.VerificationEngine`, so a callback
-  added to the behaviour fails the build until the fake implements it. No engine
+  added to the behaviour fails the test suite until the fake implements it. No engine
   is a dependency of this package, not even a test one.
 - `config/test.exs` wires `config :phoenix_kit, repo:`, a `secret_key_base`
   (so integration credentials round-trip encrypted), `PhoenixKit.Mailer` to

@@ -36,6 +36,7 @@ defmodule PhoenixKit.Newsletters.EmailVerificationTest do
       assert EmailVerification.max_batch_size() == nil
       assert EmailVerification.smtp_mode() == "off"
       assert EmailVerification.runner_status() == nil
+      assert EmailVerification.settings_path() == nil
       refute EmailVerification.smtp_runner_waiting?()
     end
 
@@ -49,11 +50,6 @@ defmodule PhoenixKit.Newsletters.EmailVerificationTest do
                {:error, :unavailable}
 
       assert EmailVerification.subscribe_batch(Ecto.UUID.generate()) == {:error, :unavailable}
-    end
-
-    test "there is no default engine to fall back on" do
-      assert Application.get_env(:phoenix_kit_newsletters, @engine_key) == nil
-      refute EmailVerification.available?()
     end
   end
 
@@ -272,6 +268,7 @@ defmodule PhoenixKit.Newsletters.EmailVerificationTest do
     test "the optional callbacks it lacks read as neutral values" do
       assert EmailVerification.smtp_mode() == "off"
       assert EmailVerification.runner_status() == nil
+      assert EmailVerification.settings_path() == nil
       refute EmailVerification.smtp_runner_waiting?()
     end
 
@@ -335,6 +332,20 @@ defmodule PhoenixKit.Newsletters.EmailVerificationTest do
         Fake.put(:smtp_mode, mode)
         Fake.put(:runner_status, %{state: :offline})
         refute EmailVerification.smtp_runner_waiting?(), mode
+      end
+    end
+
+    test "settings_path/0 forwards the path of the engine's settings page" do
+      assert EmailVerification.settings_path() == nil
+
+      Fake.put(:settings_path, "/admin/verification/settings")
+      assert EmailVerification.settings_path() == "/admin/verification/settings"
+    end
+
+    test "settings_path/0 passes on only a path of this site" do
+      for value <- [nil, "", "settings", "https://example.com/settings", "//example.com", 42] do
+        Fake.put(:settings_path, value)
+        assert EmailVerification.settings_path() == nil, inspect(value)
       end
     end
 

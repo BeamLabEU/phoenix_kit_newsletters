@@ -90,6 +90,7 @@ defmodule PhoenixKit.Newsletters.Web.Verification do
     |> assign(:batch, nil)
     |> assign(:subscribed_batch, nil)
     |> assign(:smtp_wait, false)
+    |> assign(:settings_path, nil)
     |> assign(:runner_tick, false)
   end
 
@@ -409,13 +410,14 @@ defmodule PhoenixKit.Newsletters.Web.Verification do
   end
 
   # Whether the progress should say that SMTP is waiting for a runner that is
-  # not online. Only a running batch can wait, so a finished one costs no read.
+  # not online, and where the engine's settings page is (the hint links there).
+  # Only a running batch can wait, so a finished one costs no read.
   defp refresh_smtp_wait(socket) do
-    assign(
-      socket,
-      :smtp_wait,
-      batch_active?(socket.assigns.batch) and EmailVerification.smtp_runner_waiting?()
-    )
+    waiting = batch_active?(socket.assigns.batch) and EmailVerification.smtp_runner_waiting?()
+
+    socket
+    |> assign(:smtp_wait, waiting)
+    |> assign(:settings_path, if(waiting, do: EmailVerification.settings_path()))
   end
 
   # The runner can go offline without any batch message arriving, so a running

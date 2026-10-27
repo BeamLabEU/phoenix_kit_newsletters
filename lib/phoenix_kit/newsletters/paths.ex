@@ -25,10 +25,6 @@ defmodule PhoenixKit.Newsletters.Paths do
     end
   end
 
-  # Core's email sending settings page; modules contribute their own sections to
-  # it (a verification engine's SMTP runner among them)
-  def email_sending_settings, do: Routes.path("/admin/settings/email-sending")
-
   # Public
   def unsubscribe, do: Routes.path("/newsletters/unsubscribe")
 end

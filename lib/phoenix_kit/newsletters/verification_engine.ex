@@ -23,14 +23,16 @@ defmodule PhoenixKit.Newsletters.VerificationEngine do
   calls the others as it needs them. An engine that lacks a callback does not
   crash the page: the bridge answers that callback with a neutral value.
 
-  The optional callbacks (`statuses_for/1`, `smtp_mode/0`, `runner_status/0`)
-  are the ones an older engine release may not have yet:
+  The optional callbacks (`statuses_for/1`, `smtp_mode/0`, `runner_status/0`,
+  `settings_path/0`) are the ones an older engine release may not have yet:
 
     * without `statuses_for/1` the page filters on `results_for/1`, which
       returns the same verdicts with their step logs;
     * without `smtp_mode/0` the SMTP mode reads `"off"`;
     * without `runner_status/0` the runner reads as unknown (`nil`), so the
-      page never claims a runner is offline.
+      page never claims a runner is offline;
+    * without `settings_path/0` the page has no settings page to point at and
+      shows its hints as plain text.
 
   ## Verdicts
 
@@ -83,9 +85,10 @@ defmodule PhoenixKit.Newsletters.VerificationEngine do
   runner. `smtp_mode/0` is `"off"`, `"runner"` or `"local"`; in `"runner"` mode
   `runner_status/0` returns a map whose `:state` is `:online`, `:offline` or
   `:never_connected`. While a batch runs and the mode is `"runner"` with a runner
-  that is not online, the page tells the operator that SMTP is waiting. An address
-  parked for that stage has the verdict `status: "not_sure"` with
-  `reason: "smtp_pending"`.
+  that is not online, the page tells the operator that SMTP is waiting, and links
+  to the engine's settings page when `settings_path/0` gives one (the runner is
+  configured there, not in Newsletters). An address parked for that stage has the
+  verdict `status: "not_sure"` with `reason: "smtp_pending"`.
   """
 
   @typedoc "An address as the page passes it: the sendable address of the audience."
@@ -220,5 +223,14 @@ defmodule PhoenixKit.Newsletters.VerificationEngine do
   """
   @callback runner_status() :: map()
 
-  @optional_callbacks statuses_for: 1, smtp_mode: 0, runner_status: 0
+  @doc """
+  The path of the engine's own settings page (for example
+  `PhoenixKit.Utils.Routes.path("/admin/verification/settings")`), or `nil` when
+  it has none. The page links to it from the SMTP-runner hint; only an absolute
+  path of this site (starting with a single `/`) is used. Optional; read as `nil`
+  without it.
+  """
+  @callback settings_path() :: String.t() | nil
+
+  @optional_callbacks statuses_for: 1, smtp_mode: 0, runner_status: 0, settings_path: 0
 end

@@ -13,7 +13,7 @@
     <.icon name="hero-exclamation-triangle" class="w-5 h-5" />
     <span>
       {gettext(
-        "The address verification engine is not configured. Set :email_verification_engine for :phoenix_kit_newsletters to an engine module in the host application's configuration, then come back."
+        "The address verification engine is not available. Set :email_verification_engine for :phoenix_kit_newsletters to an engine module in the host application's configuration, then come back."
       )}
     </span>
   </div>
@@ -146,13 +146,16 @@
             )}
           </span>
           <.link
-            :if={@smtp_wait}
+            :if={@smtp_wait and @settings_path}
             id="verification-runner-offline"
-            navigate={Paths.email_sending_settings()}
+            navigate={@settings_path}
             class="link text-sm"
           >
-            {gettext("SMTP is waiting for the runner - see the email sending settings")}
+            {gettext("SMTP is waiting for the runner - see the verification settings")}
           </.link>
+          <span :if={@smtp_wait and is_nil(@settings_path)} id="verification-runner-offline" class="text-sm">
+            {gettext("SMTP is waiting for the runner")}
+          </span>
         </div>
         <p :if={@batch.state == "done"} class="text-sm text-base-content/70">
           {gettext("Last verification finished: %{at} (%{total} addresses)",

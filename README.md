@@ -181,6 +181,7 @@ The module implements the `PhoenixKit.Newsletters.VerificationEngine` behaviour
 | `max_batch_size/0` | The most distinct addresses one batch can hold |
 | `statuses_for/1` *(optional)* | Light status/reason/level maps without step logs; the page falls back to `results_for/1` |
 | `smtp_mode/0`, `runner_status/0` *(optional)* | An SMTP stage that waits for a remote runner; read as `"off"` / `nil` when absent |
+| `settings_path/0` *(optional)* | Path of the engine's own settings page; the SMTP-runner hint links to it, and is plain text when there is none |
 
 Every call is guarded by `function_exported?/3`, so an engine that lacks a callback
 degrades instead of crashing the page, and a failure inside the engine is logged

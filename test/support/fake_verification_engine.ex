@@ -14,7 +14,7 @@ defmodule PhoenixKitNewsletters.Test.FakeVerificationEngine do
 
   @statuses ~w(valid invalid temp not_sure)
 
-  @doc "Scripts an answer: `:enabled`, `:queue_configured`, `:results`, `:latest_batch`, `:batch`, `:start_batch`, `:smtp_mode`, `:runner_status`, `:raise`."
+  @doc "Scripts an answer: `:enabled`, `:queue_configured`, `:results`, `:latest_batch`, `:batch`, `:start_batch`, `:smtp_mode`, `:runner_status`, `:settings_path`, `:raise`."
   def put(key, value), do: Process.put({__MODULE__, key}, value)
 
   defp get(key, default), do: Process.get({__MODULE__, key}, default)
@@ -109,6 +109,9 @@ defmodule PhoenixKitNewsletters.Test.FakeVerificationEngine do
 
   @impl true
   def runner_status, do: get(:runner_status, %{state: :never_connected})
+
+  @impl true
+  def settings_path, do: get(:settings_path, nil)
 
   defp status(nil), do: :unchecked
   defp status(%{status: status}) when status in @statuses, do: String.to_existing_atom(status)

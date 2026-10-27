@@ -41,7 +41,7 @@ defmodule PhoenixKit.Newsletters.EmailVerification do
   @spec available?() :: boolean()
   def available? do
     case engine() do
-      module when is_atom(module) and module != nil ->
+      module when is_atom(module) and not is_nil(module) ->
         Code.ensure_loaded?(module) and function_exported?(module, :verify, 2)
 
       _ ->
@@ -88,7 +88,7 @@ defmodule PhoenixKit.Newsletters.EmailVerification do
   Starts a background batch. `{:error, :unavailable}` without the engine;
   `{:error, {:engine_error, message}}` when the engine is there and raised.
   """
-  @spec start_batch([String.t()], String.t(), term(), keyword()) ::
+  @spec start_batch([String.t()], String.t(), term(), VerificationEngine.batch_opts()) ::
           {:ok, VerificationEngine.batch()} | {:error, term()}
   def start_batch(emails, source_type, source_ref, opts \\ []) when is_list(emails) do
     call(:start_batch, [emails, source_type, source_ref, opts], {:error, :unavailable}, fn
@@ -131,6 +131,20 @@ defmodule PhoenixKit.Newsletters.EmailVerification do
   """
   @spec runner_status() :: map() | nil
   def runner_status, do: call(:runner_status, [], nil)
+
+  @doc """
+  The path of the engine's own settings page, or `nil` when the engine has none
+  (or has no `settings_path/0`, or answers something that is not an absolute path
+  of this site: a link built from the answer must not leave it).
+  """
+  @spec settings_path() :: String.t() | nil
+  def settings_path do
+    case call(:settings_path, [], nil) do
+      "//" <> _ -> nil
+      "/" <> _ = path -> path
+      _ -> nil
+    end
+  end
 
   @doc """
   Whether addresses are queued for a remote runner that is not online: the mode

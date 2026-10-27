@@ -11,7 +11,6 @@ defmodule PhoenixKit.Newsletters.Web.VerificationTest do
   import Phoenix.LiveViewTest, only: [rendered_to_string: 1]
 
   alias PhoenixKit.Newsletters
-  alias PhoenixKit.Newsletters.Paths
   alias PhoenixKit.Newsletters.Web.Verification
   alias PhoenixKit.Users.Auth.User
   alias PhoenixKit.Users.Roles
@@ -140,12 +139,12 @@ defmodule PhoenixKit.Newsletters.Web.VerificationTest do
   end
 
   describe "degraded states" do
-    test "an alert says that no verification engine is configured" do
+    test "an alert says that no verification engine is available" do
       Application.delete_env(:phoenix_kit_newsletters, @engine_key)
       html = socket() |> mounted() |> then(&visit(%{}, &1)) |> render_page()
 
       assert html =~ ~s(id="verification-unavailable")
-      assert html =~ "verification engine is not configured"
+      assert html =~ "verification engine is not available"
       assert html =~ ":email_verification_engine"
       refute html =~ "verification-audience-form"
     end
@@ -755,8 +754,27 @@ defmodule PhoenixKit.Newsletters.Web.VerificationTest do
       refute render_page(socket) =~ "waiting for the SMTP check"
     end
 
-    test "a runner that is not online is named in the progress, with a link to the settings",
+    test "a runner that is not online is named in the progress, with a link to the engine's settings page",
          %{batch: batch} do
+      role = audience(["w@example.com"])
+      Fake.put(:smtp_mode, "runner")
+      Fake.put(:runner_status, %{state: :offline})
+      Fake.put(:latest_batch, Map.put(batch, :awaiting_smtp, 2))
+      Fake.put(:settings_path, "/admin/verification/settings")
+
+      socket =
+        visit(%{"source" => "user_group", "roles" => [role.uuid]}, mounted(connected_socket()))
+
+      assert socket.assigns.smtp_wait
+      assert socket.assigns.settings_path == "/admin/verification/settings"
+      html = render_page(socket)
+
+      assert html =~ "SMTP is waiting for the runner - see the verification settings"
+      assert html =~ ~r/<a [^>]*id="verification-runner-offline"/
+      assert html =~ ~s(href="/admin/verification/settings")
+    end
+
+    test "an engine without a settings page gets the runner hint as plain text", %{batch: batch} do
       role = audience(["w@example.com"])
       Fake.put(:smtp_mode, "runner")
       Fake.put(:runner_status, %{state: :offline})
@@ -766,15 +784,14 @@ defmodule PhoenixKit.Newsletters.Web.VerificationTest do
         visit(%{"source" => "user_group", "roles" => [role.uuid]}, mounted(connected_socket()))
 
       assert socket.assigns.smtp_wait
+      assert socket.assigns.settings_path == nil
       html = render_page(socket)
 
-      assert html =~ "SMTP is waiting for the runner"
-      assert html =~ "email sending settings"
+      assert html =~
+               ~r/<span [^>]*id="verification-runner-offline"[^>]*>\s*SMTP is waiting for the runner\s*</
 
-      assert Paths.email_sending_settings() =~
-               "/admin/settings/email-sending"
-
-      assert html =~ ~s(href="#{Paths.email_sending_settings()}")
+      refute html =~ ~r/<a [^>]*id="verification-runner-offline"/
+      refute html =~ "verification settings"
     end
 
     test "no runner hint when the runner is online, or the mode is not runner", %{batch: batch} do
@@ -789,6 +806,7 @@ defmodule PhoenixKit.Newsletters.Web.VerificationTest do
           visit(%{"source" => "user_group", "roles" => [role.uuid]}, mounted(connected_socket()))
 
         refute socket.assigns.smtp_wait, "#{mode} #{state}"
+        assert socket.assigns.settings_path == nil, "#{mode} #{state}"
         refute render_page(socket) =~ "waiting for the runner", "#{mode} #{state}"
       end
     end
