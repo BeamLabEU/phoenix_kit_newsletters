@@ -4,8 +4,7 @@ defmodule PhoenixKitNewsletters.DataCase do
   Settings/Integrations, and the newsletters schemas themselves —
   backed by `PhoenixKitNewsletters.Test.Repo`).
 
-  Mirrors core phoenix_kit's `PhoenixKit.DataCase` and
-  `phoenix_kit_emails`'s `PhoenixKitEmails.DataCase`.
+  Mirrors core phoenix_kit's `PhoenixKit.DataCase`.
   """
 
   use ExUnit.CaseTemplate
