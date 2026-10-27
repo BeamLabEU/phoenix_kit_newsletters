@@ -15,6 +15,7 @@ defmodule PhoenixKit.Newsletters.Web.BroadcastDetails do
 
   alias PhoenixKit.Modules.Storage
   alias PhoenixKit.Newsletters
+  alias PhoenixKit.Newsletters.Access
   alias PhoenixKit.Newsletters.Broadcast
   alias PhoenixKit.Newsletters.Broadcaster
   alias PhoenixKit.Newsletters.CRMSource
@@ -54,6 +55,8 @@ defmodule PhoenixKit.Newsletters.Web.BroadcastDetails do
         |> assign(:confirm_target, nil)
         |> assign(:confirm_title, "")
         |> assign(:confirm_message, "")
+        |> assign(:can_send, Access.can_send?(Access.scope(socket)))
+        |> assign(:can_see_audiences, Access.can_see_audiences?(Access.scope(socket)))
 
       {:ok, socket}
     else
@@ -126,19 +129,10 @@ defmodule PhoenixKit.Newsletters.Web.BroadcastDetails do
 
     case socket.assigns.confirm_action do
       :cancel_broadcast ->
-        case Newsletters.update_broadcast(socket.assigns.broadcast, %{status: "cancelled"}) do
-          {:ok, broadcast} ->
-            {:noreply,
-             socket
-             |> assign(:broadcast, broadcast)
-             |> put_flash(:info, gettext("Broadcast cancelled"))}
-
-          {:error, _changeset} ->
-            {:noreply, put_flash(socket, :error, gettext("Failed to cancel broadcast"))}
-        end
+        with :ok <- authorize_send(socket), do: cancel_broadcast(socket)
 
       :retry_send ->
-        retry_send(socket)
+        with :ok <- authorize_retry(socket), do: retry_send(socket)
 
       _ ->
         {:noreply, socket}
@@ -154,6 +148,52 @@ defmodule PhoenixKit.Newsletters.Web.BroadcastDetails do
   end
 
   # --- Private ---
+
+  defp cancel_broadcast(socket) do
+    case Newsletters.update_broadcast(socket.assigns.broadcast, %{status: "cancelled"}) do
+      {:ok, broadcast} ->
+        {:noreply,
+         socket
+         |> assign(:broadcast, broadcast)
+         |> put_flash(:info, gettext("Broadcast cancelled"))}
+
+      {:error, _changeset} ->
+        {:noreply, put_flash(socket, :error, gettext("Failed to cancel broadcast"))}
+    end
+  end
+
+  # Cancelling stops a send, so it needs the same `newsletters.send` that
+  # starts one.
+  defp authorize_send(socket) do
+    if Access.can_send?(Access.scope(socket)) do
+      :ok
+    else
+      {:noreply,
+       put_flash(socket, :error, gettext("You don't have permission to send broadcasts"))}
+    end
+  end
+
+  # Retrying is sending: it needs `newsletters.send`, and for a CRM-list
+  # broadcast the CRM module's key too, since the send resolves the list.
+  # `confirm_action` takes the action from assigns, but `show_confirm` is a
+  # client event, so the check sits here rather than on the button only.
+  defp authorize_retry(socket) do
+    scope = Access.scope(socket)
+    broadcast = socket.assigns.broadcast
+
+    cond do
+      not Access.can_send?(scope) ->
+        {:noreply,
+         put_flash(socket, :error, gettext("You don't have permission to send broadcasts"))}
+
+      (broadcast && broadcast.source_type == "crm_list") and not Access.crm_lists?(scope) ->
+        {:noreply,
+         put_flash(socket, :error, gettext("You don't have permission to use CRM lists"))}
+
+      true ->
+        :ok
+    end
+  end
 
   # Re-reads the row before sending. Both the "failed" gate on the button
   # and Broadcaster.send/1's own status guard are only as fresh as the last
@@ -193,15 +233,23 @@ defmodule PhoenixKit.Newsletters.Web.BroadcastDetails do
 
     try do
       broadcast = Newsletters.get_broadcast_with_template!(id)
-      deliveries = Newsletters.list_deliveries(id)
+      # Recipient addresses only with `newsletters.audiences`.
+      deliveries =
+        if Access.can_see_audiences?(Access.scope(socket)),
+          do: Newsletters.list_deliveries(id),
+          else: []
+
       stats = Newsletters.get_delivery_stats(id)
+      # The CRM list behind a broadcast is resolved only for a viewer who
+      # also holds the CRM module's key.
+      crm? = Access.crm_lists?(Access.scope(socket))
 
       socket
       |> assign(:broadcast, broadcast)
       |> assign(:deliveries, deliveries)
       |> assign(:delivery_stats, stats)
-      |> assign(:crm_list, CRMSource.get_list(broadcast.crm_list_uuid))
-      |> assign(:crm_preflight, crm_preflight(broadcast))
+      |> assign(:crm_list, if(crm?, do: CRMSource.get_list(broadcast.crm_list_uuid)))
+      |> assign(:crm_preflight, if(crm?, do: crm_preflight(broadcast)))
       |> assign(:user_group_preflight, user_group_preflight(broadcast))
       |> assign(:attachment_files, load_attachment_files(broadcast.attachments || []))
       |> assign(:loading, false)

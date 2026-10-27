@@ -25,6 +25,7 @@ defmodule PhoenixKit.Newsletters.Web.DeadRenderTest do
 
   setup do
     Newsletters.enable_system()
+    PhoenixKitNewsletters.TestScopes.enable_crm()
     {:ok, conn: Phoenix.ConnTest.build_conn()}
   end
 

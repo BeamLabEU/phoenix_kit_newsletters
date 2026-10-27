@@ -41,7 +41,7 @@
           </.pk_link>
         <% end %>
 
-        <%= if @broadcast.status == "sending" do %>
+        <%= if @broadcast.status == "sending" and @can_send do %>
           <button
             type="button"
             phx-click="show_confirm"
@@ -52,7 +52,7 @@
           </button>
         <% end %>
 
-        <%= if @broadcast.status == "failed" do %>
+        <%= if @broadcast.status == "failed" and @can_send do %>
           <button
             type="button"
             phx-click="show_confirm"
@@ -224,9 +224,16 @@
       <p class="text-xs text-base-content/50 mb-3">
         {gettext("Times shown in %{tz}", tz: @tz_label)}
       </p>
-      <%= if @deliveries == [] do %>
-        <.empty_state variant="compact" title={gettext("No deliveries yet")} />
-      <% else %>
+      <%!-- Recipient addresses need `newsletters.audiences`; the counts above do not. --%>
+      <%= cond do %>
+        <% not @can_see_audiences -> %>
+          <.empty_state
+            variant="compact"
+            title={gettext("You don't have permission to see this broadcast's recipients")}
+          />
+        <% @deliveries == [] -> %>
+          <.empty_state variant="compact" title={gettext("No deliveries yet")} />
+        <% true -> %>
         <div class="hidden md:block">
           <.table_default variant="zebra" size="sm" class="w-full">
             <.table_default_header>

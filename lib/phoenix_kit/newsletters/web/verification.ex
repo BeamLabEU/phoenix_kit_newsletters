@@ -26,6 +26,7 @@ defmodule PhoenixKit.Newsletters.Web.Verification do
   import PhoenixKit.Newsletters.Web.Timezone, only: [format_datetime: 2]
 
   alias PhoenixKit.Newsletters
+  alias PhoenixKit.Newsletters.Access
   alias PhoenixKit.Newsletters.CRMSource
   alias PhoenixKit.Newsletters.EmailVerification
   alias PhoenixKit.Newsletters.Paths
@@ -40,42 +41,56 @@ defmodule PhoenixKit.Newsletters.Web.Verification do
   # How often a running batch re-reads whether the SMTP runner is still online.
   @runner_refresh_ms 10_000
 
+  # The page lists every address of an audience, so it needs
+  # `newsletters.audiences` (at mount and on every event); CRM lists are
+  # offered only to a viewer who also holds the CRM module's key.
   @impl true
   def mount(_params, _session, socket) do
-    if Newsletters.enabled?() do
-      {:ok,
-       socket
-       |> assign(:page_title, gettext("Address verification"))
-       |> assign(:page_subtitle, gettext("Check the addresses of a broadcast audience"))
-       |> assign(:page_section, gettext("Newsletters"))
-       |> assign(:page_section_path, Paths.broadcasts_index())
-       |> assign(:project_title, Settings.get_project_title())
-       |> assign(:engine, engine_state())
-       |> assign(:queue_configured, EmailVerification.queue_configured?())
-       |> assign(:crm_available, CRMSource.available?())
-       |> assign(:crm_lists, nil)
-       |> assign(:available_roles, nil)
-       |> assign(:source, "user_group")
-       |> assign(:crm_list_uuid, "")
-       |> assign(:role_uuids, [])
-       |> assign(:status_filter, "")
-       |> assign(:audience_key, nil)
-       |> assign(:emails, [])
-       |> assign(:rows, [])
-       |> assign(:page, 1)
-       |> assign(:total_pages, 1)
-       |> assign(:total, 0)
-       |> assign(:summary, nil)
-       |> assign(:batch, nil)
-       |> assign(:subscribed_batch, nil)
-       |> assign(:smtp_wait, false)
-       |> assign(:runner_tick, false)}
-    else
-      {:ok,
-       socket
-       |> put_flash(:error, gettext("Newsletters module is not enabled"))
-       |> push_navigate(to: Routes.path("/admin"))}
+    cond do
+      not Newsletters.enabled?() ->
+        {:ok,
+         socket
+         |> put_flash(:error, gettext("Newsletters module is not enabled"))
+         |> push_navigate(to: Routes.path("/admin"))}
+
+      not Access.can_see_audiences?(Access.scope(socket)) ->
+        {:ok,
+         socket
+         |> put_flash(:error, gettext("You don't have permission to see broadcast recipients"))
+         |> push_navigate(to: Paths.broadcasts_index())}
+
+      true ->
+        {:ok, mount_page(socket)}
     end
+  end
+
+  defp mount_page(socket) do
+    socket
+    |> assign(:page_title, gettext("Address verification"))
+    |> assign(:page_subtitle, gettext("Check the addresses of a broadcast audience"))
+    |> assign(:page_section, gettext("Newsletters"))
+    |> assign(:page_section_path, Paths.broadcasts_index())
+    |> assign(:project_title, Settings.get_project_title())
+    |> assign(:engine, engine_state())
+    |> assign(:queue_configured, EmailVerification.queue_configured?())
+    |> assign(:crm_available, Access.crm_lists?(Access.scope(socket)))
+    |> assign(:crm_lists, nil)
+    |> assign(:available_roles, nil)
+    |> assign(:source, "user_group")
+    |> assign(:crm_list_uuid, "")
+    |> assign(:role_uuids, [])
+    |> assign(:status_filter, "")
+    |> assign(:audience_key, nil)
+    |> assign(:emails, [])
+    |> assign(:rows, [])
+    |> assign(:page, 1)
+    |> assign(:total_pages, 1)
+    |> assign(:total, 0)
+    |> assign(:summary, nil)
+    |> assign(:batch, nil)
+    |> assign(:subscribed_batch, nil)
+    |> assign(:smtp_wait, false)
+    |> assign(:runner_tick, false)
   end
 
   @impl true
@@ -106,7 +121,16 @@ defmodule PhoenixKit.Newsletters.Web.Verification do
   def handle_params(_params, _url, socket), do: {:noreply, assign_tz(socket)}
 
   @impl true
-  def handle_event("select_audience", params, socket) do
+  def handle_event(event, params, socket) do
+    if Access.can_see_audiences?(Access.scope(socket)) do
+      verification_event(event, params, socket)
+    else
+      {:noreply,
+       put_flash(socket, :error, gettext("You don't have permission to see broadcast recipients"))}
+    end
+  end
+
+  defp verification_event("select_audience", params, socket) do
     source = parse_source(params["source"], socket.assigns.crm_available)
 
     query = %{
@@ -118,7 +142,7 @@ defmodule PhoenixKit.Newsletters.Web.Verification do
     {:noreply, push_patch(socket, to: Paths.verification_index(query))}
   end
 
-  def handle_event("filter_status", %{"status" => status}, socket) do
+  defp verification_event("filter_status", %{"status" => status}, socket) do
     %{source: source, crm_list_uuid: list_uuid, role_uuids: role_uuids} = socket.assigns
 
     {:noreply,
@@ -127,7 +151,7 @@ defmodule PhoenixKit.Newsletters.Web.Verification do
      )}
   end
 
-  def handle_event("start_batch", _params, %{assigns: %{engine: :ready}} = socket) do
+  defp verification_event("start_batch", _params, %{assigns: %{engine: :ready}} = socket) do
     # The audience and its latest batch are read again: the click may be stale
     # (another tab or a double click started a batch since the page was drawn).
     socket = refresh_audience(socket, force: true)
@@ -144,11 +168,11 @@ defmodule PhoenixKit.Newsletters.Web.Verification do
     end
   end
 
-  def handle_event("start_batch", _params, %{assigns: %{engine: :disabled}} = socket) do
+  defp verification_event("start_batch", _params, %{assigns: %{engine: :disabled}} = socket) do
     {:noreply, put_flash(socket, :error, start_error(:disabled))}
   end
 
-  def handle_event("start_batch", _params, socket) do
+  defp verification_event("start_batch", _params, socket) do
     {:noreply, put_flash(socket, :error, start_error(:unavailable))}
   end
 

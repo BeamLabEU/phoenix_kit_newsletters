@@ -13,6 +13,7 @@ defmodule PhoenixKitNewsletters.DataCase do
   using do
     quote do
       import PhoenixKitNewsletters.DataCase, only: [errors_on: 1]
+      import PhoenixKitNewsletters.TestScopes
 
       @moduletag :integration
     end

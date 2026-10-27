@@ -12,11 +12,11 @@ msgstr ""
 "Plural-Forms: nplurals=2; plural=(n != 1);\n"
 
 ## --- Sidebar tab labels ---
-#: lib/phoenix_kit/newsletters/web/broadcast_details.ex:40
-#: lib/phoenix_kit/newsletters/web/broadcast_editor.ex:52
+#: lib/phoenix_kit/newsletters/web/broadcast_details.ex:41
+#: lib/phoenix_kit/newsletters/web/broadcast_editor.ex:57
 #: lib/phoenix_kit/newsletters/web/broadcasts.ex:26
 #: lib/phoenix_kit/newsletters/web/layouts_index.ex:28
-#: lib/phoenix_kit/newsletters/web/verification.ex:50
+#: lib/phoenix_kit/newsletters/web/verification.ex:71
 #, elixir-autogen
 msgid "Newsletters"
 msgstr "Uudiskirjad"
@@ -25,7 +25,7 @@ msgstr "Uudiskirjad"
 msgid "Broadcasts"
 msgstr "Saadetised"
 
-#: lib/phoenix_kit/newsletters/web/broadcast_editor.ex:47
+#: lib/phoenix_kit/newsletters/web/broadcast_editor.ex:52
 #: lib/phoenix_kit/newsletters/web/broadcasts.html.heex:28
 #: lib/phoenix_kit/newsletters/web/broadcasts.html.heex:70
 #, elixir-autogen
@@ -42,7 +42,7 @@ msgstr "Muuda saadetist"
 msgid "Layouts"
 msgstr "Kujundused"
 
-#: lib/phoenix_kit/newsletters/web/verification.ex:48
+#: lib/phoenix_kit/newsletters/web/verification.ex:69
 #, elixir-autogen
 msgid "Address verification"
 msgstr "Aadresside kontroll"
@@ -70,13 +70,13 @@ msgid "Edit send profile"
 msgstr "Muuda saatmisprofiili"
 
 ## --- Common admin UI ---
-#: lib/phoenix_kit/newsletters/web/broadcast_details.ex:62
-#: lib/phoenix_kit/newsletters/web/broadcast_editor.ex:91
+#: lib/phoenix_kit/newsletters/web/broadcast_details.ex:65
+#: lib/phoenix_kit/newsletters/web/broadcast_editor.ex:97
 #: lib/phoenix_kit/newsletters/web/broadcasts.ex:36
 #: lib/phoenix_kit/newsletters/web/layout_editor.ex:63
 #: lib/phoenix_kit/newsletters/web/layouts_index.ex:38
 #: lib/phoenix_kit/newsletters/web/preference_center_live.ex:42
-#: lib/phoenix_kit/newsletters/web/verification.ex:76
+#: lib/phoenix_kit/newsletters/web/verification.ex:53
 #, elixir-autogen
 msgid "Newsletters module is not enabled"
 msgstr "Uudiskirjade moodul ei ole aktiveeritud"
@@ -94,7 +94,7 @@ msgid "Loading..."
 msgstr "Laadimine..."
 
 #: lib/phoenix_kit/newsletters/web/broadcast_details.html.heex:40
-#: lib/phoenix_kit/newsletters/web/broadcast_editor.ex:107
+#: lib/phoenix_kit/newsletters/web/broadcast_editor.ex:113
 #: lib/phoenix_kit/newsletters/web/layout_editor.ex:83
 #: lib/phoenix_kit/newsletters/web/layouts_index.html.heex:82
 #, elixir-autogen
@@ -107,7 +107,7 @@ msgid "Refresh"
 msgstr "Värskenda"
 
 #: lib/phoenix_kit/newsletters/web/broadcast_details.html.heex:79
-#: lib/phoenix_kit/newsletters/web/broadcast_details.html.heex:235
+#: lib/phoenix_kit/newsletters/web/broadcast_details.html.heex:242
 #: lib/phoenix_kit/newsletters/web/broadcasts.html.heex:95
 #: lib/phoenix_kit/newsletters/web/layouts_index.html.heex:55
 #: lib/phoenix_kit/newsletters/web/verification.html.heex:231
@@ -116,34 +116,34 @@ msgid "Status"
 msgstr "Olek"
 
 ## --- Broadcast / delivery statuses ---
-#: lib/phoenix_kit/newsletters/web/broadcast_details.ex:240
-#: lib/phoenix_kit/newsletters/web/broadcast_editor.ex:548
+#: lib/phoenix_kit/newsletters/web/broadcast_details.ex:273
+#: lib/phoenix_kit/newsletters/web/broadcast_editor.ex:601
 #: lib/phoenix_kit/newsletters/web/broadcasts.ex:93
 #: lib/phoenix_kit/newsletters/web/broadcasts.ex:127
 #, elixir-autogen
 msgid "Draft"
 msgstr "Mustand"
 
-#: lib/phoenix_kit/newsletters/web/broadcast_details.ex:241
-#: lib/phoenix_kit/newsletters/web/broadcast_editor.ex:549
+#: lib/phoenix_kit/newsletters/web/broadcast_details.ex:274
+#: lib/phoenix_kit/newsletters/web/broadcast_editor.ex:602
 #: lib/phoenix_kit/newsletters/web/broadcasts.ex:95
 #: lib/phoenix_kit/newsletters/web/broadcasts.ex:128
 #, elixir-autogen
 msgid "Scheduled"
 msgstr "Ajastatud"
 
-#: lib/phoenix_kit/newsletters/web/broadcast_details.ex:242
-#: lib/phoenix_kit/newsletters/web/broadcast_editor.ex:550
+#: lib/phoenix_kit/newsletters/web/broadcast_details.ex:275
+#: lib/phoenix_kit/newsletters/web/broadcast_editor.ex:603
 #: lib/phoenix_kit/newsletters/web/broadcasts.ex:98
 #: lib/phoenix_kit/newsletters/web/broadcasts.ex:129
 #, elixir-autogen
 msgid "Sending"
 msgstr "Saatmine"
 
-#: lib/phoenix_kit/newsletters/web/broadcast_details.ex:243
-#: lib/phoenix_kit/newsletters/web/broadcast_details.ex:251
+#: lib/phoenix_kit/newsletters/web/broadcast_details.ex:276
+#: lib/phoenix_kit/newsletters/web/broadcast_details.ex:284
 #: lib/phoenix_kit/newsletters/web/broadcast_details.html.heex:187
-#: lib/phoenix_kit/newsletters/web/broadcast_editor.ex:551
+#: lib/phoenix_kit/newsletters/web/broadcast_editor.ex:604
 #: lib/phoenix_kit/newsletters/web/broadcasts.ex:100
 #: lib/phoenix_kit/newsletters/web/broadcasts.ex:130
 #: lib/phoenix_kit/newsletters/web/broadcasts.html.heex:52
@@ -152,20 +152,20 @@ msgstr "Saatmine"
 msgid "Sent"
 msgstr "Saadetud"
 
-#: lib/phoenix_kit/newsletters/web/broadcast_details.ex:244
-#: lib/phoenix_kit/newsletters/web/broadcast_editor.ex:552
+#: lib/phoenix_kit/newsletters/web/broadcast_details.ex:277
+#: lib/phoenix_kit/newsletters/web/broadcast_editor.ex:605
 #: lib/phoenix_kit/newsletters/web/broadcasts.ex:102
 #: lib/phoenix_kit/newsletters/web/broadcasts.ex:131
 #, elixir-autogen
 msgid "Cancelled"
 msgstr "Tühistatud"
 
-#: lib/phoenix_kit/newsletters/web/broadcast_details.ex:250
+#: lib/phoenix_kit/newsletters/web/broadcast_details.ex:283
 #, elixir-autogen
 msgid "Pending"
 msgstr "Ootel"
 
-#: lib/phoenix_kit/newsletters/web/broadcast_details.ex:252
+#: lib/phoenix_kit/newsletters/web/broadcast_details.ex:285
 #: lib/phoenix_kit/newsletters/web/broadcast_details.html.heex:191
 #: lib/phoenix_kit/newsletters/web/broadcasts.html.heex:53
 #: lib/phoenix_kit/newsletters/web/broadcasts.html.heex:98
@@ -173,7 +173,7 @@ msgstr "Ootel"
 msgid "Delivered"
 msgstr "Kohale jõudnud"
 
-#: lib/phoenix_kit/newsletters/web/broadcast_details.ex:253
+#: lib/phoenix_kit/newsletters/web/broadcast_details.ex:286
 #: lib/phoenix_kit/newsletters/web/broadcast_details.html.heex:197
 #: lib/phoenix_kit/newsletters/web/broadcasts.html.heex:54
 #: lib/phoenix_kit/newsletters/web/broadcasts.html.heex:100
@@ -181,7 +181,7 @@ msgstr "Kohale jõudnud"
 msgid "Opened"
 msgstr "Avatud"
 
-#: lib/phoenix_kit/newsletters/web/broadcast_details.ex:254
+#: lib/phoenix_kit/newsletters/web/broadcast_details.ex:287
 #: lib/phoenix_kit/newsletters/web/broadcast_details.html.heex:203
 #: lib/phoenix_kit/newsletters/web/broadcasts.html.heex:55
 #: lib/phoenix_kit/newsletters/web/broadcasts.html.heex:101
@@ -189,8 +189,8 @@ msgstr "Avatud"
 msgid "Bounced"
 msgstr "Tagasi põrkunud"
 
-#: lib/phoenix_kit/newsletters/web/broadcast_details.ex:245
-#: lib/phoenix_kit/newsletters/web/broadcast_details.ex:255
+#: lib/phoenix_kit/newsletters/web/broadcast_details.ex:278
+#: lib/phoenix_kit/newsletters/web/broadcast_details.ex:288
 #: lib/phoenix_kit/newsletters/web/broadcast_details.html.heex:209
 #: lib/phoenix_kit/newsletters/web/broadcasts.ex:105
 #: lib/phoenix_kit/newsletters/web/broadcasts.ex:132
@@ -229,8 +229,8 @@ msgid "Subject"
 msgstr "Teema"
 
 #: lib/phoenix_kit/newsletters/web/broadcast_details.html.heex:118
-#: lib/phoenix_kit/newsletters/web/broadcast_details.html.heex:236
-#: lib/phoenix_kit/newsletters/web/broadcast_details.html.heex:288
+#: lib/phoenix_kit/newsletters/web/broadcast_details.html.heex:243
+#: lib/phoenix_kit/newsletters/web/broadcast_details.html.heex:295
 #: lib/phoenix_kit/newsletters/web/broadcasts.html.heex:60
 #: lib/phoenix_kit/newsletters/web/broadcasts.html.heex:103
 #, elixir-autogen
@@ -238,15 +238,15 @@ msgid "Sent at"
 msgstr "Saadetud"
 
 ## --- Broadcast editor page ---
-#: lib/phoenix_kit/newsletters/web/broadcast_details.ex:187
-#: lib/phoenix_kit/newsletters/web/broadcast_details.ex:213
-#: lib/phoenix_kit/newsletters/web/broadcast_editor.ex:143
+#: lib/phoenix_kit/newsletters/web/broadcast_details.ex:212
+#: lib/phoenix_kit/newsletters/web/broadcast_details.ex:246
+#: lib/phoenix_kit/newsletters/web/broadcast_editor.ex:149
 #, elixir-autogen
 msgid "Broadcast not found"
 msgstr "Saadetist ei leitud"
 
-#: lib/phoenix_kit/newsletters/web/broadcast_details.ex:170
-#: lib/phoenix_kit/newsletters/web/broadcast_editor.ex:233
+#: lib/phoenix_kit/newsletters/web/broadcast_details.ex:195
+#: lib/phoenix_kit/newsletters/web/broadcast_editor.ex:272
 #, elixir-autogen
 msgid "Broadcast is being sent"
 msgstr "Saadetist saadetakse"
@@ -266,27 +266,27 @@ msgstr "Ei saa saata: CRM-i nimekirja olek on %{status}, mitte aktiivne."
 msgid "Cannot send a broadcast with status %{status}."
 msgstr "Ei saa saata saadetist olekus %{status}."
 
-#: lib/phoenix_kit/newsletters/web/broadcast_editor.ex:242
+#: lib/phoenix_kit/newsletters/web/broadcast_editor.ex:281
 #, elixir-autogen
 msgid "Failed to save: %{reason}"
 msgstr "Salvestamine ebaõnnestus: %{reason}"
 
-#: lib/phoenix_kit/newsletters/web/broadcast_editor.ex:252
+#: lib/phoenix_kit/newsletters/web/broadcast_editor.ex:288
 #, elixir-autogen
 msgid "Please select a schedule date and time"
 msgstr "Vali ajastamise kuupäev ja kellaaeg"
 
-#: lib/phoenix_kit/newsletters/web/broadcast_editor.ex:513
+#: lib/phoenix_kit/newsletters/web/broadcast_editor.ex:566
 #, elixir-autogen
 msgid "Broadcast saved as %{status}"
 msgstr "Saadetis salvestatud olekuga „%{status}\""
 
-#: lib/phoenix_kit/newsletters/web/broadcast_editor.ex:526
+#: lib/phoenix_kit/newsletters/web/broadcast_editor.ex:579
 #, elixir-autogen
 msgid "Validation failed: %{errors}"
 msgstr "Valideerimine ebaõnnestus: %{errors}"
 
-#: lib/phoenix_kit/newsletters/web/broadcast_editor.ex:50
+#: lib/phoenix_kit/newsletters/web/broadcast_editor.ex:55
 #, elixir-autogen
 msgid "Compose and send a broadcast email to your newsletter list"
 msgstr "Koosta ja saada saadetis oma uudiskirja loendile"
@@ -317,56 +317,56 @@ msgstr "Kirjuta saadetise sisu Markdown-vormingus..."
 msgid "Save draft"
 msgstr "Salvesta mustand"
 
-#: lib/phoenix_kit/newsletters/web/broadcast_editor.html.heex:263
+#: lib/phoenix_kit/newsletters/web/broadcast_editor.html.heex:264
 #, elixir-autogen
 msgid "Send now"
 msgstr "Saada kohe"
 
-#: lib/phoenix_kit/newsletters/web/broadcast_editor.html.heex:284
+#: lib/phoenix_kit/newsletters/web/broadcast_editor.html.heex:285
 #, elixir-autogen
 msgid "Schedule"
 msgstr "Ajasta"
 
-#: lib/phoenix_kit/newsletters/web/broadcast_editor.html.heex:300
+#: lib/phoenix_kit/newsletters/web/broadcast_editor.html.heex:301
 #: lib/phoenix_kit/newsletters/web/layout_editor.html.heex:166
 #, elixir-autogen
 msgid "Preview"
 msgstr "Eelvaade"
 
-#: lib/phoenix_kit/newsletters/web/broadcast_editor.html.heex:329
+#: lib/phoenix_kit/newsletters/web/broadcast_editor.html.heex:330
 #, elixir-autogen
 msgid "Preview will appear here as you type"
 msgstr "Eelvaade ilmub siia kirjutamise ajal"
 
 ## --- Broadcast details page ---
-#: lib/phoenix_kit/newsletters/web/broadcast_details.ex:95
+#: lib/phoenix_kit/newsletters/web/broadcast_details.ex:98
 #: lib/phoenix_kit/newsletters/web/broadcast_details.html.heex:51
 #, elixir-autogen
 msgid "Cancel broadcast"
 msgstr "Tühista saadetis"
 
-#: lib/phoenix_kit/newsletters/web/broadcast_details.ex:98
+#: lib/phoenix_kit/newsletters/web/broadcast_details.ex:101
 #, elixir-autogen
 msgid "This will stop any remaining deliveries for this broadcast."
 msgstr "See peatab kõik ülejäänud kohaletoimetamised."
 
-#: lib/phoenix_kit/newsletters/web/broadcast_details.ex:108
+#: lib/phoenix_kit/newsletters/web/broadcast_details.ex:111
 #: lib/phoenix_kit/newsletters/web/broadcast_details.html.heex:62
 #, elixir-autogen
 msgid "Retry send"
 msgstr "Proovi saatmist uuesti"
 
-#: lib/phoenix_kit/newsletters/web/broadcast_details.ex:111
+#: lib/phoenix_kit/newsletters/web/broadcast_details.ex:114
 #, elixir-autogen
 msgid "This will retry sending the broadcast from the beginning."
 msgstr "Saadetise saatmist alustatakse uuesti algusest."
 
-#: lib/phoenix_kit/newsletters/web/broadcast_details.ex:134
+#: lib/phoenix_kit/newsletters/web/broadcast_details.ex:137
 #, elixir-autogen
 msgid "Broadcast cancelled"
 msgstr "Saadetis tühistatud"
 
-#: lib/phoenix_kit/newsletters/web/broadcast_details.ex:137
+#: lib/phoenix_kit/newsletters/web/broadcast_details.ex:140
 #, elixir-autogen
 msgid "Failed to cancel broadcast"
 msgstr "Saadetise tühistamine ebaõnnestus"
@@ -386,35 +386,35 @@ msgstr "Saajaid kokku"
 msgid "Deliveries"
 msgstr "Kohaletoimetamised"
 
-#: lib/phoenix_kit/newsletters/web/broadcast_details.html.heex:228
+#: lib/phoenix_kit/newsletters/web/broadcast_details.html.heex:235
 #, elixir-autogen
 msgid "No deliveries yet"
 msgstr "Kohaletoimetamisi pole veel"
 
-#: lib/phoenix_kit/newsletters/web/broadcast_details.html.heex:234
+#: lib/phoenix_kit/newsletters/web/broadcast_details.html.heex:241
 #, elixir-autogen
 msgid "Recipient"
 msgstr "Saaja"
 
-#: lib/phoenix_kit/newsletters/web/broadcast_details.html.heex:237
-#: lib/phoenix_kit/newsletters/web/broadcast_details.html.heex:291
+#: lib/phoenix_kit/newsletters/web/broadcast_details.html.heex:244
+#: lib/phoenix_kit/newsletters/web/broadcast_details.html.heex:298
 #, elixir-autogen
 msgid "Delivered at"
 msgstr "Kohale jõudnud"
 
-#: lib/phoenix_kit/newsletters/web/broadcast_details.html.heex:238
-#: lib/phoenix_kit/newsletters/web/broadcast_details.html.heex:294
+#: lib/phoenix_kit/newsletters/web/broadcast_details.html.heex:245
+#: lib/phoenix_kit/newsletters/web/broadcast_details.html.heex:301
 #, elixir-autogen
 msgid "Opened at"
 msgstr "Avatud"
 
-#: lib/phoenix_kit/newsletters/web/broadcast_details.html.heex:239
-#: lib/phoenix_kit/newsletters/web/broadcast_details.html.heex:298
+#: lib/phoenix_kit/newsletters/web/broadcast_details.html.heex:246
+#: lib/phoenix_kit/newsletters/web/broadcast_details.html.heex:305
 #, elixir-autogen
 msgid "Error"
 msgstr "Viga"
 
-#: lib/phoenix_kit/newsletters/web/broadcast_details.ex:38
+#: lib/phoenix_kit/newsletters/web/broadcast_details.ex:39
 #, elixir-autogen, elixir-format
 msgid "Broadcast details"
 msgstr "Saadetise andmed"
@@ -443,7 +443,7 @@ msgstr[1] "%{name} (%{count} liiget)"
 msgid "%{total} members: %{sendable} sendable, %{no_email} no email, %{unsendable} unsubscribed/opted-out"
 msgstr "%{total} liiget: %{sendable} saadetavat, %{no_email} e-postita, %{unsendable} tellimusest loobunud"
 
-#: lib/phoenix_kit/newsletters/web/broadcast_details.ex:256
+#: lib/phoenix_kit/newsletters/web/broadcast_details.ex:289
 #: lib/phoenix_kit/newsletters/web/broadcast_details.html.heex:215
 #, elixir-autogen, elixir-format
 msgid "Blocked"
@@ -499,7 +499,7 @@ msgstr "Hetkel pole ühtegi tellitavat uudiskirja saadaval."
 msgid "Please log in to manage your email subscriptions"
 msgstr "Palun logi sisse, et hallata oma meilitellimusi"
 
-#: lib/phoenix_kit/newsletters/web/broadcast_editor.ex:261
+#: lib/phoenix_kit/newsletters/web/broadcast_editor.ex:297
 #, elixir-autogen, elixir-format
 msgid "Please select a valid schedule date and time"
 msgstr "Vali kehtiv ajastamise kuupäev ja kellaaeg"
@@ -514,7 +514,7 @@ msgstr "Telli uuesti"
 msgid "Send to"
 msgstr "Saata"
 
-#: lib/phoenix_kit/newsletters/web/broadcast_editor.ex:646
+#: lib/phoenix_kit/newsletters/web/broadcast_editor.ex:699
 #, elixir-autogen, elixir-format
 msgid "Sends at %{local} (%{tz}) · %{utc} UTC"
 msgstr "Saadetakse %{local} (%{tz}) · %{utc} UTC"
@@ -652,12 +652,12 @@ msgstr "Eemalda manus"
 msgid "missing file"
 msgstr "puuduv fail"
 
-#: lib/phoenix_kit/newsletters/web/broadcast_editor.ex:614
+#: lib/phoenix_kit/newsletters/web/broadcast_editor.ex:667
 #, elixir-autogen, elixir-format
 msgid "%{name} (archived)"
 msgstr "%{name} (arhiveeritud)"
 
-#: lib/phoenix_kit/newsletters/newsletters.ex:197
+#: lib/phoenix_kit/newsletters/newsletters.ex:241
 #, elixir-autogen, elixir-format
 msgid "A broadcast sent without a layout of its own, in the standard layout"
 msgstr "Saadetis ilma oma kujunduseta, standardkujunduses"
@@ -737,7 +737,7 @@ msgstr "HTML"
 msgid "Hello {{name}},"
 msgstr "Tere, {{name}}!"
 
-#: lib/phoenix_kit/newsletters/web/broadcast_editor.html.heex:302
+#: lib/phoenix_kit/newsletters/web/broadcast_editor.html.heex:303
 #, elixir-autogen, elixir-format
 msgid "Language"
 msgstr "Keel"
@@ -801,7 +801,7 @@ msgid "New broadcasts now start with the standard layout"
 msgstr "Uued saadetised algavad nüüd standardkujundusega"
 
 ## --- Sidebar tab labels ---
-#: lib/phoenix_kit/newsletters/newsletters.ex:195
+#: lib/phoenix_kit/newsletters/newsletters.ex:239
 #, elixir-autogen, elixir-format
 msgid "Newsletter broadcast"
 msgstr "Uudiskirja saadetis"
@@ -1009,7 +1009,7 @@ msgstr "Aadresside kontroll vajab Emails-moodulit. Paigalda phoenix_kit_emails (
 msgid "Audience"
 msgstr "Sihtrühm"
 
-#: lib/phoenix_kit/newsletters/web/verification.ex:49
+#: lib/phoenix_kit/newsletters/web/verification.ex:70
 #, elixir-autogen, elixir-format
 msgid "Check the addresses of a broadcast audience"
 msgstr "Saadetise sihtrühma aadresside kontroll"
@@ -1020,12 +1020,12 @@ msgstr "Saadetise sihtrühma aadresside kontroll"
 msgid "Checked"
 msgstr "Kontrollitud"
 
-#: lib/phoenix_kit/newsletters/web/verification.ex:430
+#: lib/phoenix_kit/newsletters/web/verification.ex:464
 #, elixir-autogen, elixir-format
 msgid "Could not start the verification"
 msgstr "Kontrolli ei õnnestunud käivitada"
 
-#: lib/phoenix_kit/newsletters/web/verification.ex:473
+#: lib/phoenix_kit/newsletters/web/verification.ex:507
 #, elixir-autogen, elixir-format
 msgid "DNS error"
 msgstr "DNS-i viga"
@@ -1035,12 +1035,12 @@ msgstr "DNS-i viga"
 msgid "Disposable"
 msgstr "Ühekordne"
 
-#: lib/phoenix_kit/newsletters/web/verification.ex:471
+#: lib/phoenix_kit/newsletters/web/verification.ex:505
 #, elixir-autogen, elixir-format
 msgid "Disposable domain"
 msgstr "Ühekordne domeen"
 
-#: lib/phoenix_kit/newsletters/web/verification.ex:455
+#: lib/phoenix_kit/newsletters/web/verification.ex:489
 #, elixir-autogen, elixir-format
 msgid "Domain OK (no SMTP)"
 msgstr "Domeen OK (ilma SMTP-ta)"
@@ -1060,12 +1060,12 @@ msgstr "Märked"
 msgid "Free"
 msgstr "Tasuta"
 
-#: lib/phoenix_kit/newsletters/web/verification.ex:451
+#: lib/phoenix_kit/newsletters/web/verification.ex:485
 #, elixir-autogen, elixir-format
 msgid "Invalid"
 msgstr "Kehtetu"
 
-#: lib/phoenix_kit/newsletters/web/verification.ex:469
+#: lib/phoenix_kit/newsletters/web/verification.ex:503
 #, elixir-autogen, elixir-format
 msgid "Invalid syntax"
 msgstr "Vigane süntaks"
@@ -1075,17 +1075,17 @@ msgstr "Vigane süntaks"
 msgid "Last verification finished: %{at} (%{total} addresses)"
 msgstr "Viimane kontroll lõppes: %{at} (aadresse: %{total})"
 
-#: lib/phoenix_kit/newsletters/web/verification.ex:475
+#: lib/phoenix_kit/newsletters/web/verification.ex:509
 #, elixir-autogen, elixir-format
 msgid "Mailbox not probed (SMTP check is off)"
 msgstr "Postkasti ei kontrollitud (SMTP-kontroll on väljas)"
 
-#: lib/phoenix_kit/newsletters/web/verification.ex:477
+#: lib/phoenix_kit/newsletters/web/verification.ex:511
 #, elixir-autogen, elixir-format
 msgid "Mailbox not probed (SMTP error)"
 msgstr "Postkasti ei kontrollitud (SMTP viga)"
 
-#: lib/phoenix_kit/newsletters/web/verification.ex:476
+#: lib/phoenix_kit/newsletters/web/verification.ex:510
 #, elixir-autogen, elixir-format
 msgid "Mailbox not probed (SMTP unavailable)"
 msgstr "Postkasti ei kontrollitud (SMTP pole saadaval)"
@@ -1105,12 +1105,12 @@ msgstr "Kontrollitavaid aadresse pole"
 msgid "No addresses with this status."
 msgstr "Selle olekuga aadresse pole."
 
-#: lib/phoenix_kit/newsletters/web/verification.ex:454
+#: lib/phoenix_kit/newsletters/web/verification.ex:488
 #, elixir-autogen, elixir-format
 msgid "Not checked"
 msgstr "Kontrollimata"
 
-#: lib/phoenix_kit/newsletters/web/verification.ex:453
+#: lib/phoenix_kit/newsletters/web/verification.ex:487
 #, elixir-autogen, elixir-format
 msgid "Not sure"
 msgstr "Pole kindel"
@@ -1146,22 +1146,22 @@ msgstr "Rolliaadress"
 msgid "Starting..."
 msgstr "Käivitan..."
 
-#: lib/phoenix_kit/newsletters/web/verification.ex:452
+#: lib/phoenix_kit/newsletters/web/verification.ex:486
 #, elixir-autogen, elixir-format
 msgid "Temporary problem"
 msgstr "Ajutine probleem"
 
-#: lib/phoenix_kit/newsletters/web/verification.ex:424
+#: lib/phoenix_kit/newsletters/web/verification.ex:458
 #, elixir-autogen, elixir-format
 msgid "The Emails module is not available"
 msgstr "Emails-moodul pole saadaval"
 
-#: lib/phoenix_kit/newsletters/web/verification.ex:416
+#: lib/phoenix_kit/newsletters/web/verification.ex:450
 #, elixir-autogen, elixir-format
 msgid "The audience is too large for one batch (at most %{max} addresses)"
 msgstr "Sihtrühm on ühe partii jaoks liiga suur (kuni %{max} aadressi)"
 
-#: lib/phoenix_kit/newsletters/web/verification.ex:472
+#: lib/phoenix_kit/newsletters/web/verification.ex:506
 #, elixir-autogen, elixir-format
 msgid "The domain accepts no mail"
 msgstr "Domeen ei võta posti vastu"
@@ -1176,22 +1176,22 @@ msgstr "Host-rakenduse Oban-i seadistuses puudub järjekord email_verification, 
 msgid "The last verification was cancelled after %{processed} of %{total} addresses"
 msgstr "Viimane kontroll tühistati pärast %{processed} aadressi %{total}-st"
 
-#: lib/phoenix_kit/newsletters/web/verification.ex:413
+#: lib/phoenix_kit/newsletters/web/verification.ex:447
 #, elixir-autogen, elixir-format
 msgid "There are no sendable addresses to verify"
 msgstr "Kontrollimiseks pole saadetavaid aadresse"
 
-#: lib/phoenix_kit/newsletters/web/verification.ex:470
+#: lib/phoenix_kit/newsletters/web/verification.ex:504
 #, elixir-autogen, elixir-format
 msgid "Unknown top-level domain"
 msgstr "Tundmatu ülemtaseme domeen"
 
-#: lib/phoenix_kit/newsletters/web/verification.ex:450
+#: lib/phoenix_kit/newsletters/web/verification.ex:484
 #, elixir-autogen, elixir-format
 msgid "Valid"
 msgstr "Kehtiv"
 
-#: lib/phoenix_kit/newsletters/web/verification.ex:299
+#: lib/phoenix_kit/newsletters/web/verification.ex:333
 #, elixir-autogen, elixir-format
 msgid "Verification started"
 msgstr "Kontroll käivitatud"
@@ -1206,22 +1206,22 @@ msgstr "Kontrolli nimekirja"
 msgid "Verifying: %{processed} of %{total}"
 msgstr "Kontrollin: %{processed} / %{total}"
 
-#: lib/phoenix_kit/newsletters/web/verification.ex:422
+#: lib/phoenix_kit/newsletters/web/verification.ex:456
 #, elixir-autogen, elixir-format
 msgid "A verification of this audience is already running"
 msgstr "Selle sihtrühma kontroll juba töötab"
 
-#: lib/phoenix_kit/newsletters/web/verification.ex:428
+#: lib/phoenix_kit/newsletters/web/verification.ex:462
 #, elixir-autogen, elixir-format
 msgid "The verification failed to start: the Emails module reported an error"
 msgstr "Kontrolli käivitamine ebaõnnestus: Emails-moodul teatas veast"
 
-#: lib/phoenix_kit/newsletters/web/verification.ex:425
+#: lib/phoenix_kit/newsletters/web/verification.ex:459
 #, elixir-autogen, elixir-format
 msgid "Address verification is switched off"
 msgstr "Aadresside kontroll on välja lülitatud"
 
-#: lib/phoenix_kit/newsletters/web/verification.ex:474
+#: lib/phoenix_kit/newsletters/web/verification.ex:508
 #, elixir-autogen, elixir-format
 msgid "Verification failed, will need a re-run"
 msgstr "Kontroll ebaõnnestus, vaja uuesti käivitada"
@@ -1233,42 +1233,42 @@ msgid_plural "%{count} addresses waiting for the SMTP check"
 msgstr[0] "%{count} aadress ootab SMTP-kontrolli"
 msgstr[1] "%{count} aadressi ootavad SMTP-kontrolli"
 
-#: lib/phoenix_kit/newsletters/web/verification.ex:479
+#: lib/phoenix_kit/newsletters/web/verification.ex:513
 #, elixir-autogen, elixir-format
 msgid "Catch-all"
 msgstr "Catch-all"
 
-#: lib/phoenix_kit/newsletters/web/verification.ex:485
+#: lib/phoenix_kit/newsletters/web/verification.ex:519
 #, elixir-autogen, elixir-format
 msgid "Could not connect to the mail server"
 msgstr "Postiserveriga ei õnnestunud ühendust luua"
 
-#: lib/phoenix_kit/newsletters/web/verification.ex:482
+#: lib/phoenix_kit/newsletters/web/verification.ex:516
 #, elixir-autogen, elixir-format
 msgid "Greylisted"
 msgstr "Hallnimekirjas (greylisting)"
 
-#: lib/phoenix_kit/newsletters/web/verification.ex:483
+#: lib/phoenix_kit/newsletters/web/verification.ex:517
 #, elixir-autogen, elixir-format
 msgid "Mail server blocked the check"
 msgstr "Postiserver blokeeris kontrolli"
 
-#: lib/phoenix_kit/newsletters/web/verification.ex:486
+#: lib/phoenix_kit/newsletters/web/verification.ex:520
 #, elixir-autogen, elixir-format
 msgid "Mail server rejected the sender"
 msgstr "Postiserver lükkas saatja tagasi"
 
-#: lib/phoenix_kit/newsletters/web/verification.ex:480
+#: lib/phoenix_kit/newsletters/web/verification.ex:514
 #, elixir-autogen, elixir-format
 msgid "Mailbox does not exist"
 msgstr "Postkasti pole olemas"
 
-#: lib/phoenix_kit/newsletters/web/verification.ex:481
+#: lib/phoenix_kit/newsletters/web/verification.ex:515
 #, elixir-autogen, elixir-format
 msgid "Mailbox is full"
 msgstr "Postkast on täis"
 
-#: lib/phoenix_kit/newsletters/web/verification.ex:484
+#: lib/phoenix_kit/newsletters/web/verification.ex:518
 #, elixir-autogen, elixir-format
 msgid "SMTP check timed out"
 msgstr "SMTP-kontrolli ooteaeg ületati"
@@ -1278,22 +1278,45 @@ msgstr "SMTP-kontrolli ooteaeg ületati"
 msgid "SMTP is waiting for the runner - see Settings → Emails"
 msgstr "SMTP ootab käivitajat (runner) – vt Settings → Emails"
 
-#: lib/phoenix_kit/newsletters/web/verification.ex:456
+#: lib/phoenix_kit/newsletters/web/verification.ex:490
 #, elixir-autogen, elixir-format
 msgid "Waiting for SMTP"
 msgstr "Ootab SMTP-d"
 
-#: lib/phoenix_kit/newsletters/web/verification.ex:478
+#: lib/phoenix_kit/newsletters/web/verification.ex:512
 #, elixir-autogen, elixir-format
 msgid "Waiting for the SMTP check"
 msgstr "Ootab SMTP-kontrolli"
 
-#: lib/phoenix_kit/newsletters/web/verification.ex:488
+#: lib/phoenix_kit/newsletters/web/verification.ex:522
 #, elixir-autogen, elixir-format
 msgid "Mail server reset the connection"
 msgstr "Postiserver katkestas ühenduse"
 
-#: lib/phoenix_kit/newsletters/web/verification.ex:487
+#: lib/phoenix_kit/newsletters/web/verification.ex:521
 #, elixir-autogen, elixir-format
 msgid "Mailbox confirmed by the SMTP check"
 msgstr "Postkasti olemasolu kinnitas SMTP-kontroll"
+
+#: lib/phoenix_kit/newsletters/web/verification.ex:59
+#: lib/phoenix_kit/newsletters/web/verification.ex:129
+#, elixir-autogen, elixir-format
+msgid "You don't have permission to see broadcast recipients"
+msgstr "Sul pole õigust saadetiste saajaid vaadata"
+
+#: lib/phoenix_kit/newsletters/web/broadcast_details.html.heex:232
+#, elixir-autogen, elixir-format
+msgid "You don't have permission to see this broadcast's recipients"
+msgstr "Sul pole õigust selle saadetise saajaid vaadata"
+
+#: lib/phoenix_kit/newsletters/web/broadcast_details.ex:172
+#: lib/phoenix_kit/newsletters/web/broadcast_editor.ex:350
+#, elixir-autogen, elixir-format
+msgid "You don't have permission to send broadcasts"
+msgstr "Sul pole õigust saadetisi saata"
+
+#: lib/phoenix_kit/newsletters/web/broadcast_details.ex:176
+#: lib/phoenix_kit/newsletters/web/broadcast_editor.ex:362
+#, elixir-autogen, elixir-format
+msgid "You don't have permission to use CRM lists"
+msgstr "Sul pole õigust CRM-i nimekirju kasutada"

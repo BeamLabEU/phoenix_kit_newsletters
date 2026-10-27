@@ -26,6 +26,7 @@ defmodule PhoenixKit.Newsletters.Web.VerificationTest do
 
   setup do
     Newsletters.enable_system()
+    enable_crm()
     Application.put_env(:phoenix_kit_newsletters, @engine_key, Fake)
     on_exit(fn -> Application.delete_env(:phoenix_kit_newsletters, @engine_key) end)
     :ok
@@ -33,7 +34,16 @@ defmodule PhoenixKit.Newsletters.Web.VerificationTest do
 
   defp socket(extra \\ %{}) do
     %Phoenix.LiveView.Socket{
-      assigns: Map.merge(%{__changed__: %{}, flash: %{}, phoenix_kit_current_user: nil}, extra)
+      assigns:
+        Map.merge(
+          %{
+            __changed__: %{},
+            flash: %{},
+            phoenix_kit_current_user: nil,
+            phoenix_kit_current_scope: full_scope()
+          },
+          extra
+        )
     }
   end
 
