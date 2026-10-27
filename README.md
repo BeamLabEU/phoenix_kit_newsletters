@@ -128,12 +128,15 @@ under their own uuids.
 | `DeliveryWorker` | Oban worker — sends individual emails, tracks delivery status |
 | `CRMSource` | Soft-dependency bridge to `phoenix_kit_crm` contact lists |
 | `UserGroupSource` | Role-based audience resolution and opt-out |
+| `EmailVerification` | Soft bridge to the host-configured address verification engine; neutral values without one |
+| `VerificationEngine` | Behaviour an address verification engine implements (see [Address verification engine](#address-verification-engine)) |
 | `Paths` | Centralized path helpers — always use instead of hardcoding URLs |
 | `Web.Broadcasts` | Admin LiveView — broadcasts index |
 | `Web.BroadcastEditor` | Admin LiveView — create/edit broadcast with Markdown editor |
 | `Web.BroadcastDetails` | Admin LiveView — delivery stats and recipient list |
 | `Web.LayoutsIndex` | Admin LiveView — layouts list, archive/restore, default layout |
 | `Web.LayoutEditor` | Admin LiveView — create/edit a layout per language, with preview |
+| `Web.Verification` | Admin LiveView — address verification of a broadcast audience |
 | `Web.PreferenceCenterLive` | Public LiveView — self-service subscription preferences (token or login) |
 | `Web.UnsubscribeController` | Public controller — confirm/unsubscribe/one-click flow |
 | `Web.Routes` | Public route definitions via `route_module/0` |
@@ -146,6 +149,42 @@ under their own uuids.
 | `newsletters_default_template` | — | UUID of the layout new broadcasts start with (set from the Layouts page) |
 | `from_email` | `noreply@example.com` | Sender email address (shared with core, used by the legacy send path) |
 | `from_name` | `Newsletter` | Sender display name (shared with core, used by the legacy send path) |
+
+## Address verification engine
+
+**Newsletters → Address verification** checks the addresses a broadcast audience
+would mail (a CRM list or a set of roles, resolved the same way the sender
+resolves them) against an address verification engine. This package does not ship
+an engine and does not depend on one: the host names the module that plays that
+part, and without one the page says "no engine is configured" and every call
+degrades to a neutral value.
+
+```elixir
+# In config/config.exs:
+config :phoenix_kit_newsletters, :email_verification_engine, MyApp.AddressVerification
+```
+
+There is no default engine: a host that expects the page to find one on its own
+has to add this line.
+
+The module implements the `PhoenixKit.Newsletters.VerificationEngine` behaviour
+(the callbacks are documented there):
+
+| Callback | Purpose |
+|---|---|
+| `verify/2` | Verifies one address. Its presence marks the module as an engine |
+| `enabled?/0` | Whether the engine is switched on; the page shows "switched off" otherwise |
+| `queue_configured?/0` | Whether the host runs the Oban queue the engine's batches need |
+| `results_for/1`, `summary/1` | Stored verdicts and per-status counts for a list of addresses |
+| `start_batch/4`, `latest_batch/2`, `get_batch/1` | Start a background batch for an audience, find its newest batch, read one |
+| `subscribe_batch/1` | Subscribes the caller to the batch's progress, delivered as `{:email_verify_batch, %{uuid:, state:, processed:, total:, counts:}}` |
+| `max_batch_size/0` | The most distinct addresses one batch can hold |
+| `statuses_for/1` *(optional)* | Light status/reason/level maps without step logs; the page falls back to `results_for/1` |
+| `smtp_mode/0`, `runner_status/0` *(optional)* | An SMTP stage that waits for a remote runner; read as `"off"` / `nil` when absent |
+
+Every call is guarded by `function_exported?/3`, so an engine that lacks a callback
+degrades instead of crashing the page, and a failure inside the engine is logged
+(with addresses masked) and answered with the neutral value.
 
 ## Unsubscribe Flow
 

@@ -86,7 +86,6 @@ work goes through Oban workers.
 mix deps.get
 createdb phoenix_kit_newsletters_test          # once; DB-backed tests are tagged :integration and auto-skip without it
 mix test
-PHOENIX_KIT_EMAILS_PATH=/path/to/phoenix_kit_emails mix test   # also runs the real-engine tests
 mix precommit                # compile --warnings-as-errors + format + credo --strict + dialyzer; run before every commit
 ```
 
@@ -97,10 +96,6 @@ run `mix deps.get`, and revert **both** `mix.exs` and `mix.lock` before
 committing (switching between path and Hex resolution rewrites the lock).
 
 `mix precommit` also runs `deps.unlock --check-unused` and `mix hex.audit`.
-
-`PHOENIX_KIT_EMAILS_PATH` (read by `mix.exs`) swaps the test-only
-`phoenix_kit_emails` dep from Hex to a local checkout, which rewrites
-`mix.lock`: `git checkout mix.lock` after the run.
 
 Repo-local aliases:
 
@@ -286,7 +281,8 @@ lib/phoenix_kit/newsletters/
 ├── layouts.ex              # Layout context: list/get/create/update/archive/restore, default layout
 ├── render.ex               # One email: layout in the reader's language, core chrome, subject, text
 ├── recipient_language.ex   # Which language a recipient reads in (user / CRM contact / site)
-├── email_verification.ex   # Soft bridge (apply/3) to the Emails module's verification engine; degrades to neutral values
+├── email_verification.ex   # Soft bridge (apply/3) to the host-configured verification engine; degrades to neutral values
+├── verification_engine.ex  # Behaviour the engine implements (callbacks, batch/verdict types, progress message)
 ├── verification_rows.ex    # Verification table as plain data: rows + verdicts, status filter, pagination
 ├── migrations.ex           # PhoenixKitNewsletters.Migrations: V1 = adoption, V2 = layouts table + carry-over
 ├── web/
@@ -361,13 +357,20 @@ broadcast that stored names would silently re-target on rename.
 
 `Web.Verification` checks the addresses a broadcast audience would mail (same
 resolvers as the sender: `CRMSource` / `UserGroupSource.sendable_recipients/1`)
-against the Emails module's engine (`PhoenixKit.Modules.Emails.Verification`).
-Newsletters does not depend on Emails: `EmailVerification` calls it through
-`Code.ensure_loaded?/1` + `function_exported?/3` + `apply/3`, and every read
-degrades to a neutral value (`start_batch/4` answers `{:error, :unavailable}`
-when the module is absent, `{:error, {:engine_error, msg}}` when it is loaded
-and raised). The page has three states: `:unavailable` (no engine),
-`:disabled` (`email_verify_enabled` off), `:ready`.
+against an address verification engine the host names in
+`config :phoenix_kit_newsletters, :email_verification_engine, Module`.
+There is no default engine and this package knows no engine by name: the
+contract is the `PhoenixKit.Newsletters.VerificationEngine` behaviour (callbacks,
+batch and verdict shapes, the `{:email_verify_batch, %{...}}` progress message).
+`EmailVerification` calls the configured module through `Code.ensure_loaded?/1`
++ `function_exported?/3` + `apply/3`, and every read degrades to a neutral value
+(`start_batch/4` answers `{:error, :unavailable}` when there is no engine,
+`{:error, {:engine_error, msg}}` when it is loaded and raised). The page has
+three states: `:unavailable` (none configured, or the module is not loaded),
+`:disabled` (the engine's `enabled?/0` is false), `:ready`. The behaviour's
+signatures and message shapes are a compatibility surface: engines already
+exist with this API, so change them only additively (a new callback goes in
+`@optional_callbacks`).
 
 - Filtered views read `statuses_for/1` (no step logs; falls back to
   `results_for/1` on a release without it); full results are loaded only for
@@ -379,15 +382,14 @@ and raised). The page has three states: `:unavailable` (no engine),
 - Progress arrives over the engine's PubSub topic. Subscribe first, then
   re-read the batch (a batch finishing in between is not missed); the table is
   re-read only when the batch ends.
-- SMTP stage (Emails engine with `smtp_mode/0` and `runner_status/0`; both are
-  guarded, so on Emails 0.5.x they read `"off"` / `nil`). An address with
+- SMTP stage (an engine with the optional `smtp_mode/0` and `runner_status/0`;
+  both are guarded, so without them they read `"off"` / `nil`). An address with
   `not_sure` + reason `smtp_pending` gets its own "Waiting for SMTP" badge,
   apart from "Domain OK (no SMTP)" (`smtp_disabled`). The progress shows the
   batch's `awaiting_smtp` count, and in `runner` mode with a runner that is not
   online (`EmailVerification.smtp_runner_waiting?/0`, re-read every 10 s while a
   batch runs) a link to `Paths.email_sending_settings/0`. The soft bridge masks
   addresses in its log lines and in the message of `{:engine_error, msg}`.
-  Tests tagged `:requires_emails_smtp` need an engine that has the SMTP stage.
 
 ### Public flows
 
@@ -540,13 +542,10 @@ verbatim — it is core-owned DDL, not something to fix here.
 - Verification tests: the page and `EmailVerification` are driven through
   `test/support/fake_verification_engine.ex`
   (`Application.put_env(:phoenix_kit_newsletters, :email_verification_engine, Fake)`;
-  answers scripted in the test process, calls sent back as messages), so they
-  run without `phoenix_kit_emails`. Tests tagged
-  `:requires_emails_verification` use the real engine and are excluded unless
-  the engine is loaded, i.e. unless the suite runs with
-  `PHOENIX_KIT_EMAILS_PATH` pointing at a checkout that has it (`test_helper.exs`
-  then also runs Emails' migration chain). `config/test.exs` gives the engine a
-  no-DNS resolver; no test reaches the network.
+  answers scripted in the test process, calls sent back as messages). The fake
+  declares `@behaviour PhoenixKit.Newsletters.VerificationEngine`, so a callback
+  added to the behaviour fails the build until the fake implements it. No engine
+  is a dependency of this package, not even a test one.
 - `config/test.exs` wires `config :phoenix_kit, repo:`, a `secret_key_base`
   (so integration credentials round-trip encrypted), `PhoenixKit.Mailer` to
   `Swoosh.Adapters.Test`, and `:endpoint` to a raw secret string so
