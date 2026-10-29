@@ -491,13 +491,17 @@ V3 renames the objects a pre-rename host kept under their old names
 4 foreign keys and 6 indexes) to the names `ExpectedSchema` expects (marker
 `pknl_schema:3`). The manifest finds an index or constraint by name and has no
 alias for another one, so without it `repair --dry-run` on such a host reports
-them missing and a real run adds duplicates and fails on a second primary key.
-Each object is found by what it is (the V1/V2 guards' test), never by name, and
-renamed only when exactly one is found and the canonical name is free; if the
-canonical name is taken or several match, nothing moves and a `WARNING` says
-so. It creates, drops and rewrites nothing, `down/1` leaves the names alone,
-and until `mix phoenix_kit.update` has run, repair skips this package's
-tables as "behind".
+them missing and a real run adds duplicate indexes and foreign keys and fails
+on both primary keys. Each object is found by what it is, never by name
+(everything the manifest records for it, so a `DESC` or `varchar_pattern_ops`
+index or a key with another action is not taken for it), and renamed only when
+exactly one is found and the canonical name is free, with a `NOTICE`; if the
+name is taken or several match, nothing moves and a `WARNING` says so. It
+creates, drops and rewrites nothing, and `down/1` leaves the names alone. Primary
+and foreign key renames take an ACCESS EXCLUSIVE lock on the table (an index
+rename does not block reads or writes), so V3 runs under a 5 s `lock_timeout`;
+update a busy site in a quiet window. Until `mix phoenix_kit.update` has run,
+repair skips this package's tables as "behind".
 
 Core's manifest: core 2.52 (BeamLabEU/phoenix_kit#896) dropped
 `fk_newsletters_broadcasts_template` — declared with the email-templates
@@ -527,7 +531,8 @@ verbatim — it is core-owned DDL, not something to fix here.
 - `test_helper.exs` starts `PhoenixKitNewsletters.Test.Repo`, brings it to
   the current core schema with `PhoenixKit.Migration.ensure_current/2`, runs
   this chain's `PhoenixKitNewsletters.Migrations.up_statements/0` on top
-  (so every run starts at the chain's current `pknl_schema` marker), sets sandbox `:manual`, and
+  (so every run starts at the chain's current `pknl_schema` marker), sets
+  sandbox `:manual`, and
   starts `PhoenixKit.PubSub.Manager` (role fixtures broadcast through it). No reachable DB excludes `:integration`; it also
   probes the `attachments` column with a real query and excludes
   `:requires_v158` when absent (every core ≥ 2.0 has it, so in practice both
