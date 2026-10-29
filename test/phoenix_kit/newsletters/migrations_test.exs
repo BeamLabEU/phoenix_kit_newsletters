@@ -638,6 +638,8 @@ defmodule PhoenixKitNewsletters.MigrationsTest do
       |> Enum.reject(&String.starts_with?(&1, "COMMENT ON TABLE"))
     end
 
+    defp v3_renames(prefix), do: Enum.filter(v3_part(prefix), &(&1 =~ "RENAME"))
+
     defp renamed_to(statement) do
       normalized = statement |> String.replace(~r/\s+/, " ") |> String.trim()
 
@@ -671,6 +673,7 @@ defmodule PhoenixKitNewsletters.MigrationsTest do
       for target <- [1, 2], prefix <- ["public", "newsletters_alt"] do
         for stmt <- Migrations.up_statements(prefix, target) do
           refute stmt =~ "RENAME", "target #{target} renames: #{stmt}"
+          refute stmt =~ "lock_timeout", "target #{target} sets a lock timeout: #{stmt}"
         end
       end
     end
@@ -688,25 +691,65 @@ defmodule PhoenixKitNewsletters.MigrationsTest do
 
     test "V3 renames exactly these objects: primary keys, then foreign keys, then indexes" do
       for prefix <- ["public", "newsletters_alt"] do
-        assert Enum.map(v3_part(prefix), &renamed_to/1) == @v3_canonical_names
+        assert Enum.map(v3_renames(prefix), &renamed_to/1) == @v3_canonical_names
+      end
+    end
+
+    # Renaming a primary or foreign key takes an ACCESS EXCLUSIVE lock on the
+    # table until the migration commits; the timeout turns waiting behind a
+    # long transaction into a failed migration that changed nothing. Reset
+    # before the marker, so the connection does not keep it (core's V163 and
+    # V224 do the same).
+    test "V3 runs under a lock timeout: set before the first rename, reset after the last" do
+      for prefix <- ["public", "newsletters_alt"] do
+        v3 = v3_part(prefix)
+
+        assert hd(v3) == "SET lock_timeout = '5000ms'"
+        assert List.last(v3) == "RESET lock_timeout"
+        assert Enum.count(v3, &(&1 =~ "lock_timeout")) == 2
+        assert length(v3) == length(v3_renames(prefix)) + 2
+
+        three = Migrations.up_statements(prefix, 3)
+        assert Enum.at(three, -2) == "RESET lock_timeout"
+        assert List.last(three) =~ "IS 'pknl_schema:3'"
       end
     end
 
     test "V3 only renames: it creates, drops, rewrites and deletes nothing" do
       forbidden = ~r/\b(CREATE|DROP|INSERT|UPDATE|DELETE|TRUNCATE|ADD CONSTRAINT|COMMENT)\b/
 
-      for prefix <- ["public", "newsletters_alt"], stmt <- v3_part(prefix) do
+      for prefix <- ["public", "newsletters_alt"], stmt <- v3_renames(prefix) do
         refute stmt =~ forbidden, "V3 statement does more than rename:\n#{stmt}"
         assert stmt =~ ~r/ALTER (TABLE|INDEX)/
       end
     end
 
-    test "V3 renames by meaning, and only to a name nothing else holds" do
-      for prefix <- ["public", "newsletters_alt"], stmt <- v3_part(prefix) do
-        # Candidates are found by what they are; the canonical name is looked
-        # up first so an existing object is never renamed over or duplicated.
-        assert stmt =~ "RAISE WARNING", "a skipped rename must say so:\n#{stmt}"
-        assert stmt =~ ~r/to_regclass|conname = /, "no check that the name is free:\n#{stmt}"
+    # Every rename decides the same way, in this order: nothing found (nothing
+    # happens); the canonical name in use (warn, rename nothing); several found
+    # (warn, rename nothing); exactly one (rename it, and say so). The order is
+    # what keeps a rename from landing on a taken name or on a guess.
+    test "every V3 rename decides: none, name taken, several, or exactly one" do
+      for prefix <- ["public", "newsletters_alt"], stmt <- v3_renames(prefix) do
+        text = stmt |> String.replace(~r/\s+/, " ") |> String.trim()
+        canonical = renamed_to(stmt)
+
+        assert text =~ "candidates text[]"
+        assert text =~ "<> '#{canonical}'", "the canonical name is not excluded from the matches"
+
+        decision =
+          ~r/IF candidates IS NOT NULL THEN IF (?<taken>.+?) THEN RAISE WARNING '[^']*is already in use[^']*', '#{canonical}', array_to_string\(candidates, ', '\); ELSIF array_length\(candidates, 1\) > 1 THEN RAISE WARNING '[^']*has several equivalents[^']*', '#{canonical}', array_to_string\(candidates, ', '\), '#{canonical}'; ELSE EXECUTE format\('(?<alter>[^']+)', candidates\[1\]\); RAISE NOTICE '[^']*renamed % to %[^']*', candidates\[1\], '#{canonical}'; END IF; END IF; END \$\$$/
+
+        assert %{"taken" => taken, "alter" => alter} = Regex.named_captures(decision, text),
+               "the decision is not the expected one:\n#{stmt}"
+
+        # The name is taken when something holds it: a relation of that name
+        # (an index, and a primary key's index) or a constraint of the table.
+        assert taken =~
+                 ~r/^(to_regclass\('[a-z_.]+'\) IS NOT NULL|EXISTS \(.*conname = '#{canonical}' \))$/
+
+        # One rename, of the one candidate, to the canonical name.
+        assert alter =~
+                 ~r/^ALTER (TABLE [a-z_.]+ RENAME CONSTRAINT %I|INDEX [a-z_.]+%I RENAME) TO #{canonical}$/
       end
     end
 
@@ -744,7 +787,7 @@ defmodule PhoenixKitNewsletters.MigrationsTest do
             shape.type in ["p", "f"],
             do: {name, table, shape}
 
-      v3 = Map.new(v3_part("public"), &{renamed_to(&1), &1})
+      v3 = Map.new(v3_renames("public"), &{renamed_to(&1), &1})
 
       manifest_names =
         Enum.map(constraints, &elem(&1, 0)) ++
@@ -762,16 +805,37 @@ defmodule PhoenixKitNewsletters.MigrationsTest do
         assert stmt =~ "i.indisunique = #{unique}", name
         assert stmt =~ "ARRAY[#{columns}]::name[]", name
 
+        # What decides that an index is this one and not a look-alike: valid,
+        # default sort order, the types' default operator classes and the
+        # columns' own collation.
+        assert stmt =~ "AND i.indisvalid", name
+
+        assert stmt =~ "unnest(i.indoption::int2[])", name
+        assert stmt =~ ") = ARRAY[#{Enum.map_join(keys, ", ", fn _ -> "0" end)}]::int2[]", name
+        assert stmt =~ "WHERE NOT opc.opcdefault", name
+        assert stmt =~ "unnest(i.indcollation::oid[])", name
+        assert stmt =~ "SELECT array_agg(a.attcollation ORDER BY k.ord)", name
+
         if predicate,
           do: assert(stmt =~ "= '#{predicate}'", name),
           else: assert(stmt =~ "i.indpred IS NULL", name)
       end
 
-      for {name, _table, %{type: "f", columns: [column], foreign_table: foreign}} <- constraints do
+      for {name, _table, %{type: "f"} = shape} <- constraints do
         stmt = v3[name] |> String.replace(~r/\s+/, " ")
+        [column] = shape.columns
+        [foreign_column] = shape.foreign_columns
 
-        assert stmt =~ "confrelid = 'public.#{foreign}'::regclass", name
+        assert stmt =~ "confrelid = 'public.#{shape.foreign_table}'::regclass", name
         assert stmt =~ "attname = '#{column}'", name
+
+        # The referenced column and both referential actions, as recorded.
+        assert stmt =~
+                 "attrelid = 'public.#{shape.foreign_table}'::regclass AND attname = '#{foreign_column}'",
+               name
+
+        assert stmt =~ "c.confdeltype = '#{shape.on_delete}'", name
+        assert stmt =~ "c.confupdtype = '#{shape.on_update}'", name
       end
 
       for {name, table, %{type: "p"}} <- constraints do

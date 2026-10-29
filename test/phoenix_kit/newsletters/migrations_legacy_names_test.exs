@@ -171,12 +171,18 @@ defmodule PhoenixKitNewsletters.MigrationsLegacyNamesTest do
       schema: schema
     } do
       before_oids = oids(schema)
+      lock_timeout = lock_timeout()
 
-      run(schema, :up, 3)
+      log = run(schema, :up, 3)
 
       assert names(schema) == canonical_names(schema)
       assert oids(schema) == before_oids
       assert Migrations.migrated_version_runtime(prefix: schema) == 3
+
+      # Each rename says so, and the timeout V3 ran under is gone again.
+      for {_table, name} <- @pkeys ++ @fks, do: assert(renamed_in?(log, name))
+      for name <- @indexes, do: assert(renamed_in?(log, name))
+      assert lock_timeout() == lock_timeout
 
       assert [] = schema |> verify() |> module_findings()
     end
@@ -201,6 +207,7 @@ defmodule PhoenixKitNewsletters.MigrationsLegacyNamesTest do
 
       assert names(schema) == once
       refute log =~ ~r/V3: (idx_|fk_|phoenix_kit_newsletters_)\w+ (is already|has several)/
+      refute log =~ ~r/V3: renamed [a-z_]+ to /
     end
 
     test "going back down to 2 moves the marker and nothing else", %{schema: schema} do
@@ -271,6 +278,8 @@ defmodule PhoenixKitNewsletters.MigrationsLegacyNamesTest do
 
       assert log =~
                ~r/idx_newsletters_broadcasts_status is already in use.*idx_mailing_broadcasts_status/s
+
+      assert log =~ "drop the duplicate or rename it by hand"
     end
 
     test "a canonical name held by an unrelated object is never renamed over", %{schema: schema} do
@@ -292,6 +301,8 @@ defmodule PhoenixKitNewsletters.MigrationsLegacyNamesTest do
 
       assert log =~
                ~r/idx_newsletters_broadcasts_status is already in use.*idx_mailing_broadcasts_status/s
+
+      assert log =~ "drop the duplicate or rename it by hand"
     end
 
     test "several equivalents under other names are all left alone, and V3 says so", %{
@@ -316,6 +327,8 @@ defmodule PhoenixKitNewsletters.MigrationsLegacyNamesTest do
 
       assert log =~
                ~r/idx_newsletters_broadcasts_status has several equivalents.*my_status_index/s
+
+      assert log =~ "Keep one, drop or rename the others"
     end
 
     test "an object that is not the same thing is not renamed", %{schema: schema} do
@@ -345,6 +358,158 @@ defmodule PhoenixKitNewsletters.MigrationsLegacyNamesTest do
                )
 
       refute log =~ ~r/V3: (idx_|fk_|phoenix_kit_newsletters_)\w+ (is already|has several)/
+    end
+  end
+
+  # ── foreign keys and primary keys ──────────────────────────────────────
+
+  describe "a foreign key or primary key that cannot be taken for the object" do
+    test "a foreign key whose canonical name is held by another key is not renamed over it", %{
+      schema: schema
+    } do
+      to_legacy!(schema, [Enum.at(@fks, 3)], [])
+
+      # The canonical name now belongs to a key on another column.
+      Repo.query!(
+        ~s[ALTER TABLE "#{schema}"."#{@deliveries}" ADD CONSTRAINT fk_newsletters_deliveries_user FOREIGN KEY (crm_contact_uuid) REFERENCES "#{schema}".phoenix_kit_users(uuid)]
+      )
+
+      set_marker!(schema, 2)
+      before = names(schema)
+
+      log = run(schema, :up, 3)
+
+      assert names(schema) == before
+
+      assert log =~
+               ~r/fk_newsletters_deliveries_user is already in use.*fk_mailing_deliveries_user/s
+
+      refute renamed_in?(log, "fk_newsletters_deliveries_user")
+    end
+
+    test "a foreign key with several equivalents under other names is left alone, and V3 says so",
+         %{schema: schema} do
+      to_legacy!(schema, [Enum.at(@fks, 3)], [])
+
+      Repo.query!(
+        ~s[ALTER TABLE "#{schema}"."#{@deliveries}" ADD CONSTRAINT my_user_fk FOREIGN KEY (user_uuid) REFERENCES "#{schema}".phoenix_kit_users(uuid) ON DELETE CASCADE]
+      )
+
+      set_marker!(schema, 2)
+      before = names(schema)
+
+      log = run(schema, :up, 3)
+
+      assert names(schema) == before
+      assert "fk_mailing_deliveries_user" in names(schema)
+      assert "my_user_fk" in names(schema)
+      assert log =~ ~r/fk_newsletters_deliveries_user has several equivalents.*my_user_fk/s
+      assert log =~ "Keep one, drop or rename the others"
+    end
+
+    test "a foreign key to another table is not the one", %{schema: schema} do
+      Repo.query!(~s[CREATE TABLE "#{schema}".other_targets (uuid uuid PRIMARY KEY)])
+
+      Repo.query!(
+        ~s[ALTER TABLE "#{schema}"."#{@deliveries}" DROP CONSTRAINT fk_newsletters_deliveries_user]
+      )
+
+      Repo.query!(
+        ~s[ALTER TABLE "#{schema}"."#{@deliveries}" ADD CONSTRAINT fk_mailing_deliveries_user FOREIGN KEY (user_uuid) REFERENCES "#{schema}".other_targets(uuid) ON DELETE CASCADE]
+      )
+
+      set_marker!(schema, 2)
+
+      log = run(schema, :up, 3)
+
+      # The chain (V1's guard) builds the one that points at the users table;
+      # V3 leaves the other where and what it is.
+      assert fk_target(schema, "fk_mailing_deliveries_user") == "other_targets"
+      assert fk_target(schema, "fk_newsletters_deliveries_user") == "phoenix_kit_users"
+      refute renamed_in?(log, "fk_newsletters_deliveries_user")
+      refute log =~ ~r/V3: fk_/
+    end
+
+    test "a foreign key with another referential action is not the one", %{schema: schema} do
+      Repo.query!(
+        ~s[ALTER TABLE "#{schema}"."#{@deliveries}" DROP CONSTRAINT fk_newsletters_deliveries_user]
+      )
+
+      Repo.query!(
+        ~s[ALTER TABLE "#{schema}"."#{@deliveries}" ADD CONSTRAINT fk_mailing_deliveries_user FOREIGN KEY (user_uuid) REFERENCES "#{schema}".phoenix_kit_users(uuid) ON DELETE SET NULL]
+      )
+
+      set_marker!(schema, 2)
+      before = names(schema)
+
+      log = run(schema, :up, 3)
+
+      assert names(schema) == before
+      assert "fk_mailing_deliveries_user" in names(schema)
+      refute "fk_newsletters_deliveries_user" in names(schema)
+      refute renamed_in?(log, "fk_newsletters_deliveries_user")
+    end
+
+    test "a primary key whose canonical name is held by an index is not renamed over it", %{
+      schema: schema
+    } do
+      to_legacy!(schema, [hd(@pkeys)], [])
+
+      Repo.query!(
+        ~s[CREATE INDEX phoenix_kit_newsletters_broadcasts_pkey ON "#{schema}"."#{@broadcasts}" USING btree (subject)]
+      )
+
+      set_marker!(schema, 2)
+      before = names(schema)
+
+      log = run(schema, :up, 3)
+
+      assert names(schema) == before
+      assert "phoenix_kit_mailing_broadcasts_pkey" in names(schema)
+
+      assert log =~
+               ~r/phoenix_kit_newsletters_broadcasts_pkey is already in use.*phoenix_kit_mailing_broadcasts_pkey/s
+    end
+  end
+
+  # ── indexes that look like the object and are not ──────────────────────
+
+  describe "an index that differs from the one the manifest describes" do
+    for difference <- [
+          :predicate,
+          :column_order,
+          :method,
+          :sort_order,
+          :operator_class,
+          :collation,
+          :invalid
+        ] do
+      test "in #{difference} is not renamed", %{schema: schema} do
+        {legacy, definition} = lookalike!(schema, unquote(difference))
+        set_marker!(schema, 2)
+
+        log = run(schema, :up, 3)
+
+        # Still there, still what it was, and not given the canonical name.
+        assert indexdef(schema, legacy) == definition
+        refute log =~ "renamed #{legacy} to"
+      end
+    end
+
+    test "in uniqueness is not renamed", %{schema: schema} do
+      Repo.query!(~s[DROP INDEX "#{schema}".idx_newsletters_broadcasts_status])
+
+      Repo.query!(
+        ~s[CREATE UNIQUE INDEX idx_mailing_broadcasts_status ON "#{schema}"."#{@broadcasts}" USING btree (status)]
+      )
+
+      definition = indexdef(schema, "idx_mailing_broadcasts_status")
+      set_marker!(schema, 2)
+
+      log = run(schema, :up, 3)
+
+      assert indexdef(schema, "idx_mailing_broadcasts_status") == definition
+      refute log =~ "renamed idx_mailing_broadcasts_status to"
     end
   end
 
@@ -444,24 +609,101 @@ defmodule PhoenixKitNewsletters.MigrationsLegacyNamesTest do
   end
 
   # Runs the chain the way `mix phoenix_kit.update` does, in a migration, and
-  # returns what it logged (the warnings V3 raises among it).
+  # returns what it logged: the warnings V3 raises, and the notice for each
+  # rename, which only show at the info level.
   defp run(prefix, direction, version) do
     Process.put(:nl_run, {prefix, version})
+    previous = Logger.level()
+    Logger.configure(level: :info)
 
-    capture_log(fn ->
-      Runner.run(
-        Repo,
-        [],
-        System.unique_integer([:positive]),
-        RunMigration,
-        :forward,
-        direction,
-        direction,
-        log: :warning,
-        log_migrations_sql: false
-      )
-    end)
+    try do
+      capture_log([level: :info], fn ->
+        Runner.run(
+          Repo,
+          [],
+          System.unique_integer([:positive]),
+          RunMigration,
+          :forward,
+          direction,
+          direction,
+          log: :info,
+          log_migrations_sql: false
+        )
+      end)
+    after
+      Logger.configure(level: previous)
+    end
   end
+
+  # Replaces the canonical index with a look-alike under the old name that
+  # differs in one thing, and returns its name and definition.
+  defp lookalike!(schema, difference) do
+    {canonical, legacy, create} = lookalike_sql(schema, difference)
+
+    Repo.query!(~s[DROP INDEX "#{schema}"."#{canonical}"])
+    Repo.query!(create)
+
+    if difference == :invalid do
+      Repo.query!(
+        "UPDATE pg_index SET indisvalid = false WHERE indexrelid = to_regclass($1)",
+        ["#{schema}.#{legacy}"]
+      )
+    end
+
+    {legacy, indexdef(schema, legacy)}
+  end
+
+  defp lookalike_sql(schema, :column_order) do
+    {"idx_newsletters_deliveries_uniq_broadcast_user",
+     "idx_mailing_deliveries_uniq_broadcast_user",
+     ~s[CREATE UNIQUE INDEX idx_mailing_deliveries_uniq_broadcast_user ON "#{schema}"."#{@deliveries}" USING btree (user_uuid, broadcast_uuid) WHERE (user_uuid IS NOT NULL)]}
+  end
+
+  defp lookalike_sql(schema, difference) do
+    on = ~s[ON "#{schema}"."#{@broadcasts}"]
+
+    definition =
+      case difference do
+        :predicate -> "USING btree (status) WHERE (status <> 'draft')"
+        :method -> "USING hash (status)"
+        :sort_order -> "USING btree (status DESC)"
+        :operator_class -> "USING btree (status varchar_pattern_ops)"
+        :collation -> ~s[USING btree (status COLLATE "C")]
+        :invalid -> "USING btree (status)"
+      end
+
+    {"idx_newsletters_broadcasts_status", "idx_mailing_broadcasts_status",
+     "CREATE INDEX idx_mailing_broadcasts_status #{on} #{definition}"}
+  end
+
+  defp indexdef(schema, name) do
+    %{rows: [[definition]]} =
+      Repo.query!("SELECT pg_get_indexdef(to_regclass($1))", ["#{schema}.#{name}"])
+
+    definition
+  end
+
+  defp fk_target(schema, name) do
+    %{rows: [[table]]} =
+      Repo.query!(
+        """
+        SELECT t.relname FROM pg_constraint c JOIN pg_class t ON t.oid = c.confrelid
+        WHERE c.conrelid = to_regclass($1) AND c.conname = $2
+        """,
+        ["#{schema}.#{@deliveries}", name]
+      )
+
+    table
+  end
+
+  defp lock_timeout do
+    %{rows: [[value]]} = Repo.query!("SHOW lock_timeout")
+    value
+  end
+
+  # Whether the log has V3's notice for renaming the object that has this
+  # canonical name from its old one.
+  defp renamed_in?(log, canonical), do: log =~ "renamed #{legacy(canonical)} to #{canonical}"
 
   defp verify(schema) do
     {:ok, report} = Repair.verify(prefix: schema, repo: Repo, module_manifests: @modules)
