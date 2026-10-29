@@ -38,7 +38,7 @@ defmodule PhoenixKitNewsletters.MigrationsTest do
     alias PhoenixKit.Migrations.Postgres.Helpers
 
     test "current_version/0 and version_table/0" do
-      assert Migrations.current_version() == 2
+      assert Migrations.current_version() == 3
       assert Migrations.version_table() == "phoenix_kit_newsletters_broadcasts"
     end
 
@@ -212,7 +212,7 @@ defmodule PhoenixKitNewsletters.MigrationsTest do
     end
 
     test "up stamps the version marker, and stamps it last" do
-      for target <- [1, 2] do
+      for target <- [1, 2, 3] do
         statements = Migrations.up_statements("public", target)
 
         assert List.last(statements) ==
@@ -332,6 +332,10 @@ defmodule PhoenixKitNewsletters.MigrationsTest do
       # FK alone too — only the marker moves.
       assert Migrations.down_statements("public", 2) ==
                ["COMMENT ON TABLE public.phoenix_kit_newsletters_broadcasts IS 'pknl_schema:2'"]
+
+      # Rolling back from V3 leaves the names V3 gave the objects alone too.
+      assert Migrations.down_statements("public", 3) ==
+               ["COMMENT ON TABLE public.phoenix_kit_newsletters_broadcasts IS 'pknl_schema:3'"]
     end
 
     # For `up/1` the expected content is the full set of OPERATIONS rather
@@ -448,7 +452,7 @@ defmodule PhoenixKitNewsletters.MigrationsTest do
                  "up_statements(#{inspect(prefix)}) contains: #{stmt}"
         end
 
-        for target <- [0, 1, 2] do
+        for target <- [0, 1, 2, 3] do
           for stmt <- Migrations.down_statements(prefix, target) do
             refute strip_referential_actions(stmt) =~ forbidden,
                    "down_statements(#{inspect(prefix)}, #{target}) contains: #{stmt}"
@@ -617,6 +621,163 @@ defmodule PhoenixKitNewsletters.MigrationsTest do
 
       assert create =~ ~s["name" character varying(#{widths.name}) NOT NULL]
       assert create =~ ~s["status" character varying(#{widths.status}) DEFAULT 'active']
+    end
+  end
+
+  describe "V3: objects a pre-rename host kept under their old names" do
+    alias PhoenixKit.Newsletters.ExpectedSchema, as: Manifest
+
+    # V3 is everything `up_statements/2` emits at target 3 beyond target 2,
+    # minus the marker. V1 and V2 are the same text at both targets.
+    defp v3_part(prefix) do
+      below = Migrations.up_statements(prefix, 2)
+
+      prefix
+      |> Migrations.up_statements(3)
+      |> Enum.drop(length(below) - 1)
+      |> Enum.reject(&String.starts_with?(&1, "COMMENT ON TABLE"))
+    end
+
+    defp renamed_to(statement) do
+      normalized = statement |> String.replace(~r/\s+/, " ") |> String.trim()
+
+      [_, name] =
+        Regex.run(~r/RENAME (?:CONSTRAINT %I )?TO (\w+)/, normalized)
+
+      name
+    end
+
+    @v3_canonical_names [
+      "phoenix_kit_newsletters_broadcasts_pkey",
+      "phoenix_kit_newsletters_deliveries_pkey",
+      "fk_newsletters_broadcasts_created_by",
+      "fk_newsletters_broadcasts_template",
+      "fk_newsletters_deliveries_broadcast",
+      "fk_newsletters_deliveries_user",
+      "idx_newsletters_broadcasts_status",
+      "idx_newsletters_broadcasts_scheduled_at",
+      "idx_newsletters_broadcasts_crm_list",
+      "idx_newsletters_deliveries_broadcast",
+      "idx_newsletters_deliveries_user",
+      "idx_newsletters_deliveries_message_id",
+      "idx_newsletters_deliveries_status",
+      "idx_newsletters_deliveries_crm_contact",
+      "idx_newsletters_deliveries_uniq_broadcast_user",
+      "idx_newsletters_deliveries_uniq_broadcast_contact",
+      "idx_newsletters_deliveries_uniq_broadcast_email"
+    ]
+
+    test "nothing below target 3 renames anything" do
+      for target <- [1, 2], prefix <- ["public", "newsletters_alt"] do
+        for stmt <- Migrations.up_statements(prefix, target) do
+          refute stmt =~ "RENAME", "target #{target} renames: #{stmt}"
+        end
+      end
+    end
+
+    test "target 3 is V2's statements, then V3, then the marker" do
+      for prefix <- ["public", "newsletters_alt"] do
+        below = Migrations.up_statements(prefix, 2) |> Enum.drop(-1)
+        three = Migrations.up_statements(prefix, 3)
+
+        assert Enum.take(three, length(below)) == below
+        assert List.last(three) =~ "IS 'pknl_schema:3'"
+        assert length(three) == length(below) + length(v3_part(prefix)) + 1
+      end
+    end
+
+    test "V3 renames exactly these objects: primary keys, then foreign keys, then indexes" do
+      for prefix <- ["public", "newsletters_alt"] do
+        assert Enum.map(v3_part(prefix), &renamed_to/1) == @v3_canonical_names
+      end
+    end
+
+    test "V3 only renames: it creates, drops, rewrites and deletes nothing" do
+      forbidden = ~r/\b(CREATE|DROP|INSERT|UPDATE|DELETE|TRUNCATE|ADD CONSTRAINT|COMMENT)\b/
+
+      for prefix <- ["public", "newsletters_alt"], stmt <- v3_part(prefix) do
+        refute stmt =~ forbidden, "V3 statement does more than rename:\n#{stmt}"
+        assert stmt =~ ~r/ALTER (TABLE|INDEX)/
+      end
+    end
+
+    test "V3 renames by meaning, and only to a name nothing else holds" do
+      for prefix <- ["public", "newsletters_alt"], stmt <- v3_part(prefix) do
+        # Candidates are found by what they are; the canonical name is looked
+        # up first so an existing object is never renamed over or duplicated.
+        assert stmt =~ "RAISE WARNING", "a skipped rename must say so:\n#{stmt}"
+        assert stmt =~ ~r/to_regclass|conname = /, "no check that the name is free:\n#{stmt}"
+      end
+    end
+
+    test "V3 honours the prefix" do
+      alt = Enum.join(v3_part("newsletters_alt"), "\n")
+
+      assert alt =~ "newsletters_alt.phoenix_kit_newsletters_broadcasts"
+      assert alt =~ "newsletters_alt.phoenix_kit_newsletters_deliveries"
+      refute alt =~ "public."
+
+      public = Enum.join(v3_part("public"), "\n")
+      assert public =~ "public.phoenix_kit_newsletters_broadcasts"
+      refute public =~ "newsletters_alt"
+    end
+
+    # The rename list is a published, frozen part of the chain; the manifest
+    # is regenerated. This keeps the two honest: every primary key, foreign
+    # key and index the manifest holds on the broadcasts and deliveries tables
+    # is renamed by V3, nothing else is, and each is matched by the meaning the
+    # manifest records for it.
+    test "V3 covers the manifest's primary keys, foreign keys and indexes of the two tables, by their meaning" do
+      owned = ["phoenix_kit_newsletters_broadcasts", "phoenix_kit_newsletters_deliveries"]
+      objects = Manifest.objects("public")
+
+      indexes =
+        for %{class: :index, id: "index:" <> name} = object <- objects,
+            shape = object.revisions |> List.last() |> elem(1),
+            do: {name, shape}
+
+      constraints =
+        for %{class: :constraint, id: "constraint:" <> id} = object <- objects,
+            [table, name] = String.split(id, ".", parts: 2),
+            table in owned,
+            shape = object.revisions |> List.last() |> elem(1),
+            shape.type in ["p", "f"],
+            do: {name, table, shape}
+
+      v3 = Map.new(v3_part("public"), &{renamed_to(&1), &1})
+
+      manifest_names =
+        Enum.map(constraints, &elem(&1, 0)) ++
+          for {name, _} <- indexes,
+              name =~ ~r/^idx_newsletters_(broadcasts|deliveries)_/,
+              do: name
+
+      assert Enum.sort(Map.keys(v3)) == Enum.sort(manifest_names)
+
+      for {name, %{keys: keys, unique: unique, predicate: predicate}} <- indexes,
+          Map.has_key?(v3, name) do
+        stmt = v3[name] |> String.replace(~r/\s+/, " ")
+        columns = Enum.map_join(keys, ", ", &"'#{&1}'")
+
+        assert stmt =~ "i.indisunique = #{unique}", name
+        assert stmt =~ "ARRAY[#{columns}]::name[]", name
+
+        if predicate,
+          do: assert(stmt =~ "= '#{predicate}'", name),
+          else: assert(stmt =~ "i.indpred IS NULL", name)
+      end
+
+      for {name, _table, %{type: "f", columns: [column], foreign_table: foreign}} <- constraints do
+        stmt = v3[name] |> String.replace(~r/\s+/, " ")
+
+        assert stmt =~ "confrelid = 'public.#{foreign}'::regclass", name
+        assert stmt =~ "attname = '#{column}'", name
+      end
+
+      for {name, table, %{type: "p"}} <- constraints do
+        assert v3[name] =~ "public.#{table}", name
+        assert v3[name] =~ "contype = 'p'", name
+      end
     end
   end
 

@@ -295,7 +295,47 @@ defmodule PhoenixKitNewsletters.Migrations do
   not a supported path: V1's frozen guard would try to re-add the old FK
   under the name the new one already holds, and Postgres refuses it
   (`duplicate_object`) — loudly, inside the migration's transaction, with
-  nothing changed. Up to 2 (the current version) is a no-op.
+  nothing changed. Up to 3 (the current version) is a no-op.
+
+  ### V3 — the objects a pre-rename host kept under their old names
+
+  "Guards are semantic, not name-based" above describes the host whose own
+  migration renamed the tables and so left twelve objects under their old
+  names: both primary keys (`phoenix_kit_mailing_*_pkey`), four foreign keys
+  (`fk_mailing_*`) and six indexes (`idx_mailing_*`). V1 and V2 find them by
+  what they are and build no second copy. The manifest cannot: an index or
+  constraint is looked up in it by name (the manifest format has no alias for
+  another name, and `objects/1` is given a prefix and nothing else), so on such
+  a host `mix phoenix_kit.repair --dry-run` reported all twelve as missing, and
+  a real run would have built a second index under each canonical name and
+  failed on a second primary key.
+
+  V3 renames them to the names the manifest expects. Each of the two primary
+  keys, the four foreign keys and the eleven indexes V1 builds is looked
+  for under any other name, by what it is (the test of `fk_guard/5` and
+  `index_guard/6`; a table's primary key is its one primary key), and then:
+
+    * nothing found: nothing happens — a fresh install, or an object that
+      already has its name;
+    * exactly one found, and the canonical name is free: it is renamed;
+    * the canonical name is already in use (by the object itself, which makes
+      the other one a duplicate, or by something unrelated), or several are
+      found: nothing is renamed and a `WARNING` names what was found. Which
+      of them is the object, and what to do with the rest, is the operator's
+      call, not the migration's.
+
+  A rename keeps the object, its data and everything that depends on it. V3
+  creates, drops and rewrites nothing, and `down/1` leaves the names as they
+  are (it moves the marker only). The CHECK constraints are not touched: they
+  were introduced after the rename, and no host has them under another name.
+  A rename is a catalog change with no table or index rebuilt; it takes a
+  short exclusive lock on the object and waits for transactions already using
+  it.
+
+  `mix phoenix_kit.update` brings a host there. Until it has, `mix
+  phoenix_kit.repair` does not check this package's tables at all (it reports
+  the module as behind), so upgrading the package and running repair before
+  update does not build duplicates either.
 
   ## What must NEVER happen
 
@@ -324,7 +364,7 @@ defmodule PhoenixKitNewsletters.Migrations do
   alias PhoenixKit.Newsletters.Layout
 
   @initial_version 1
-  @current_version 2
+  @current_version 3
   @default_prefix "public"
   @marker_prefix "pknl_schema:"
 
@@ -467,7 +507,9 @@ defmodule PhoenixKitNewsletters.Migrations do
     if target == 0 do
       []
     else
-      v1_statements(prefix, target) ++ v2_statements(prefix, target) ++ [marker(prefix, target)]
+      v1_statements(prefix, target) ++
+        v2_statements(prefix, target) ++
+        v3_statements(prefix, target) ++ [marker(prefix, target)]
     end
   end
 
@@ -1130,6 +1172,203 @@ defmodule PhoenixKitNewsletters.Migrations do
     END
     $$
     """
+  end
+
+  # ── V3 statement builder ────────────────────────────────────────────────
+  #
+  # The primary keys, foreign keys and indexes of the two V1 tables, under the
+  # names the manifest (and core's V135-through-V158) gives them. A host that
+  # renamed its tables kept the old names; V1 and V2 find those objects by what
+  # they are and leave them be, and this version renames them. See the
+  # moduledoc's "V3" section.
+
+  @users "phoenix_kit_users"
+
+  # {name, table, unique?, columns, predicate} — what V1's `index_guard/6`
+  # calls build, by the names it gives them.
+  @v3_indexes [
+    {"idx_newsletters_broadcasts_status", @broadcasts, false, ["status"], nil},
+    {"idx_newsletters_broadcasts_scheduled_at", @broadcasts, false, ["scheduled_at"],
+     "(scheduled_at IS NOT NULL)"},
+    {"idx_newsletters_broadcasts_crm_list", @broadcasts, false, ["crm_list_uuid"],
+     "(crm_list_uuid IS NOT NULL)"},
+    {"idx_newsletters_deliveries_broadcast", @deliveries, false, ["broadcast_uuid"], nil},
+    {"idx_newsletters_deliveries_user", @deliveries, false, ["user_uuid"], nil},
+    {"idx_newsletters_deliveries_message_id", @deliveries, true, ["message_id"],
+     "(message_id IS NOT NULL)"},
+    {"idx_newsletters_deliveries_status", @deliveries, false, ["status"], nil},
+    {"idx_newsletters_deliveries_crm_contact", @deliveries, false, ["crm_contact_uuid"], nil},
+    {"idx_newsletters_deliveries_uniq_broadcast_user", @deliveries, true,
+     ["broadcast_uuid", "user_uuid"], "(user_uuid IS NOT NULL)"},
+    {"idx_newsletters_deliveries_uniq_broadcast_contact", @deliveries, true,
+     ["broadcast_uuid", "crm_contact_uuid"], "(crm_contact_uuid IS NOT NULL)"},
+    {"idx_newsletters_deliveries_uniq_broadcast_email", @deliveries, true,
+     ["broadcast_uuid", "recipient_email"], "(recipient_email IS NOT NULL)"}
+  ]
+
+  # {name, table, column, references} — what V1's and V2's `fk_guard/5` calls
+  # build.
+  @v3_fks [
+    {"fk_newsletters_broadcasts_created_by", @broadcasts, "created_by_user_uuid", @users},
+    {"fk_newsletters_broadcasts_template", @broadcasts, "template_uuid", @layouts},
+    {"fk_newsletters_deliveries_broadcast", @deliveries, "broadcast_uuid", @broadcasts},
+    {"fk_newsletters_deliveries_user", @deliveries, "user_uuid", @users}
+  ]
+
+  defp v3_statements(_prefix, target) when target < 3, do: []
+
+  defp v3_statements(prefix, _target) do
+    pkeys =
+      for table <- [@broadcasts, @deliveries],
+          do: rename_pkey(table, Helpers.qualify_table(table, prefix), prefix)
+
+    fks =
+      for {name, table, column, references} <- @v3_fks do
+        rename_fk(
+          name,
+          Helpers.qualify_table(table, prefix),
+          column,
+          Helpers.qualify_table(references, prefix)
+        )
+      end
+
+    indexes =
+      for {name, table, unique?, columns, predicate} <- @v3_indexes do
+        rename_index(
+          name,
+          Helpers.qualify_table(table, prefix),
+          prefix,
+          unique?,
+          columns,
+          predicate
+        )
+      end
+
+    pkeys ++ fks ++ indexes
+  end
+
+  # The shape of every rename: find the objects that ARE the one meant, under
+  # any other name, then
+  #
+  #   * none: nothing to do;
+  #   * the canonical name is already in use (the object itself, in which case
+  #     the others are duplicates, or something unrelated): nothing is renamed,
+  #     and a WARNING names what was found, so the operator can decide;
+  #   * several: nothing is renamed — which of them is the one is not for a
+  #     migration to guess — and a WARNING names them;
+  #   * exactly one: renamed.
+  #
+  # A rename keeps the object (its oid, its data, what depends on it); nothing
+  # is created or dropped. `canonical` is a fixed lower-case identifier and
+  # `alter_sql` runs through `format(%I)` with the old name, so no name is
+  # spliced in unquoted.
+  defp rename_block(canonical, find_candidates, taken, alter_sql) do
+    """
+    DO $$
+    DECLARE
+      candidates text[];
+    BEGIN
+      #{find_candidates}
+
+      IF candidates IS NOT NULL THEN
+        IF #{taken} THEN
+          RAISE WARNING 'phoenix_kit_newsletters V3: % is already in use, so % keeps its name',
+            '#{canonical}', array_to_string(candidates, ', ');
+        ELSIF array_length(candidates, 1) > 1 THEN
+          RAISE WARNING 'phoenix_kit_newsletters V3: % has several equivalents (%); none is renamed',
+            '#{canonical}', array_to_string(candidates, ', ');
+        ELSE
+          EXECUTE format('#{alter_sql}', candidates[1]);
+        END IF;
+      END IF;
+    END
+    $$
+    """
+  end
+
+  # A table has at most one primary key; the constraint and its index are
+  # renamed together by Postgres.
+  defp rename_pkey(table, qualified, prefix) do
+    canonical = "#{table}_pkey"
+
+    rename_block(
+      canonical,
+      """
+      SELECT array_agg(conname ORDER BY conname) INTO candidates
+      FROM pg_constraint
+      WHERE conrelid = '#{qualified}'::regclass
+        AND contype = 'p'
+        AND conname <> '#{canonical}';
+      """,
+      "to_regclass('#{prefix}.#{canonical}') IS NOT NULL",
+      "ALTER TABLE #{qualified} RENAME CONSTRAINT %I TO #{canonical}"
+    )
+  end
+
+  # Same meaning as `fk_guard/5`: this table, this column, this target — not
+  # the referential action, which is not part of what the FK is.
+  defp rename_fk(canonical, qualified, column, references) do
+    rename_block(
+      canonical,
+      """
+      SELECT array_agg(c.conname ORDER BY c.conname) INTO candidates
+      FROM pg_constraint c
+      WHERE c.conrelid = '#{qualified}'::regclass
+        AND c.contype = 'f'
+        AND c.confrelid = '#{references}'::regclass
+        AND c.conkey = ARRAY[(
+          SELECT attnum FROM pg_attribute
+          WHERE attrelid = '#{qualified}'::regclass AND attname = '#{column}'
+        )]::smallint[]
+        AND c.conname <> '#{canonical}';
+      """,
+      """
+      EXISTS (
+          SELECT 1 FROM pg_constraint
+          WHERE conrelid = '#{qualified}'::regclass AND conname = '#{canonical}'
+        )\
+      """,
+      "ALTER TABLE #{qualified} RENAME CONSTRAINT %I TO #{canonical}"
+    )
+  end
+
+  # Same meaning as `index_guard/6` (see there for the expression-index
+  # trap), minus the indexes a constraint owns: those are renamed with their
+  # constraint, never on their own.
+  defp rename_index(canonical, qualified, prefix, unique?, columns, predicate) do
+    columns_array = Enum.map_join(columns, ", ", &"'#{&1}'")
+
+    predicate_condition =
+      if predicate do
+        "pg_get_expr(i.indpred, i.indrelid) = '#{String.replace(predicate, "'", "''")}'"
+      else
+        "i.indpred IS NULL"
+      end
+
+    rename_block(
+      canonical,
+      """
+      SELECT array_agg(ic.relname ORDER BY ic.relname) INTO candidates
+      FROM pg_index i
+      JOIN pg_class ic ON ic.oid = i.indexrelid
+      JOIN pg_am am ON am.oid = ic.relam
+      WHERE i.indrelid = '#{qualified}'::regclass
+        AND i.indisunique = #{unique?}
+        AND am.amname = 'btree'
+        AND i.indexprs IS NULL
+        AND array_length(i.indkey::int2[], 1) = #{length(columns)}
+        AND #{predicate_condition}
+        AND (
+          SELECT array_agg(a.attname ORDER BY k.ord)
+          FROM unnest(i.indkey::int2[]) WITH ORDINALITY AS k(attnum, ord)
+          JOIN pg_attribute a ON a.attrelid = i.indrelid AND a.attnum = k.attnum
+        ) = ARRAY[#{columns_array}]::name[]
+        AND NOT EXISTS (SELECT 1 FROM pg_constraint k WHERE k.conindid = i.indexrelid)
+        AND ic.relname <> '#{canonical}';
+      """,
+      "to_regclass('#{prefix}.#{canonical}') IS NOT NULL",
+      "ALTER INDEX #{prefix}.%I RENAME TO #{canonical}"
+    )
   end
 
   # ── internals ──────────────────────────────────────────────────────────
