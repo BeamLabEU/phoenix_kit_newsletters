@@ -3,9 +3,8 @@ require Logger
 # Start the embedded test repo and bring it to the current PhoenixKit
 # schema version, so tests exercising Settings/Integrations/core
 # Email.SendProfile (e.g. D4 profile-aware delivery) have a real DB to
-# round-trip against. Mirrors core phoenix_kit's test_helper.exs db_check
-# and phoenix_kit_emails' test_helper.exs; tests tagged :integration are
-# excluded when no test DB is reachable.
+# round-trip against. Mirrors core phoenix_kit's test_helper.exs db_check;
+# tests tagged :integration are excluded when no test DB is reachable.
 repo_available =
   try do
     {:ok, _} = PhoenixKitNewsletters.Test.Repo.start_link()
@@ -24,15 +23,6 @@ repo_available =
     # database at this chain's current version, not just core's.
     PhoenixKitNewsletters.Migrations.up_statements()
     |> Enum.each(&Ecto.Adapters.SQL.query!(PhoenixKitNewsletters.Test.Repo, &1, []))
-
-    # The Emails module's own chain, when the address-verification engine is
-    # loaded (test-only dep; PHOENIX_KIT_EMAILS_PATH points at a checkout that
-    # has it): its V4 creates the verification tables the real-engine tests
-    # read and write. Same raw-statements approach as above.
-    if Code.ensure_loaded?(PhoenixKit.Modules.Emails.Verification) do
-      PhoenixKit.Modules.Emails.Migrations.up_statements()
-      |> Enum.each(&Ecto.Adapters.SQL.query!(PhoenixKitNewsletters.Test.Repo, &1, []))
-    end
 
     Ecto.Adapters.SQL.Sandbox.mode(PhoenixKitNewsletters.Test.Repo, :manual)
     # PhoenixKit.Users.Roles.create_role/update_role/delete_role broadcast
@@ -112,41 +102,9 @@ unless v158_available do
   """)
 end
 
-# The verification engine ships in a phoenix_kit_emails release newer than the
-# one on Hex today; tests that drive the real engine are tagged
-# :requires_emails_verification and skip cleanly when it is not loaded (run the
-# suite with PHOENIX_KIT_EMAILS_PATH=<emails checkout> to include them).
-emails_verification_available =
-  Code.ensure_loaded?(PhoenixKit.Modules.Emails.Verification) and
-    function_exported?(PhoenixKit.Modules.Emails.Verification, :start_batch, 4)
-
-unless emails_verification_available do
-  IO.puts("""
-  \n⚠  PhoenixKit.Modules.Emails.Verification not loaded — tests tagged
-     :requires_emails_verification are excluded. Run with
-     PHOENIX_KIT_EMAILS_PATH=<phoenix_kit_emails checkout> to exercise them.
-  """)
-end
-
-# The SMTP stage (`smtp_mode/0`, `runner_status/0`) is newer still: a checkout
-# with the engine but without it is the hex 0.5.x shape.
-emails_smtp_available =
-  emails_verification_available and
-    function_exported?(PhoenixKit.Modules.Emails.Verification, :smtp_mode, 0) and
-    function_exported?(PhoenixKit.Modules.Emails.Verification, :runner_status, 0)
-
-if emails_verification_available and not emails_smtp_available do
-  IO.puts("""
-  \n⚠  The loaded Emails verification engine has no SMTP stage (smtp_mode/0,
-     runner_status/0) — tests tagged :requires_emails_smtp are excluded.
-  """)
-end
-
 exclude =
   if(repo_available, do: [], else: [:integration]) ++
-    if(v158_available, do: [], else: [:requires_v158]) ++
-    if(emails_verification_available, do: [], else: [:requires_emails_verification]) ++
-    if emails_smtp_available, do: [], else: [:requires_emails_smtp]
+    if v158_available, do: [], else: [:requires_v158]
 
 # The builds-alone test needs `PhoenixKit.TestSupport.ModuleChainCheck`, which
 # ships in the first core release after 2.64.1; against an older core it is

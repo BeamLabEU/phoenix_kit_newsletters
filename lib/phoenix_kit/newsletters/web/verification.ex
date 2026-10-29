@@ -6,8 +6,8 @@ defmodule PhoenixKit.Newsletters.Web.Verification do
   of roles — and resolved with the same functions the sender uses
   (`CRMSource.sendable_recipients/1`, `UserGroupSource.sendable_recipients/1`),
   so the page shows exactly the addresses a send would mail. The verdicts come
-  from the Emails module's verification engine through
-  `PhoenixKit.Newsletters.EmailVerification`; without that module (or with it
+  from the host's verification engine (`PhoenixKit.Newsletters.VerificationEngine`)
+  through `PhoenixKit.Newsletters.EmailVerification`; without an engine (or with it
   switched off) the page says so instead of failing.
 
   The whole state lives in the URL (`?source=&list=&roles[]=&status=&page=`),
@@ -90,6 +90,7 @@ defmodule PhoenixKit.Newsletters.Web.Verification do
     |> assign(:batch, nil)
     |> assign(:subscribed_batch, nil)
     |> assign(:smtp_wait, false)
+    |> assign(:settings_path, nil)
     |> assign(:runner_tick, false)
   end
 
@@ -409,13 +410,14 @@ defmodule PhoenixKit.Newsletters.Web.Verification do
   end
 
   # Whether the progress should say that SMTP is waiting for a runner that is
-  # not online. Only a running batch can wait, so a finished one costs no read.
+  # not online, and where the engine's settings page is (the hint links there).
+  # Only a running batch can wait, so a finished one costs no read.
   defp refresh_smtp_wait(socket) do
-    assign(
-      socket,
-      :smtp_wait,
-      batch_active?(socket.assigns.batch) and EmailVerification.smtp_runner_waiting?()
-    )
+    waiting = batch_active?(socket.assigns.batch) and EmailVerification.smtp_runner_waiting?()
+
+    socket
+    |> assign(:smtp_wait, waiting)
+    |> assign(:settings_path, if(waiting, do: EmailVerification.settings_path()))
   end
 
   # The runner can go offline without any batch message arriving, so a running
@@ -455,11 +457,11 @@ defmodule PhoenixKit.Newsletters.Web.Verification do
   defp start_error(:already_running),
     do: gettext("A verification of this audience is already running")
 
-  defp start_error(:unavailable), do: gettext("The Emails module is not available")
+  defp start_error(:unavailable), do: gettext("The address verification engine is not available")
   defp start_error(:disabled), do: gettext("Address verification is switched off")
 
   defp start_error({:engine_error, _message}),
-    do: gettext("The verification failed to start: the Emails module reported an error")
+    do: gettext("The verification failed to start: the verification engine reported an error")
 
   defp start_error(_reason), do: gettext("Could not start the verification")
 

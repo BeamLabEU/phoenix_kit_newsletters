@@ -53,14 +53,31 @@ defmodule PhoenixKit.Newsletters.Web.DeadRenderTest do
   end
 
   describe "address verification" do
-    test "the page renders whether or not the Emails module is installed", %{conn: conn} do
+    @engine_key :email_verification_engine
+
+    test "without an engine configured the page renders the explaining alert", %{conn: conn} do
+      Application.delete_env(:phoenix_kit_newsletters, @engine_key)
+
       html = html_response(get(conn, "/verification"), 200)
 
       assert html =~ "Address verification"
+      assert html =~ "verification-unavailable"
+      refute html =~ "verification-audience-form"
+    end
 
-      # Installed and enabled: the audience selector. Otherwise: the explaining alert.
-      assert html =~ "verification-audience-form" or html =~ "verification-unavailable" or
-               html =~ "verification-disabled"
+    test "with an engine configured the page renders the audience selector", %{conn: conn} do
+      Application.put_env(
+        :phoenix_kit_newsletters,
+        @engine_key,
+        PhoenixKitNewsletters.Test.FakeVerificationEngine
+      )
+
+      on_exit(fn -> Application.delete_env(:phoenix_kit_newsletters, @engine_key) end)
+
+      html = html_response(get(conn, "/verification"), 200)
+
+      assert html =~ "verification-audience-form"
+      refute html =~ "verification-unavailable"
     end
 
     test "garbage query parameters still render", %{conn: conn} do
