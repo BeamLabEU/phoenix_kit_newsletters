@@ -1,645 +1,409 @@
 # AGENTS.md
 
-Guidance for AI agents working on `phoenix_kit_newsletters`.
+Guidance for AI agents working on `phoenix_kit_newsletters`. Keep this file
+below 32 KiB and focused on working rules and invariants; use module docs for
+implementation history and detailed API descriptions. Avoid repeating rules.
 
-## Overview
+## Project & navigation
 
-A library (not a standalone Phoenix app) that plugs into a PhoenixKit host as
-the "newsletters" module: admin LiveViews for composing, scheduling and
-sending email broadcasts, Oban-based per-recipient delivery with rate
-limiting, and public unsubscribe / subscription-preference pages that work
-from a signed token with no login. It implements `PhoenixKit.Module` and
-borrows the host's Repo, Mailer, Endpoint, Oban instance, Users and Settings.
+This is a library implementing `PhoenixKit.Module`, not a standalone Phoenix
+app. It borrows the host's Repo, Mailer, Endpoint, Oban, Users and Settings.
+Module key and permission base: `"newsletters"`; settings prefix: `newsletters_`.
+Core's scheduled-jobs worker calls `enabled?/0` and
+`process_scheduled_broadcasts/0` on its periodic tick.
 
-It starts exactly one process of its own: `PhoenixKit.Newsletters.Application`
-(the `:mod` in `mix.exs`) supervises `PhoenixKit.Newsletters.AttachmentCache`,
-which exists only to own the attachment cache's ETS table (an ETS table dies
-with its owner, and Oban job processes are too short-lived to own a cache
-shared across jobs). Nothing else belongs in that supervision tree; background
-work goes through Oban workers.
+`PhoenixKit.Newsletters.Application` supervises **only** `AttachmentCache`,
+the ETS table owner (2 min TTL, 1 min sweep). Keep other processes out of this
+supervision tree; background email work goes through Oban, never bare `Task`s.
 
-- **Depends on:** `phoenix_kit` `~> 2.52` (Hex; 2.48 added
-  `PhoenixKit.Email.Layout.render_parts/2`, the header/footer a layout
-  places, and 2.52 dropped the template FK from core's `ExpectedSchema`
-  manifest — see "Core's manifest" under Database & migrations); `phoenix_kit_templates ~> 0.2.2`
-  (`Templates.Substitution` is called directly); `phoenix_live_view ~> 1.1`, `oban ~> 2.20`, `mdex ~> 0.13`,
-  `uuidv7 ~> 1.0`, `gettext ~> 1.0`. Optional at runtime, guarded with
-  `Code.ensure_loaded?/1`: `phoenix_kit_crm` (`PhoenixKitCRM.*`,
-  contact-list audiences and the preference center). Broadcast layouts no
-  longer come from core's Emails module — they live in this package's own
-  `phoenix_kit_newsletters_layouts` table.
-  `phoenix_kit_crm ~> 0.6` is a `only: :test` dep so the CRM path is tested
-  against real CRM schemas, not just the "CRM not installed" degrade path.
-- **Consumed by:** nothing calls its API. Core's
-  `PhoenixKit.ScheduledJobs.Workers.ProcessScheduledJobsWorker` looks the
-  module up by key and calls `enabled?/0` + `process_scheduled_broadcasts/0`
-  on its periodic tick; that is the host contract for scheduled sends.
-- **Admin surface:** tab `:admin_newsletters` (`/admin/newsletters/broadcasts`,
-  priority 520, group `:admin_modules`, permission `"newsletters"`) with
-  subtabs Broadcasts (`/broadcasts`), New (`/broadcasts/new`, hidden), Edit
-  (`/broadcasts/:id/edit`, hidden), Details (`/broadcasts/:id`, hidden),
-  Layouts (`/layouts`), Address verification (`/verification`, permission
-  `"newsletters.audiences"`), New layout
-  (`/layouts/new`, hidden), Edit layout (`/layouts/:id/edit`, hidden). One
-  user-dashboard tab `:dashboard_newsletters_preferences` (group `:account`,
-  absolute path `/newsletters/preferences`, no `live_view`, visible only when
-  CRM is installed).
-- **Module key** `"newsletters"`; settings prefix `newsletters_`.
+Most source lives under `lib/phoenix_kit/newsletters/`:
 
-## What this module does NOT do
+- `newsletters.ex`: module callbacks, broadcast/delivery context, scheduling.
+- `broadcaster.ex`, `workers/delivery_worker.ex`: batch enqueueing and delivery.
+- `broadcast.ex`, `delivery.ex`, `layout.ex`, `layouts.ex`: schemas and layouts.
+- `content.ex`, `render.ex`, `recipient_language.ex`: rendering and language.
+- `crm_source.ex`, `user_group_source.ex`: audience bridges.
+- `email_verification.ex`, `verification_engine.ex`, `verification_rows.ex`:
+  host-engine bridge, compatibility contract, table data.
+- `web/`: admin LiveViews/templates, public preferences/unsubscribe, routes,
+  shared `SendError`, `LanguageOptions`, `Timezone`; `paths.ex`: URL helpers.
+- `migrations.ex`: `PhoenixKitNewsletters.Migrations` versioned chain;
+  `expected_schema.ex`: generated manifest exposed through `expected_schema/0`.
 
-- Does not yet create the broadcasts/deliveries tables. It owns their
-  *future* shape through its own versioned chain,
-  `PhoenixKitNewsletters.Migrations` (`migration_module/0`), but core's chain
-  still *creates* both on every install (V135 baseline, later core
-  migrations add `source_type`/`crm_list_uuid`/`source_params`,
-  `send_profile_uuid`, `attachments`, the delivery owner CHECK and the
-  partial unique indexes). V1 of this chain is a pure adoption of that
-  current shape. V2 creates the one table this package does own,
-  `phoenix_kit_newsletters_layouts` (see "Database & migrations").
-- Does not read or write `phoenix_kit_email_templates` at runtime. V2
-  copied the operator-authored rows out of it once; the old rows stay
-  there untouched as an archive.
-- Has no mailing lists of its own. An audience is either a CRM contact list
-  (`source_type "crm_list"`) or a set of core roles (`"user_group"`). The
-  former `List`/`ListMember` schemas and the `"newsletters_list"` source type
-  no longer exist; a stale token or row of that flavour must degrade, never
-  crash (see the unsubscribe controller).
-- Never hard-depends on CRM or Emails. Both are soft dependencies; every
-  feature that needs them degrades to "unavailable".
-- No cross-broadcast rate limiter. The throttle is scoped to one broadcast;
-  two concurrent sends through one profile can exceed its caps together.
-  Provider-side quotas are the backstop.
-- No activity logging; nothing here writes to core's activity log.
-- Does not dequeue anything on "Cancel broadcast". The cancel writes only the
-  broadcast row; the queued jobs still run, and each one stops itself on the
-  worker's broadcast-status guard (see Send pipeline step 5). Stopping is
-  worker-side by design — it is the only point that closes the race against a
-  job already executing.
-- Does not process provider delivery/open/bounce events itself; it only
-  exposes `find_delivery_by_message_id/1` and `update_delivery_status/3` for
-  a caller that does.
+Dependency versions live in `mix.exs`. Keep core's published range
+`>= 2.65.0 and < 4.0.0`: 2.65 supplies the module callbacks; the range admits
+later 2.x minors and 3.x. Do not narrow to one minor with a three-segment
+`~>` or commit a `path:` dependency (`CorePinConformanceTest`). Raise the floor
+only for a required core API/migration. `phoenix_kit_templates` is a direct
+dependency because rendering calls its substitution API.
 
-## Commands
+CRM (`PhoenixKitCRM.*`) and core's Emails module are runtime soft dependencies:
+guard references with `Code.ensure_loaded?/1` and call through `apply/3`
+(`soft_call/3` is intentionally credo-disabled). Ecto `from`/`join` introspects
+literal schema modules at compile time; a module attribute does not prevent
+this. Build CRM schema atoms with `Module.concat/1` inside functions.
+CRM is a test-only dependency to exercise real schemas. `required_modules/0`
+returns `["emails"]`, but layouts use this package and `PhoenixKit.Email.Layout`,
+not `PhoenixKit.Modules.Emails.*`.
+
+There are no newsletters-owned mailing lists or activity logs. Audiences are
+CRM lists (`"crm_list"`) or core roles (`"user_group"`); stale
+`"newsletters_list"` rows/tokens must degrade without crashing. Provider events
+are handled externally via `find_delivery_by_message_id/1` and
+`update_delivery_status/3`.
+
+## Commands & checks
 
 ```bash
 mix deps.get
-createdb phoenix_kit_newsletters_test          # once; DB-backed tests are tagged :integration and auto-skip without it
+createdb phoenix_kit_newsletters_test  # once; DB tests auto-skip without it
 mix test
-mix precommit                # compile --warnings-as-errors + format + credo --strict + dialyzer; run before every commit
+mix format
+mix precommit                        # required before every commit
 ```
 
-`phoenix_kit*` deps resolve from Hex and this module does not carry the
-`pk_dep/3` helper. To run against a local core checkout, temporarily change the
-dep to `{:phoenix_kit, path: "../phoenix_kit", override: true}` in `mix.exs`,
-run `mix deps.get`, and revert **both** `mix.exs` and `mix.lock` before
-committing (switching between path and Hex resolution rewrites the lock).
+`precommit` runs compile with warnings as errors, `deps.unlock --check-unused`,
+`hex.audit`, and `quality.ci` (format check, strict Credo, Dialyzer).
+`mix quality` applies formatting then runs strict Credo and Dialyzer;
+`mix quality.ci` only checks formatting, so run `mix format` first.
 
-`mix precommit` also runs `deps.unlock --check-unused` and `mix hex.audit`.
+Dependencies resolve from Hex; this repo has no `pk_dep/3` helper. To test
+local core, temporarily use
+`{:phoenix_kit, path: "../phoenix_kit", override: true}`, run `mix deps.get`,
+and revert **both** `mix.exs` and `mix.lock` before committing.
 
-Repo-local aliases:
+## Web conventions
 
-- `mix quality` — `format` + `credo --strict` + `dialyzer` (applies formatting).
-- `mix quality.ci` — `format --check-formatted` + `credo --strict` + `dialyzer`: it CHECKS formatting rather than applying it, so run `mix format` first.
+- Use `PhoenixKit.Newsletters.Paths` for module URLs;
+  `PhoenixKit.Utils.Routes.path/1` for cross-module links/string paths and
+  `Routes.url/1` for absolute email links. No relative email URLs or hardcoded
+  hosts; route new code through `Paths`, even where old templates use literals.
+- Register admin routes only through tabs' `live_view:` in `admin_tabs/0`;
+  public routes only through `route_module/0` (`Web.Routes.generate/1`). Never
+  hand-register them in a host router; see core's `guides/custom-admin-pages.md`.
+  Admin root: `/admin/newsletters/broadcasts`, tab `:admin_newsletters`,
+  priority 520, group `:admin_modules`. Child ids use `admin_newsletters_`;
+  URL segments use hyphens. Tabs cover broadcasts, layouts and verification;
+  new/edit/details tabs are hidden. Keep module-key callbacks and settings
+  consistent with `"newsletters"`.
+- Preferences has its own public `live_session` in `Web.Routes` for token
+  access without login. Its dashboard tab `:dashboard_newsletters_preferences`
+  uses absolute `/newsletters/preferences`, group `:account`, **no `live_view`**,
+  visible only with CRM. Dashboard live_sessions require login.
+- One-click unsubscribe GET/POST uses the separate
+  `:phoenix_kit_newsletters_one_click` pipeline with only `accepts ["html"]`,
+  outside `:browser`: RFC 8058 POSTs carry no session or CSRF token.
+- LiveViews use `Phoenix.LiveView` and `use Gettext, backend:
+  PhoenixKit.Newsletters.Gettext`, importing core components explicitly
+  (`PhoenixKitWeb.Components.Core.{Icon, PkLink, EmptyState, TableDefault}`).
+  Do not use `PhoenixKitWeb, :live_view`. Admin templates wrap in
+  `PhoenixKitWeb.Components.LayoutWrapper.app_layout`; preferences uses
+  `AuthPageWrapper.auth_page_wrapper`. Controllers/HTML use
+  `PhoenixKitWeb, :controller` / `:html`.
+- Admin assigns: `@phoenix_kit_current_scope`, `@phoenix_kit_current_user`,
+  `@current_locale`, `@url_path`. Use `assign_new/3` for current user and
+  tracked `@phoenix_kit_current_user` in templates; `assigns[...]` makes the
+  media picker re-render on every keystroke. Never `assign(:layout, _)`:
+  dead rendering reserves `:layout` for the page layout.
+- Put token verification, timezone resolution and account contact find/link
+  in `handle_params/3`, not `mount/3` (mount runs twice).
+- Every LiveView mount checks `enabled?/0` and flashes/redirects if disabled.
+  `enabled?/0` reads `newsletters_enabled` (default `false`), rescuing exceptions
+  to `false` without catching `:exit`.
+- Gettext backend: `PhoenixKit.Newsletters.Gettext`, locales `en`, `et`, `ru`.
+  Every `Tab.new!` supplies `gettext_backend:`. Hand-list new tab labels in
+  the "Sidebar tab labels" block of `priv/gettext/default.pot` (the extractor
+  misses them), then `mix gettext.extract --merge`. `I18nTest` requires
+  non-identity Russian translations for tab labels.
+- No JS hooks currently. New hooks ship via `js_sources/0` under a namespaced
+  global, never inline `<script>` (morphdom does not execute inserted scripts).
+  `css_sources/0` returns `[:phoenix_kit_newsletters]`.
+- Store UTC; display through `Web.Timezone.viewer_tz/1` (profile
+  `user_timezone` → setting `time_zone` → `"0"`) and core's per-instant
+  helpers. Use `Settings.get_timezone_label/1`, never a private timezone list.
 
-## Conventions
+## Permissions
 
-- Module key `"newsletters"` is the same string in `module_key/0`,
-  `permission_metadata/0`, `enable_system/0`/`disable_system/0` and the
-  `newsletters_enabled` setting. Tab ids are prefixed `admin_newsletters_`;
-  tab paths and URL segments use hyphens, never underscores.
-- Paths: `PhoenixKit.Newsletters.Paths` for this module's own admin and
-  public URLs, `PhoenixKit.Utils.Routes.path/1` for cross-module links and
-  any path built from a string; `Routes.url/1` for the absolute links that go
-  into emails. Never a relative path, never a hardcoded host. (A few templates
-  still pass literal `/admin/newsletters/...` strings to `pk_link`; route new
-  code through `Paths`.)
-- Routing: admin routes come only from `live_view:` on the tabs in
-  `admin_tabs/0`; public routes come only from `route_module/0`
-  (`PhoenixKit.Newsletters.Web.Routes.generate/1`). Never hand-register either
-  in a host router; core's `guides/custom-admin-pages.md` is the reference.
-  The preference center is a `live_session` inside `Web.Routes`, not a
-  dashboard-tab route, because dashboard live_sessions require a login and
-  this page must open from a signed token without one; its dashboard tab
-  therefore carries an absolute `path` and no `live_view`.
-- The one-click unsubscribe route (`GET`/`POST /newsletters/unsubscribe/one-click`)
-  runs through its own `:phoenix_kit_newsletters_one_click` pipeline that only
-  does `accepts ["html"]`. It must stay outside the host's `:browser`
-  pipeline: a mail client's RFC 8058 POST carries no CSRF token or session.
-- LiveViews `use Phoenix.LiveView` + `use Gettext, backend:
-  PhoenixKit.Newsletters.Gettext` and import core components explicitly
-  (`PhoenixKitWeb.Components.Core.{Icon, PkLink, EmptyState, TableDefault}`);
-  they do not use `PhoenixKitWeb, :live_view`. The three admin templates wrap
-  in `PhoenixKitWeb.Components.LayoutWrapper.app_layout`; the preference
-  center wraps in `AuthPageWrapper.auth_page_wrapper`. The controller and its
-  HTML module use `PhoenixKitWeb, :controller` / `:html`.
-- Assigns available in admin LiveViews: `@phoenix_kit_current_scope`,
-  `@phoenix_kit_current_user`, `@current_locale`, `@url_path`. Reference
-  `@phoenix_kit_current_user` through `assign_new/3` so the template can use
-  the tracked `@` form; the untracked `assigns[...]` form re-renders the media
-  picker on every keystroke.
-- Work that must run once per connection (token verification, timezone
-  resolution, the account-path contact find-or-link write) goes in
-  `handle_params/3`, not `mount/3`, which runs twice.
-- Gettext: own backend `PhoenixKit.Newsletters.Gettext` with
-  `priv/gettext/{en,et,ru}`; every `Tab.new!` passes `gettext_backend:`.
-  Refresh with `mix gettext.extract --merge`. Bare `Tab.new!(label:)` literals
-  are invisible to the extractor: hand-list each new tab label in the
-  "Sidebar tab labels" block at the top of `priv/gettext/default.pot`, then
-  merge. `I18nTest` fails when a tab label lacks a non-identity `ru`
-  translation.
-- JS hooks: none. If one is ever needed it ships via `js_sources/0` under a
-  namespaced global, never from an inline `<script>` (morphdom does not
-  execute inserted script tags, so an inline hook vanishes on LiveView
-  navigation). `css_sources/0` returns `[:phoenix_kit_newsletters]`.
-- `enabled?/0` reads `newsletters_enabled` and rescues any exception to
-  `false` (it does not catch `:exit`). Every LiveView `mount/3` checks it and
-  redirects with a flash when the module is disabled.
-- Activity logging: none.
-- Soft-delete sentinel: none. `delete_broadcast/1` only deletes `"draft"`
-  broadcasts; anything else returns `{:error, :cannot_delete_non_draft}`.
-- Soft dependencies: guard every reference to `PhoenixKitCRM.*` (and to any
-  `PhoenixKit.Modules.Emails.*` module, should one be reintroduced) with
-  `Code.ensure_loaded?/1` and call through
-  `apply/3` (`soft_call/3`, credo-disabled on purpose). Ecto's `from`/`join`
-  DSL introspects a literal schema module at compile time and a module
-  attribute does not avoid that, so `CRMSource` builds CRM schema atoms with
-  `Module.concat/1` inside functions. `required_modules/0` returns
-  `["emails"]`; broadcast layouts and the standard layout come from this
-  package and core's `PhoenixKit.Email.Layout`, not from the Emails module.
-- UUIDv7 primary keys: `@primary_key {:uuid, UUIDv7, autogenerate: true}` on
-  both schemas, `use PhoenixKit.SchemaPrefix` on both
-  (`SchemaPrefixConformanceTest` enforces it). A core migration touching these
-  tables uses `uuid_generate_v7()`, never `gen_random_uuid()`.
-- Background work is Oban only (`DeliveryWorker`, queue `newsletters_delivery`,
-  `max_attempts: 3`, unique on `delivery_uuid` while incomplete). Never spawn a
-  bare `Task` for email work.
-- Core pin: keep `{:phoenix_kit, "~> 2.52"}` two-segment.
-  `CorePinConformanceTest` rejects a three-segment `~> 2.52.x` (it excludes
-  every later core minor and breaks `mix deps.get` for hosts) and a committed
-  `path:` dep. Raise the floor only when a new core migration or core API is
-  required (2.48: `Layout.render_parts/2`; 2.52: manifest without the
-  template FK).
-- Timezones: storage is UTC. Display goes through
-  `Web.Timezone.viewer_tz/1` (profile `user_timezone`, then the `time_zone`
-  setting, then `"0"`) and core's per-instant helpers; labels come from
-  `Settings.get_timezone_label/1`. Never keep a private copy of core's
-  timezone list.
-- Broadcast content: Markdown renders through `Content` with MDEx and is
-  always run through `PhoenixKit.Utils.HtmlSanitizer` (it is mailed to
-  strangers, not previewed by an admin). `Render` builds every email: the
-  layout (in the recipient's language) is applied first — the body replaces
-  `{{{content}}}` or the legacy `{{content}}` — then ONE
-  `PhoenixKit.Templates.Substitution` pass fills `{{name}}`, `{{email}}`,
-  `{{unsubscribe_url}}`, `{{preferences_url}}` and core's chrome
-  (`{{{header}}}`, `{{{footer}}}`, `{{logo_url}}`, `{{accent_color}}`,
-  `{{site_name}}`, `{{site_url}}`, `{{subject}}`), escaping `{{…}}` and
-  inserting `{{{…}}}` raw. An unknown tag stays literal, and an unresolved
-  `preferences_url` is omitted from the map so the literal tag stays visible
-  rather than becoming a link to `/`. No layout (or one whose language does
-  not place the body) → core's standard layout, group `"newsletters"`
-  (`Layout.wrap/3`). The text part is never wrapped.
-- Recipient language: `RecipientLanguage.for_recipient/2` — a user's
-  `preferred_locale` (core `RecipientLocale`), a CRM contact's `locale`,
-  else the list's `locale`, else the site's content language. Layout
-  translations fall back language → base → other dialect of the base →
-  site language → any (`Layout.translation/3`). Never hard-code `"en"`.
-- Core chrome: `Render.chrome/2` is `PhoenixKit.Email.Layout.render_parts/2`
-  with group `"newsletters"` — `_header-newsletters` → `_header` → core's
-  own part (and the footer's), `Branding`'s logo and accent colour. Never
-  rebuild those parts here.
+Use `PhoenixKit.Newsletters.Access` (`Scope.can?/2`, never raw key membership).
+The base `newsletters` key allows drafting, layouts, broadcast lists/counts.
 
-### Landmines
-
-- Host Oban queue is `newsletters_delivery` (core's installer adds it). A
-  host that configures `newsletters:` instead never runs a single delivery
-  job — the jobs enqueue fine and nothing drains them. The README's Oban
-  snippet names the right queue now; keep it that way.
-- `DeliveryWorker.perform/1` sends only when the broadcast's status is
-  `"sending"` (`@sendable_broadcast_statuses`, checked by
-  `guard_broadcast_sendable/1` right after `get_broadcast/1`). It is an
-  **allow-list on purpose**: `Broadcaster.do_send/1` flips to `"sending"`
-  before it enqueues anything, so that is the only status a real job ever
-  runs under, and a new status added later stalls a send rather than
-  sending under it. For irreversible mass email that asymmetry decides the
-  direction — a stalled send is recoverable and visible, mail already handed
-  to a provider is neither. Never widen this to a deny-list.
-- **The guard is checked twice.** `recheck_broadcast_sendable/1` runs again
-  immediately before `send_email/7`, because recipient lookup, rendering and
-  `resolve_attachments/1` (which downloads files) sit between the first check
-  and the send and can take seconds. It costs one indexed read per delivery
-  and narrows the cancel race to the provider call itself, which nothing in a
-  database can retract. Cancellation therefore means "stops every delivery
-  that has not already been handed to the provider", not "stops everything".
-- Both guards return plain `:ok` (like the already-sent skip) so the job
-  neither retries nor records a failure, and write **nothing** to the
-  delivery row: `"pending"` is honest for a send that never happened, and any
-  terminal status would clear the broadcast's last non-terminal delivery —
-  the exact condition `maybe_finalize_broadcast/1` watches — while `"failed"`
-  would also inflate `bounced_count` with an operator's own cancellation.
-- `insert_all` bypasses `Delivery.changeset/2`. `Broadcaster.process_batch/5`
-  re-checks "user_uuid or recipient_email present" by hand and relies on the
-  DB CHECK plus the three partial unique indexes
-  (`idx_newsletters_deliveries_uniq_broadcast_{user,contact,email}`) via
-  `on_conflict: :nothing` with no `conflict_target`. Adding a new recipient
-  source means adding its unique index in core first.
-- The SMTP adapter returns a raw receipt string, not a map;
-  `extract_message_id/1` must never raise. A raise after the provider
-  accepted the message makes Oban resend the same email up to three times.
-- A transient delivery failure must keep `status: "pending"` (the only
-  non-terminal status). Writing `"failed"` early lets a broadcast finalize to
-  `"sent"` while a retry is still queued.
-- The unsubscribe token salts are load-bearing: `"unsubscribe"` for CRM
-  claims `%{contact_uuid, crm_list_uuid}`, `"newsletters_user_optout"` for
-  `%{user_uuid}` (tagged `{:role_optout, _}` by `verify_token/1`),
-  `"newsletters_preferences"` for `%{contact_uuid}`. Do not merge them; a
-  per-list link must never open the full preference page.
-- Never mutate on `GET`. Link scanners fetch every URL in an email; only the
-  `POST` handlers unsubscribe, and the `GET` one-click route redirects to the
-  confirm page.
-- `test_helper.exs` prints a "core V158 … not present" warning whenever the
-  test DB is unreachable; it is the same condition as the `:integration`
-  exclusion, not a second problem.
-
-## Architecture
-
-```
-lib/phoenix_kit/newsletters/
-├── newsletters.ex          # PhoenixKit.Module callbacks + broadcast/delivery context, scheduled processing
-├── application.ex          # Supervises AttachmentCache only
-├── attachment_cache.ex     # Public ETS cache of resolved Swoosh attachments, 2 min TTL, 1 min sweep
-├── broadcast.ex            # Broadcast schema
-├── delivery.ex             # Delivery schema + non_terminal_broadcast_uuids_query/0
-├── broadcaster.ex          # send/1: validates source, renders, inserts deliveries in batches, enqueues jobs
-├── content.ex              # Markdown -> sanitized HTML, HTML -> text
-├── crm_source.ex           # Soft-dep bridge to PhoenixKitCRM lists/contacts
-├── user_group_source.ex    # Role-based audience; opt-out via users.custom_fields["newsletters_opted_out_at"]
-├── preference_token.ex     # Preference-center token (salt "newsletters_preferences")
-├── paths.ex                # Admin + public path helpers
-├── gettext.ex              # PhoenixKit.Newsletters.Gettext backend
-├── layout.ex               # Layout schema (per-language maps) + translation/3 fallback + language_tabs/2 (editor tab -> stored key per field)
-├── layouts.ex              # Layout context: list/get/create/update/archive/restore, default layout
-├── render.ex               # One email: layout in the reader's language, core chrome, subject, text
-├── recipient_language.ex   # Which language a recipient reads in (user / CRM contact / site)
-├── email_verification.ex   # Soft bridge (apply/3) to the host-configured verification engine; degrades to neutral values
-├── verification_engine.ex  # Behaviour the engine implements (callbacks, batch/verdict types, progress message)
-├── verification_rows.ex    # Verification table as plain data: rows + verdicts, status filter, pagination
-├── migrations.ex           # PhoenixKitNewsletters.Migrations: V1 = adoption, V2 = layouts table + carry-over, V3 = canonical object names
-├── web/
-│   ├── routes.ex           # route_module/0: unsubscribe routes + preference-center live_session
-│   ├── broadcasts.ex/.heex          # Admin list, status filter via push_patch
-│   ├── broadcast_editor.ex/.heex    # Compose/edit, source picker, preflight, attachments, send/schedule
-│   ├── broadcast_details.ex/.heex   # Stats, deliveries, cancel, retry
-│   ├── layouts_index.ex/.heex       # Layouts list, archive/restore, default layout
-│   ├── layout_editor.ex/.heex       # Layout per language (tabs from Layout.language_tabs/2), preview through Render
-│   ├── language_options.ex          # The site's languages for the admin screens
-│   ├── verification.ex/.heex        # Address verification: audience picker, batch start/progress (PubSub), verdict table; state in the URL
-│   ├── preference_center_live.ex/.heex  # Public self-service subscriptions (token or login)
-│   ├── unsubscribe_controller.ex    # GET confirm pages, POST unsubscribe, one-click endpoint
-│   ├── unsubscribe_html.ex + unsubscribe_html/*.heex
-│   ├── send_error.ex       # Broadcaster.send/1 reasons -> localized sentences (shared by editor + details)
-│   └── timezone.ex         # viewer_tz/1, tz_label/1, format_datetime/2
-└── workers/
-    └── delivery_worker.ex  # One email per job: render, attach, send via profile or legacy mailer, record result
-```
-
-### Data model
-
-| Schema | Table | Notes |
-|---|---|---|
-| `Broadcast` | `phoenix_kit_newsletters_broadcasts` | statuses `draft → scheduled → sending → sent`, plus `cancelled`, `failed`; `source_type` `"crm_list"` (needs `crm_list_uuid`) or `"user_group"` (needs `source_params["role_uuids"]`, with `role_names_snapshot` display-only); `attachments` = up to 10 distinct Storage file uuids in send order; `template_uuid` is a FK → `phoenix_kit_newsletters_layouts` `ON DELETE SET NULL` (since V2, `fk_newsletters_broadcasts_template`); `send_profile_uuid`, `crm_list_uuid` are bare soft references, no FK |
-| `Layout` | `phoenix_kit_newsletters_layouts` | `name` unique slug; `display_name`/`subject`/`html_body`/`text_body` are maps keyed by language; `status` `active`/`archived`; `metadata` (carried-over rows hold `migrated_from`, `email_category`, `email_status`, `email_is_system`; an `email_is_system: true` row stays archived — no restore, never the default); `created_by_user_uuid` FK → users `ON DELETE SET NULL`. An HTML translation a change adds or alters must place `{{{content}}}` (and an `html_body` edit must leave at least one language that does); a subject translation a change adds or alters must contain `{{subject}}` — untouched carried-over translations are not re-checked. `metadata`/`created_by_user_uuid` are never cast (`create_layout/2` takes the author as an option) |
-| `Delivery` | `phoenix_kit_newsletters_deliveries` | statuses `pending` (only non-terminal), `sent`, `delivered`, `opened`, `bounced`, `failed`, `blocked`; exactly one owner: `user_uuid` (role recipient) or `crm_contact_uuid` + `recipient_email` (CRM recipient); `message_id` unique |
-
-Roles are resolved by uuid, never by name: a role's name is mutable, so a
-broadcast that stored names would silently re-target on rename.
-
-### Send pipeline
-
-1. `Broadcaster.send/1` accepts `draft`, `scheduled` or `failed`; refuses a
-   `crm_list` broadcast whose list is not `active`
-   (`{:crm_list_not_active, status}`) before touching status.
-2. Renders Markdown, flips to `sending`, resolves recipients once
-   (`CRMSource.sendable_recipients/1`: subscribed, not opted out, has email,
-   deduplicated by downcased email; `UserGroupSource.sendable_recipients/1`:
-   active, not opted out, deduplicated by user).
-3. Inserts deliveries in batches of 500 inside one transaction and enqueues one
-   `DeliveryWorker` job per inserted row. `total_recipients` is corrected to
-   the real row count afterwards so a resend never zeroes it.
-4. Throttle: `send_interval_seconds/1` takes the tightest of the send
-   profile's `rate_per_hour`, `rate_per_day`, `pause_seconds`; job N is
-   scheduled `N × interval` seconds out, continuous across batches. `0` means
-   enqueue everything at once.
-5. `DeliveryWorker.perform/1`: skips a delivery already `sent`; re-reads the
-   broadcast and skips it entirely when its status is `cancelled` or `failed`
-   (this is what makes "Cancel broadcast" stop a send in flight — the button
-   itself only writes the broadcast row, and the throttle means most jobs are
-   still queued minutes or hours out when it is pressed); resolves the
-   send profile (broadcast's own if enabled, else the default, else the legacy
-   `PhoenixKit.Mailer.deliver_email/1` path with `from_email`/`from_name`
-   settings); adds `List-Unsubscribe` + `List-Unsubscribe-Post` headers when a
-   one-click URL resolved; resolves attachments last and drops an unreadable
-   one with a warning rather than failing the send.
-6. Result handling runs in one transaction (`update_delivery_result/5`):
-   status write, counter bump, and the finalize check that flips the
-   broadcast to `sent` once no delivery is `pending`. Permanent failures
-   (`{:blocked, _}`, `:deleted`, `:not_configured`, `:unsupported_provider`,
-   `{:invalid_smtp_port, _}`) cancel the job and touch no counter, so a
-   blocklisted address never inflates `bounced_count`; a terminal transient
-   failure counts as a bounce.
-7. `process_scheduled_broadcasts/0` first runs
-   `repair_stuck_sending_broadcasts/0` (one batch UPDATE), then sends every
-   `scheduled` broadcast whose time has passed; a `{:crm_list_not_active, _}`
-   error marks the broadcast `failed` (terminal, retryable from the details
-   page) instead of re-failing every tick.
-
-### Address verification
-
-`Web.Verification` checks the addresses a broadcast audience would mail (same
-resolvers as the sender: `CRMSource` / `UserGroupSource.sendable_recipients/1`)
-against an address verification engine the host names in
-`config :phoenix_kit_newsletters, :email_verification_engine, Module`.
-There is no default engine and this package knows no engine by name: the
-contract is the `PhoenixKit.Newsletters.VerificationEngine` behaviour (callbacks,
-batch and verdict shapes, the `{:email_verify_batch, %{...}}` progress message).
-`EmailVerification` calls the configured module through `Code.ensure_loaded?/1`
-+ `function_exported?/3` + `apply/3`, and every read degrades to a neutral value
-(`start_batch/4` answers `{:error, :unavailable}` when there is no engine,
-`{:error, {:engine_error, msg}}` when it is loaded and raised). The page has
-three states: `:unavailable` (none configured, or the module is not loaded),
-`:disabled` (the engine's `enabled?/0` is false), `:ready`. The behaviour's
-signatures and message shapes are a compatibility surface: engines already
-exist with this API, so change them only additively (a new callback goes in
-`@optional_callbacks`).
-
-- Filtered views read `statuses_for/1` (no step logs; falls back to
-  `results_for/1` on a release without it); full results are loaded only for
-  the rows on the shown page.
-- A batch is stored under `source_type` `"newsletters_crm_list"` /
-  `"newsletters_user_group"` (ref = list uuid / digest of the sorted role
-  uuids). `start_batch` is guarded server-side: engine `:ready`, non-empty
-  audience, no queued/running batch for the source.
-- `start_batch/4` blocks while the engine stores every item (seconds for a large
-  audience), so the page runs it with `start_async/3` and finishes in
-  `handle_async/3`; the `starting` assign disables the button and refuses a
-  second click meanwhile. Tests drive it through `start_via_event/1`; the fake
-  engine answers calls made from that task by looking up the `$callers` owner.
-- Progress arrives over the engine's PubSub topic. Subscribe first, then
-  re-read the batch (a batch finishing in between is not missed); the table is
-  re-read only when the batch ends.
-- SMTP stage (an engine with the optional `smtp_mode/0` and `runner_status/0`;
-  both are guarded, so without them they read `"off"` / `nil`). An address with
-  `not_sure` + reason `smtp_pending` gets its own "Waiting for SMTP" badge,
-  apart from "Domain OK (no SMTP)" (`smtp_disabled`). The progress shows the
-  batch's `awaiting_smtp` count, and in `runner` mode with a runner that is not
-  online (`EmailVerification.smtp_runner_waiting?/0`, re-read every 10 s while a
-  batch runs) a hint that links to the engine's own settings page when it has
-  one (the optional `settings_path/0`, passed on only as an absolute path of this
-  site without backslashes, control characters and white space: a browser reads
-  `/\host` and `/<tab>/host` as another host) and is plain text when it has not: the runner is configured on the
-  engine's page, so there is no core page to fall back to. The soft bridge masks
-  addresses in its log lines and in the message of `{:engine_error, msg}`.
-
-### Public flows
-
-| Route | Behaviour |
+| Permission | Enforcement |
 |---|---|
-| `GET /newsletters/unsubscribe?token=` | Confirm page only; renders `:confirm`, `:already_unsubscribed` or `:invalid` |
-| `POST /newsletters/unsubscribe` `scope=list` | Removes the contact from that CRM list (idempotent) |
-| `POST /newsletters/unsubscribe` `scope=all` | Contact-level opt-out across every list |
-| `POST /newsletters/unsubscribe` `scope=role_optout` | `UserGroupSource.record_opt_out/1`: writes `custom_fields["newsletters_opted_out_at"]` and, when a CRM contact is linked, its `opted_out_at` too |
-| `GET /newsletters/unsubscribe/one-click` | Redirects to the confirm page, never mutates |
-| `POST /newsletters/unsubscribe/one-click` | RFC 8058: unsubscribes and always answers 200 |
-| `GET /newsletters/preferences[?token=]` | Preference center: token grants access to that contact; without a token an authenticated user's contact is found or lazily created and linked (never via `Contacts.connect_user/2`; an email held by several unlinked contacts counts as no match) |
+| `newsletters.send` | Send/schedule in `BroadcastEditor` **before saving**; retry/cancel in `BroadcastDetails.confirm_action` |
+| `newsletters.audiences` | Load delivery addresses in `BroadcastDetails`; `Verification` checks at mount **and** in its event handler; verification tab also requires it |
+| `crm` | `Access.crm_lists?/1` also requires `CRMSource.available?/0`; gates offering, previewing, saving and sending a CRM audience |
 
-Tokens are `Phoenix.Token`, endpoint from `PhoenixKit.Config.get(:endpoint,
-PhoenixKitWeb.Endpoint)`, `max_age` 7 days, salts as listed under Landmines.
+Without CRM permission, editor/verification offer roles only and reject crafted
+`crm_list` sources. Workers and the scheduled sweep have no viewer scope.
+Admin receives sub-keys through core boot grants, Owner through `"*"`.
+`migrate_legacy/0` / `PermissionBackfill` grants each sub-key once to roles
+already holding the base key, using `newsletters_send_backfilled` and
+`newsletters_audiences_backfilled`; set each flag only after all grants succeed
+so failures retry next boot. Later base-key grants retain the narrow meaning.
 
-### Settings keys
+## Data & rendering invariants
 
-| Key | Read by | Default |
+All table-backed schemas use `@primary_key {:uuid, UUIDv7, autogenerate: true}`
+and `use PhoenixKit.SchemaPrefix` (`SchemaPrefixConformanceTest`). SQL uses
+`uuid_generate_v7()`, never `gen_random_uuid()`.
+
+Tables are `phoenix_kit_newsletters_{broadcasts,deliveries,layouts}`:
+
+- `Broadcast`: `draft → scheduled → sending → sent`, plus `cancelled`, `failed`.
+  `crm_list` needs `crm_list_uuid`; `user_group` needs
+  `source_params["role_uuids"]`. Resolve roles by UUID, never mutable names;
+  `role_names_snapshot` is display-only. Attachments: up to 10 distinct Storage
+  file UUIDs in send order. `template_uuid` → layouts, `ON DELETE SET NULL`;
+  `crm_list_uuid` and `send_profile_uuid` are soft references without FKs.
+  `delete_broadcast/1` deletes only drafts; otherwise
+  `{:error, :cannot_delete_non_draft}`. No soft-delete sentinel.
+- `Delivery`: `pending` is the **only non-terminal status**; terminal statuses
+  are `sent`, `delivered`, `opened`, `bounced`, `failed`, `blocked`.
+  Exactly one owner: `user_uuid`, or `crm_contact_uuid` + `recipient_email`.
+  `message_id` is unique.
+- `Layout`: unique slug `name`; `display_name`, `subject`, `html_body`,
+  `text_body` are language maps; status `active`/`archived`.
+  Added/changed HTML translations must place `{{{content}}}`; an HTML edit
+  must leave at least one language doing so. Added/changed subject translations
+  must contain `{{subject}}`; untouched imported translations are not rechecked.
+  Never cast `metadata` or `created_by_user_uuid`; `create_layout/2` takes the
+  author as an option (user FK `ON DELETE SET NULL`). Imported
+  `metadata["email_is_system"] == true` layouts stay archived, cannot be
+  restored or made default.
+
+New broadcasts read `newsletters_default_template`, unset by default;
+the Layouts page writes it through `Layouts.set_default_layout/1`.
+
+`Content` renders Markdown with MDEx and **always** runs
+`PhoenixKit.Utils.HtmlSanitizer`. `Render` builds every email:
+
+1. Apply layout in recipient language, inserting the body at `{{{content}}}`
+   (legacy `{{content}}` supported).
+2. Run **one** `PhoenixKit.Templates.Substitution` pass for `name`, `email`,
+   `unsubscribe_url`, `preferences_url`, `header`, `footer`, `logo_url`,
+   `accent_color`, `site_name`, `site_url`, `subject`. Double braces escape;
+   triple braces insert raw. Unknown tags stay literal. Omit an unresolved
+   `preferences_url` from the map so it stays literal rather than linking `/`.
+3. With no layout or no body slot for that language, use core's standard
+   `PhoenixKit.Email.Layout.wrap/3`, group `"newsletters"`. Never wrap text.
+
+`RecipientLanguage.for_recipient/2` resolves user `preferred_locale` via core's
+`RecipientLocale`, or CRM contact locale → list locale → site content language.
+`Layout.translation/3` falls back language → base → other base dialect → site
+language → any. Never hardcode `"en"`; editor language tabs use
+`Layout.language_tabs/2` to map each field to its stored key.
+
+`Render.chrome/2` calls `PhoenixKit.Email.Layout.render_parts/2`, group
+`"newsletters"`: `_header-newsletters` → `_header` → core's part (same for
+footer), with Branding logo/accent. Never rebuild core chrome here or read/write
+`phoenix_kit_email_templates` at runtime; V2 imported its rows once.
+
+## Sending & cancellation
+
+- `Broadcaster.send/1` accepts `draft`, `scheduled`, `failed`. Reject a CRM
+  list not `active` with `{:crm_list_not_active, status}` **before** status
+  changes. Render Markdown, flip to `sending`, resolve recipients once:
+  CRM subscribed/not opted out/with email, deduplicated by downcased email;
+  role users active/not opted out, deduplicated by user.
+- Insert batches of 500 in one transaction; enqueue one `DeliveryWorker` per
+  inserted row. Correct `total_recipients` to actual row count afterwards so
+  a resend never zeroes it. `insert_all` bypasses changesets:
+  `process_batch/5` manually checks user UUID or email presence and relies on
+  the DB owner CHECK and partial unique indexes
+  `idx_newsletters_deliveries_uniq_broadcast_{user,contact,email}` with
+  `on_conflict: :nothing`, **no `conflict_target`**. New recipient sources
+  require corresponding DB uniqueness before use.
+- Queue is **`newsletters_delivery`**, never `newsletters`; keep README host
+  config consistent. Worker: `max_attempts: 3`, unique on `delivery_uuid`
+  while incomplete. Profile `rate_per_hour`, `rate_per_day`, `pause_seconds`
+  determine the tightest interval (`send_interval_seconds/1`); schedule job N
+  at N × interval continuously across batches, 0 = all at once. Throttling is
+  per broadcast; concurrent broadcasts may exceed a profile's combined caps.
+  No `newsletters_rate_limit` setting exists; do not re-add it.
+- Worker skips already-sent deliveries. It re-reads the broadcast and sends
+  **only under `"sending"`** (`@sendable_broadcast_statuses`,
+  `guard_broadcast_sendable/1`). Keep this an allow-list: new statuses must
+  stall rather than accidentally send.
+- **Recheck immediately before sending** (`recheck_broadcast_sendable/1`
+  before `send_email/7`): recipient lookup, rendering and attachment downloads
+  can take seconds. Cancellation only writes the broadcast row, leaving queued
+  jobs to stop themselves; it cannot retract mail handed to the provider.
+  Both status-guard skips return plain `:ok` and write **nothing** to delivery
+  rows/counters. Leave them `pending`: a terminal status could finalize the
+  broadcast, and `failed` would inflate bounce counts.
+- Sending uses the enabled broadcast profile, else default profile, else
+  legacy `PhoenixKit.Mailer.deliver_email/1`. Sender falls back to
+  `from_email` / `from_name` (`noreply@example.com` / `Newsletter`). Add
+  `List-Unsubscribe` and `List-Unsubscribe-Post` when a one-click URL resolves.
+  Resolve attachments last; warn/drop unreadable files instead of failing.
+- SMTP may return a raw receipt string. `extract_message_id/1` must **never
+  raise** after provider acceptance: that would retry and duplicate email.
+- Transient failures remain `pending` until retries are exhausted; early
+  `failed` lets the broadcast finalize while a retry is queued. Result status,
+  counter bump and finalization run in one transaction
+  (`update_delivery_result/5`); finalize only when no delivery is pending.
+  Permanent failures (`{:blocked, _}`, `:deleted`, `:not_configured`,
+  `:unsupported_provider`, `{:invalid_smtp_port, _}`) cancel jobs without
+  counter bumps. Exhausted transient failures count as bounces.
+- `process_scheduled_broadcasts/0` first repairs stuck `sending` broadcasts
+  with one batch UPDATE, then sends due `scheduled` broadcasts. Inactive CRM
+  lists mark the broadcast `failed` (retryable), avoiding failure every tick.
+
+## Public unsubscribe & preferences
+
+Never mutate on GET: link scanners fetch email URLs. Tokens use `Phoenix.Token`,
+endpoint `PhoenixKit.Config.get(:endpoint, PhoenixKitWeb.Endpoint)`, 7-day max
+age. Keep salts and claim scopes separate:
+
+| Purpose | Salt | Claims |
 |---|---|---|
-| `newsletters_enabled` | `enabled?/0` | `false` |
-| `newsletters_default_template` | broadcast editor (layout of a new broadcast); written by the Layouts page (`Layouts.set_default_layout/1`) | none |
-| `from_email`, `from_name` | worker, when the profile or legacy path has no sender | `noreply@example.com` / `Newsletter` |
-| `time_zone` | `Web.Timezone` fallback | `"0"` |
+| CRM list unsubscribe | `unsubscribe` | `contact_uuid`, `crm_list_uuid` |
+| Role opt-out | `newsletters_user_optout` | `user_uuid` (verified as `{:role_optout, _}`) |
+| Full preference center | `newsletters_preferences` | `contact_uuid` |
 
-There is no `newsletters_rate_limit` setting. It was documented in the README
-and the worker's `@moduledoc` but read by nothing, and both mentions are gone;
-do not re-add it. Rate control is queue concurrency
-(`newsletters_delivery`) plus the send profile's own
-`rate_per_hour`/`rate_per_day`/`pause_seconds`, which
-`Broadcaster.send_interval_seconds/1` turns into per-job scheduling.
+A per-list token must never grant full preference access.
 
-Permissions: base key `"newsletters"` (drafting broadcasts, layouts, the
-broadcast list and its counts) plus two sub-permissions, checked by the
-LiveViews themselves through `PhoenixKit.Newsletters.Access`
-(`Scope.can?/2`, never raw key membership):
+- `GET /newsletters/unsubscribe?token=` only confirms (`:confirm`,
+  `:already_unsubscribed`, `:invalid`). POST `scope=list` removes CRM list
+  membership idempotently; `scope=all` opts the contact out globally;
+  `scope=role_optout` calls `UserGroupSource.record_opt_out/1`, writing
+  `custom_fields["newsletters_opted_out_at"]` and linked CRM `opted_out_at`.
+- `GET /newsletters/unsubscribe/one-click` redirects to confirmation;
+  POST performs RFC 8058 unsubscribe and always answers 200.
+- `/newsletters/preferences[?token=]` grants access to the token's contact.
+  Without a token, find or lazily create/link an authenticated user's contact.
+  Never use `Contacts.connect_user/2`; multiple unlinked contacts sharing an
+  email count as no match. Degrade gracefully when CRM is unavailable.
 
-| Key | Allows | Checked in |
-|-----|--------|------------|
-| `newsletters.send` | Send now, Schedule, Retry send, Cancel broadcast | `BroadcastEditor` `send_now`/`schedule` (before anything is saved); `BroadcastDetails` `confirm_action` for `:retry_send` and `:cancel_broadcast` |
-| `newsletters.audiences` | Recipient addresses | `BroadcastDetails` loads the delivery list only with it; `Verification` at mount and in its single `handle_event/3` (the tab also carries it) |
+## Address verification
 
-A CRM contact list is offered, previewed, saved or sent only when the viewer
-also holds CRM's own `crm` key (`Access.crm_lists?/1`, which also requires
-`CRMSource.available?/0`); without it the editor and the verification page
-offer role audiences only and refuse a crafted `crm_list` source. The worker
-and the scheduled sweep run with no scope and are not gated. Admin gets the
-sub-keys from core's boot auto-grant, Owner through `"*"`; `migrate_legacy/0`
-grants each once to every role that already held `"newsletters"`
-(`PermissionBackfill`, flags `newsletters_send_backfilled` /
-`newsletters_audiences_backfilled`, set only after every grant succeeded so a
-failed pass retries next boot). A role given `"newsletters"` later gets the
-narrow meaning.
+Use the same `CRMSource` / `UserGroupSource.sendable_recipients/1` resolvers as
+sending. The host configures
+`config :phoenix_kit_newsletters, :email_verification_engine, Module`;
+there is no default or engine dependency, even for tests.
 
-PubSub: none.
+- `VerificationEngine` callbacks, batch/verdict shapes and
+  `{:email_verify_batch, %{...}}` messages are a compatibility surface;
+  change only additively, with new callbacks in `@optional_callbacks`.
+  `EmailVerification` uses load/export checks + `apply/3` and neutral reads;
+  `start_batch/4` returns `{:error, :unavailable}` or
+  `{:error, {:engine_error, msg}}` for exceptions. Mask addresses in logs and
+  engine-error messages. Page states: `:unavailable`, `:disabled`, `:ready`.
+- Filter with `statuses_for/1` (fallback `results_for/1`); fetch full results
+  only for the displayed page. Batch sources: `newsletters_crm_list` (list
+  UUID) / `newsletters_user_group` (digest of sorted role UUIDs).
+- Guard starts server-side: ready engine, nonempty audience, no queued/running
+  batch. Run blocking `start_batch/4` via `start_async/3` / `handle_async/3`;
+  `starting` disables/rejects duplicate starts. Subscribe to engine PubSub
+  **before** re-reading the batch; refresh table results only when it ends.
+- Optional `smtp_mode/0` / `runner_status/0` default to `"off"` / `nil`.
+  Distinguish `not_sure` + `smtp_pending` ("Waiting for SMTP") from
+  `smtp_disabled` ("Domain OK (no SMTP)"); show `awaiting_smtp` progress.
+  While running, recheck `smtp_runner_waiting?/0` every 10 seconds. Link a
+  waiting-runner hint only to optional engine `settings_path/0`: require a
+  same-site absolute path without backslashes, control characters or whitespace
+  (including browser host-escape forms); otherwise show plain text. There is
+  no core settings-page fallback.
 
 ## Database & migrations
 
-Core's `V135` (parent [phoenix_kit](https://github.com/BeamLabEU/phoenix_kit)
-project) baseline still **creates** both tables
-(`phoenix_kit_newsletters_broadcasts`, `phoenix_kit_newsletters_deliveries`)
-on every existing/fresh install, and five later core migrations
-(`V145`/`V152`/`V155`/`V156`/`V158`) layered further shape changes on top —
-send profiles, CRM-sourced recipients, the recipient CHECK, dropping the old
-`list_uuid` column/FK/index, and `attachments`. This module now owns their
-**future shape** through its own versioned chain,
-`PhoenixKitNewsletters.Migrations` (`migration_module/0`), which
-`mix phoenix_kit.update` discovers and drives the same way it drives core's
-own chain. V1 is a pure **adoption** (Phase 0): it changes nothing except
-stamping a `pknl_schema:1` marker (a `COMMENT ON TABLE`) on the anchor
-table, `phoenix_kit_newsletters_broadcasts` — every
-`CREATE TABLE`/pkey/CHECK/index/FK statement is `IF NOT EXISTS`/DO-guarded,
-so on every existing install it is a no-op against tables core already
-built. `down/1` never drops either table, for any target — see
-`PhoenixKitNewsletters.Migrations`' moduledoc for the full ownership
-writeup, including why there is no `ADD COLUMN`/`DROP NOT NULL` safety-net
-section here (unlike the customer_support/manufacturing sibling chains).
+Read `PhoenixKitNewsletters.Migrations`' moduledoc before changing DDL. The
+chain is driven by host `mix phoenix_kit.update` through `migration_module/0`.
+It must work both after historical core migrations and independently on fresh
+installs (core 3.0 no longer creates module tables).
 
-V2 creates `phoenix_kit_newsletters_layouts` (marker `pknl_schema:2`),
-copies every `is_system = false` row of `phoenix_kit_email_templates` into
-it under the same uuid, plus every system row a broadcast's `template_uuid`
-or the `newsletters_default_template` setting still names (always as
-`archived`: those broadcasts keep it, the picker never offers it) — only
-when that table exists (`to_regclass`; `ON CONFLICT (uuid) DO NOTHING`, a
-taken name gets a `_<8 hex>` suffix, then `_<32 hex>`, then a numbered suffix
-until free; each insert checks names chosen earlier in the same import). The import runs ONCE per install: it
-leaves `pknl_layouts:imported` in the layouts table's comment (appended to an
-operator's own; a comment rewritten without it re-enables the import), so a replay
-of the cumulative chain (a later version, a down-then-up) never imports
-email templates created after V2. It then
-drops whatever FK `broadcasts.template_uuid` has to any other table (found
-by `conrelid`/`conkey`, not by name — a renamed host calls it
-`fk_mailing_broadcasts_template`), clears a `template_uuid` that names a
-uuid existing nowhere (logged as a NOTICE per broadcast), and adds
-`fk_newsletters_broadcasts_template` → layouts `ON DELETE SET NULL`. At
-target 2 V1's own template FK guard is not emitted, so a run up to V2 never
-touches the email-templates table except through `to_regclass`.
-
-V3 renames the objects a pre-rename host kept under their old names
-(`phoenix_kit_mailing_*_pkey`, `fk_mailing_*`, `idx_mailing_*`: 2 primary keys,
-4 foreign keys and 6 indexes) to the names `ExpectedSchema` expects (marker
-`pknl_schema:3`). The manifest finds an index or constraint by name and has no
-alias for another one, so without it `repair --dry-run` on such a host reports
-them missing and a real run adds duplicate indexes and foreign keys and fails
-on both primary keys. Each object is found by what it is, never by name
-(everything the manifest records for it, so a `DESC` or `varchar_pattern_ops`
-index or a key with another action is not taken for it), and renamed only when
-exactly one is found and the canonical name is free, with a `NOTICE`; if the
-name is taken or several match, nothing moves and a `WARNING` says so. It
-creates, drops and rewrites nothing, and `down/1` leaves the names alone. Primary
-and foreign key renames take an ACCESS EXCLUSIVE lock on the table (an index
-rename does not block reads or writes), so V3 runs under a 5 s `lock_timeout`;
-update a busy site in a quiet window. Until `mix phoenix_kit.update` has run,
-repair skips this package's tables as "behind".
-
-Core's manifest: core 2.52 (BeamLabEU/phoenix_kit#896) dropped
-`fk_newsletters_broadcasts_template` — declared with the email-templates
-target through 2.51 — from its `ExpectedSchema` manifest, and 2.52 is this
-package's floor. A host on core 2.51 or earlier that ran V2 would see `mix
-phoenix_kit.doctor` report that FK as wrong-shaped and `mix phoenix_kit.repair`
-exit non-zero on it. `MigrationsTest` pins the manifest staying free of it.
-Any later shape change likewise needs a
-core-side manifest update first, or `mix phoenix_kit.repair` silently
-reverts it. Phase 2 (a
-future core baseline squash that drops these tables from core) is already
-covered: V1 alone can build the complete shape of both tables from nothing,
-so a fresh install still gets a working schema even without core's chain.
-
-Always UUIDv7 PKs and `use PhoenixKit.SchemaPrefix` on table-backed schemas.
-
-The broadcasts table's DB column default for `source_type` is still the
-retired `'newsletters_list'`; the Ecto default `"crm_list"` is what every
-insert through the changeset uses. This chain's V1 adopts that DB default
-verbatim — it is core-owned DDL, not something to fix here.
+- **V1 adoption:** historical core V135 plus V145/V152/V155/V156/V158 built
+  broadcasts/deliveries. V1 reproduces their complete final shape and stamps
+  `pknl_schema:1` on broadcasts; it is a no-op on existing shape. Guards must
+  match constraints/indexes **semantically**, not just by name: renamed hosts
+  keep `mailing` object names. Preserve comments/version-marker handling.
+  Do not add an adoption `ADD COLUMN` / `DROP NOT NULL` safety-net section.
+  Ensure UUIDv7/extension prerequisites when building independently.
+  `down/1` never drops either adopted table, for any target.
+- **V2 layouts:** create layouts, stamp `pknl_schema:2`, copy non-system email
+  templates under the same UUIDs plus referenced system rows (always archived).
+  Preserve language maps and source rows. Probe legacy table with `to_regclass`;
+  use `ON CONFLICT (uuid) DO NOTHING`; resolve name collisions (8 hex, 32 hex,
+  then numbered suffix), including earlier rows in the same import. Append
+  `pknl_layouts:imported` to layouts' comment so cumulative replay/down-up
+  never imports later templates. Removing that marker re-enables import.
+  Find/drop old `template_uuid` FKs by columns/target, not names; NULL dangling
+  references with NOTICEs; add `fk_newsletters_broadcasts_template` → layouts
+  `ON DELETE SET NULL`. At target ≥ 2, omit V1's legacy template-FK guard so
+  absent email-template tables are never resolved via `::regclass`.
+- **V3 canonical names:** stamp `pknl_schema:3`; rename legacy primary keys,
+  FKs and indexes to manifest names only for exactly one full semantic match
+  with a free target name. NOTICE successful renames; WARNING on ambiguity or
+  collisions. Do not create/drop/rewrite objects or undo renames on down.
+  Keep the 5 s `lock_timeout`: constraint renames take ACCESS EXCLUSIVE locks;
+  update busy hosts in a quiet window. Repair skips tables behind the chain.
+- `PhoenixKit.Newsletters.ExpectedSchema` is generated: regenerate after chain
+  changes using the command in its header; never hand-edit it. Validate with
+  `test/integration/{expected_schema,migrations_build_alone}_test.exs`.
+  For objects still audited by core, update/exclude core's manifest first and
+  require that release, or repair may reject/revert the new shape. Core 2.52
+  removed its old template-FK target; do not reintroduce it.
+- `Broadcast.column_widths/0`, `Delivery.column_widths/0`,
+  `Layout.column_widths/0` are width authorities. `recipient_email` is
+  `public.citext` even with a custom table prefix. Never restore removed
+  `list_uuid`, its FK or index. Adopt the retired DB default
+  `source_type = 'newsletters_list'` verbatim; Ecto uses `"crm_list"`.
 
 ## Testing
 
-- Test DB `phoenix_kit_newsletters_test` (`MIX_TEST_PARTITION` suffix
-  honoured); `PGUSER`, `PGPASSWORD`, `PGHOST` are read with `postgres` /
-  `postgres` / `localhost` defaults.
-- `test_helper.exs` starts `PhoenixKitNewsletters.Test.Repo`, brings it to
-  the current core schema with `PhoenixKit.Migration.ensure_current/2`, runs
-  this chain's `PhoenixKitNewsletters.Migrations.up_statements/0` on top
-  (so every run starts at the chain's current `pknl_schema` marker), sets
-  sandbox `:manual`, and
-  starts `PhoenixKit.PubSub.Manager` (role fixtures broadcast through it). No reachable DB excludes `:integration`; it also
-  probes the `attachments` column with a real query and excludes
-  `:requires_v158` when absent (every core ≥ 2.0 has it, so in practice both
-  tags skip together).
-- `PhoenixKitNewsletters.DataCase` tags `:integration`, checks out the
-  sandbox, and provides `errors_on/1` and `TestScopes` (`full_scope/1`,
-  `scope_with/2`, `enable_crm/0`). Support modules: `DataCase`,
-  `Test.Repo`. The admin LiveViews read `@phoenix_kit_current_scope`, so a
-  hand-built socket needs one (`full_scope/0` holds every key they check);
-  `test_helper.exs` starts `ModuleRegistry` and registers this module and
-  CRM, because `Scope.can?/2` asks the registry whether a key's module is on,
-  and the dead-render admin `live_session` mounts through the `:admin` hook,
-  which assigns `full_scope/0`. LiveView tests call `mount/3`, `handle_params/3` and
-  `handle_event/3` directly on a hand-built `%Phoenix.LiveView.Socket{}`;
-  controller tests build a `Plug.Test` conn with a cookie session and
-  `fetch_flash`. Those never reach `Phoenix.Controller.render/3`, which a
-  dead render feeds the socket's assigns into and which reads `:layout` as
-  the page layout (a LiveView assigning its own `:layout` crashes on the
-  first browser load). `dead_render_test.exs` therefore GETs every
-  LiveView through a never-listening endpoint and router
-  (`test/support/dead_render_*.ex`, started by `test_helper.exs`);
-  add a route there for every new LiveView, and never `assign(:layout, _)`.
-- Verification tests: the page and `EmailVerification` are driven through
-  `test/support/fake_verification_engine.ex`
-  (`Application.put_env(:phoenix_kit_newsletters, :email_verification_engine, Fake)`;
-  answers scripted in the test process, calls sent back as messages). The fake
-  declares `@behaviour PhoenixKit.Newsletters.VerificationEngine`, so a callback
-  added to the behaviour fails the test suite until the fake implements it. No engine
-  is a dependency of this package, not even a test one.
-- `config/test.exs` wires `config :phoenix_kit, repo:`, a `secret_key_base`
-  (so integration credentials round-trip encrypted), `PhoenixKit.Mailer` to
-  `Swoosh.Adapters.Test`, and `:endpoint` to a raw secret string so
-  `Phoenix.Token` signs without a running Endpoint.
-- Runs without Postgres: behaviour compliance, `CorePinConformanceTest`,
-  `SchemaPrefixConformanceTest`, `I18nTest`, content, preference token,
-  attachment cache, send-error, provider-options, controller and broadcaster
-  unit tests, and `migrations_test.exs` (pure assertions over the chain's
-  statements and core's `ExpectedSchema` manifest). The other
-  `migrations_*_test.exs` files run real DDL and need the DB.
-- Worker seams exposed as public `@doc false` functions for direct unit
-  tests: `resolve_send_profile/1`, `build_profile_email/5`,
-  `extract_message_id/1`, `compose_html/3`, `handle_failure/4`,
-  `update_delivery_result/5`, `resolve_attachments/2`, `build_attachment/2`,
-  `maybe_put_list_unsubscribe_headers/3`, `permanent_failure?/1`,
-  `Broadcaster.valid_recipient?/1`.
+- DB: `phoenix_kit_newsletters_test` + optional `MIX_TEST_PARTITION` suffix;
+  `PGUSER`/`PGPASSWORD`/`PGHOST` default to `postgres`/`postgres`/`localhost`.
+  `test_helper.exs` starts `Test.Repo`, migrates core, CRM and this chain,
+  enables manual sandbox, PubSub manager, ModuleRegistry and dead-render
+  endpoint. No reachable DB excludes `:integration`; the attachments probe
+  excludes `:requires_v158` when absent. The "core V158 … not present" warning
+  usually accompanies the same missing-DB condition, not a second problem.
+  Builds-alone/manifest tests also skip if required core test support is absent.
+- `PhoenixKitNewsletters.DataCase` tags integration tests, checks out sandbox
+  and supplies `errors_on/1` and `TestScopes` (`full_scope`, `scope_with`,
+  `enable_crm`). Hand-built admin sockets need `phoenix_kit_current_scope`;
+  registry registration matters because `Scope.can?/2` checks module state.
+- Existing LiveView tests call lifecycle/events directly; controller tests
+  use cookie sessions and `fetch_flash`. These miss initial browser-render
+  failures. Add every new LiveView to `test/support/dead_render_router.ex`
+  and cover it in `web/dead_render_test.exs`; never use a content `:layout`
+  assign (see Web conventions).
+- Verification tests use `test/support/fake_verification_engine.ex` via
+  application config, scripted answers and call messages. Keep it aligned
+  with the behaviour. Drive async starts via `start_via_event/1`; the fake
+  finds the test owner through `$callers` from the async task.
+- `config/test.exs` supplies host Repo, encryption secret, Swoosh test adapter
+  and a raw endpoint secret for `Phoenix.Token` without a running endpoint.
+  Unit/conformance/token/content/cache tests and statement-only
+  `migrations_test.exs` run without Postgres; real-DDL migration tests need it.
+  Worker helpers marked `@doc false` provide direct unit-test seams.
 
-## Feature notes
+## Commits & releases
 
-None. Feature behaviour is documented in `@moduledoc`s; the invariants are
-listed under Conventions, Landmines and Architecture above.
+- Commit messages start with an action verb (`Add`, `Update`, `Fix`, `Remove`,
+  `Merge`). Version/CHANGELOG changes belong in the upstream release commit,
+  not feature PRs.
+- Review docs: `dev_docs/pull_requests/{year}/{pr_number}-{slug}/{AGENT}_REVIEW.md`,
+  one per reviewing agent; never edit another agent's review. `FOLLOW_UP.md`
+  records resolutions. Severities: `BUG - CRITICAL/HIGH/MEDIUM`,
+  `IMPROVEMENT - HIGH/MEDIUM`, `NITPICK`.
+- SemVer; version is single-sourced as `@version` in `mix.exs`. Release order:
+  bump it; add `## x.y.z - YYYY-MM-DD` to `CHANGELOG.md`; pass `mix precommit`;
+  commit (`Bump version to x.y.z`), push and verify; `mix hex.publish`;
+  **only after publish succeeds**, tag and push tag. Match newest tag form
+  (`git tag --sort=-creatordate | head -1`); tags are immutable. `mix docs`
+  uses `source_ref: @version`, so tag/version must agree for source links.
+  Create a GitHub release with `gh release create` if this repo uses them
+  (check `gh release list`).
 
-## Versioning & releases
+## Deferred work (do not implement incidentally)
 
-SemVer. The version is single-sourced in `mix.exs` (`@version`); `version/0`
-reads it at compile time and the behaviour test asserts against
-`Mix.Project.config()[:version]`, so nothing else needs bumping.
-
-Release procedure (the steps the maintainer runs):
-
-1. Bump `@version` in `mix.exs`; add a `CHANGELOG.md` entry headed `## x.y.z - YYYY-MM-DD`.
-2. `mix precommit` clean.
-3. Commit (`"Bump version to x.y.z"`) and push; verify the push landed.
-4. `mix hex.publish`.
-5. Tag, matching the form of the newest existing tag (`git tag --sort=-creatordate | head -1` shows it), and push the tag.
-6. GitHub release via `gh release create` if the repo does those (`gh release list` shows whether it does).
-
-Tags are immutable pointers: never tag before the commit is pushed and the
-publish has succeeded.
-
-`mix docs` uses `source_ref: @version`, so the tag form and the version
-string must agree or every HexDocs source link 404s.
-
-## Pull requests & commits
-
-- Commit messages start with an action verb (`Add`, `Update`, `Fix`, `Remove`, `Merge`).
-- Version bumps and CHANGELOG entries land with the release commit on upstream, not in feature PRs.
-- Review files live in `dev_docs/pull_requests/{year}/{pr_number}-{slug}/{AGENT}_REVIEW.md`, one file per reviewing agent, never edited by another agent; `FOLLOW_UP.md` records how each finding was resolved. Severities: `BUG - CRITICAL/HIGH/MEDIUM`, `IMPROVEMENT - HIGH/MEDIUM`, `NITPICK`.
-
-## TODOs
-
-- **A terminal delivery status for suppressed sends.** Deliveries under a
-  cancelled broadcast stay `"pending"` forever. That is safe (finalization
-  and the repair sweep both match `status == "sending"` only, so nothing
-  sweeps them) and honest, but it means a delivery row and its Oban job
-  disagree — the job completed, the delivery reads non-terminal — so any
-  future report counting pending deliveries, or a resume/retry-pending
-  feature, must join against the broadcast's status or it will mis-read
-  them. The clean model is a terminal `"cancelled"` status excluded from
-  `bounced_count` and from `non_terminal_broadcast_uuids_query/0`.
-  **Trigger:** the first reporting or resume feature that reads delivery
-  status without the broadcast join. Needs a `@valid_statuses` change and a
-  decision on backfilling existing rows; do NOT reuse `"failed"`.
-- **Bulk-cancel the queued Oban jobs on cancel.** Cancelling a
-  50k-recipient broadcast currently wakes all 50k jobs, each doing two
-  reads and an info log, just to skip. `Oban.cancel_all_jobs/1` over the
-  broadcast's jobs would drop that to one statement. The worker guards stay
-  either way — they are what closes the race — so this is a cost fix, not a
-  correctness one. **Trigger:** a real send large enough for the wake-up
-  cost to show.
+- Suppressed deliveries stay `pending` under cancelled broadcasts; finalization
+  and repair only operate on `sending`. Any reporting/resume feature reading
+  pending deliveries must join broadcast status. When such a feature needs a
+  terminal suppressed status, add `cancelled` with a backfill decision, excluded
+  from bounce counts and `non_terminal_broadcast_uuids_query/0`; never reuse
+  `failed`.
+- Large cancellations still wake queued jobs to skip. Consider
+  `Oban.cancel_all_jobs/1` when real send volume makes that cost material;
+  retain both worker guards to close execution races.
