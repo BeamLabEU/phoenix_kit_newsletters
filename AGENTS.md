@@ -284,7 +284,7 @@ lib/phoenix_kit/newsletters/
 ├── email_verification.ex   # Soft bridge (apply/3) to the host-configured verification engine; degrades to neutral values
 ├── verification_engine.ex  # Behaviour the engine implements (callbacks, batch/verdict types, progress message)
 ├── verification_rows.ex    # Verification table as plain data: rows + verdicts, status filter, pagination
-├── migrations.ex           # PhoenixKitNewsletters.Migrations: V1 = adoption, V2 = layouts table + carry-over
+├── migrations.ex           # PhoenixKitNewsletters.Migrations: V1 = adoption, V2 = layouts table + carry-over, V3 = canonical object names
 ├── web/
 │   ├── routes.ex           # route_module/0: unsubscribe routes + preference-center live_session
 │   ├── broadcasts.ex/.heex          # Admin list, status filter via push_patch
@@ -492,6 +492,23 @@ uuid existing nowhere (logged as a NOTICE per broadcast), and adds
 target 2 V1's own template FK guard is not emitted, so a run up to V2 never
 touches the email-templates table except through `to_regclass`.
 
+V3 renames the objects a pre-rename host kept under their old names
+(`phoenix_kit_mailing_*_pkey`, `fk_mailing_*`, `idx_mailing_*`: 2 primary keys,
+4 foreign keys and 6 indexes) to the names `ExpectedSchema` expects (marker
+`pknl_schema:3`). The manifest finds an index or constraint by name and has no
+alias for another one, so without it `repair --dry-run` on such a host reports
+them missing and a real run adds duplicate indexes and foreign keys and fails
+on both primary keys. Each object is found by what it is, never by name
+(everything the manifest records for it, so a `DESC` or `varchar_pattern_ops`
+index or a key with another action is not taken for it), and renamed only when
+exactly one is found and the canonical name is free, with a `NOTICE`; if the
+name is taken or several match, nothing moves and a `WARNING` says so. It
+creates, drops and rewrites nothing, and `down/1` leaves the names alone. Primary
+and foreign key renames take an ACCESS EXCLUSIVE lock on the table (an index
+rename does not block reads or writes), so V3 runs under a 5 s `lock_timeout`;
+update a busy site in a quiet window. Until `mix phoenix_kit.update` has run,
+repair skips this package's tables as "behind".
+
 Core's manifest: core 2.52 (BeamLabEU/phoenix_kit#896) dropped
 `fk_newsletters_broadcasts_template` — declared with the email-templates
 target through 2.51 — from its `ExpectedSchema` manifest, and 2.52 is this
@@ -520,7 +537,8 @@ verbatim — it is core-owned DDL, not something to fix here.
 - `test_helper.exs` starts `PhoenixKitNewsletters.Test.Repo`, brings it to
   the current core schema with `PhoenixKit.Migration.ensure_current/2`, runs
   this chain's `PhoenixKitNewsletters.Migrations.up_statements/0` on top
-  (so every run starts at `pknl_schema:1`), sets sandbox `:manual`, and
+  (so every run starts at the chain's current `pknl_schema` marker), sets
+  sandbox `:manual`, and
   starts `PhoenixKit.PubSub.Manager` (role fixtures broadcast through it). No reachable DB excludes `:integration`; it also
   probes the `attachments` column with a real query and excludes
   `:requires_v158` when absent (every core ≥ 2.0 has it, so in practice both
