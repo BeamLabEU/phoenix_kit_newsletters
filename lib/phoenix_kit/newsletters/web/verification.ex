@@ -153,6 +153,21 @@ defmodule PhoenixKit.Newsletters.Web.Verification do
   end
 
   defp verification_event("start_batch", _params, %{assigns: %{engine: :ready}} = socket) do
+    case engine_state() do
+      :ready -> start_ready_batch(socket)
+      state -> verification_event("start_batch", %{}, assign(socket, :engine, state))
+    end
+  end
+
+  defp verification_event("start_batch", _params, %{assigns: %{engine: :disabled}} = socket) do
+    {:noreply, put_flash(socket, :error, start_error(:disabled))}
+  end
+
+  defp verification_event("start_batch", _params, socket) do
+    {:noreply, put_flash(socket, :error, start_error(:unavailable))}
+  end
+
+  defp start_ready_batch(socket) do
     # The audience and its latest batch are read again: the click may be stale
     # (another tab or a double click started a batch since the page was drawn).
     socket = refresh_audience(socket, force: true)
@@ -169,20 +184,15 @@ defmodule PhoenixKit.Newsletters.Web.Verification do
     end
   end
 
-  defp verification_event("start_batch", _params, %{assigns: %{engine: :disabled}} = socket) do
-    {:noreply, put_flash(socket, :error, start_error(:disabled))}
-  end
-
-  defp verification_event("start_batch", _params, socket) do
-    {:noreply, put_flash(socket, :error, start_error(:unavailable))}
-  end
-
   @impl true
   def handle_info(
         {:email_verify_batch, %{uuid: uuid} = snapshot},
         %{assigns: %{batch: %{uuid: uuid} = batch}} = socket
       ) do
     cond do
+      batch.state in @terminal_batch_states ->
+        {:noreply, socket}
+
       snapshot.state in @terminal_batch_states ->
         fresh = EmailVerification.get_batch(uuid) || Map.merge(batch, progress_of(snapshot))
 

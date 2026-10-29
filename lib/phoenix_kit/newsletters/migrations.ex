@@ -327,7 +327,7 @@ defmodule PhoenixKitNewsletters.Migrations do
 
   "What it is" is what the manifest records for the object, so that a rename
   never gives the canonical name to something repair would then call
-  wrong-shaped. A table's primary key is its one primary key. A foreign key is
+  wrong-shaped. A primary key has exactly the `uuid` column. A foreign key is
   this column to that table's `uuid` with the same `ON DELETE` and `ON UPDATE`
   (`fk_guard/5` asks only for column and target, because it decides whether to
   create one). An index is valid, with the same columns in the same order,
@@ -1318,8 +1318,8 @@ defmodule PhoenixKitNewsletters.Migrations do
     """
   end
 
-  # A table has at most one primary key; the constraint and its index are
-  # renamed together by Postgres.
+  # The manifest's primary key is on uuid alone. The constraint and its index
+  # are renamed together, so both namespaces must be free.
   defp rename_pkey(table, qualified, prefix) do
     canonical = "#{table}_pkey"
 
@@ -1330,9 +1330,18 @@ defmodule PhoenixKitNewsletters.Migrations do
       FROM pg_constraint
       WHERE conrelid = '#{qualified}'::regclass
         AND contype = 'p'
+        AND conkey = ARRAY[(
+          SELECT attnum FROM pg_attribute
+          WHERE attrelid = '#{qualified}'::regclass AND attname = 'uuid'
+        )]::smallint[]
         AND conname <> '#{canonical}';
       """,
-      "to_regclass('#{prefix}.#{canonical}') IS NOT NULL",
+      """
+      to_regclass('#{prefix}.#{canonical}') IS NOT NULL OR EXISTS (
+          SELECT 1 FROM pg_constraint
+          WHERE conrelid = '#{qualified}'::regclass AND conname = '#{canonical}'
+        )\
+      """,
       "ALTER TABLE #{qualified} RENAME CONSTRAINT %I TO #{canonical}"
     )
   end

@@ -745,7 +745,7 @@ defmodule PhoenixKitNewsletters.MigrationsTest do
         # The name is taken when something holds it: a relation of that name
         # (an index, and a primary key's index) or a constraint of the table.
         assert taken =~
-                 ~r/^(to_regclass\('[a-z_.]+'\) IS NOT NULL|EXISTS \(.*conname = '#{canonical}' \))$/
+                 ~r/^(to_regclass\('[a-z_.]+'\) IS NOT NULL( OR EXISTS \(.*conname = '#{canonical}' \))?|EXISTS \(.*conname = '#{canonical}' \))$/
 
         # One rename, of the one candidate, to the canonical name.
         assert alter =~
@@ -841,6 +841,8 @@ defmodule PhoenixKitNewsletters.MigrationsTest do
       for {name, table, %{type: "p"}} <- constraints do
         assert v3[name] =~ "public.#{table}", name
         assert v3[name] =~ "contype = 'p'", name
+        assert v3[name] =~ "attname = 'uuid'", name
+        assert v3[name] =~ "conkey = ARRAY[", name
       end
     end
   end

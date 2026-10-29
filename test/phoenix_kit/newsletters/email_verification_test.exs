@@ -6,7 +6,7 @@ defmodule PhoenixKit.Newsletters.EmailVerificationTest do
   with a scripted stand-in that implements all of them.
   """
 
-  use PhoenixKitNewsletters.DataCase, async: false
+  use ExUnit.Case, async: false
 
   import ExUnit.CaptureLog
 

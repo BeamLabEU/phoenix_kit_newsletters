@@ -514,6 +514,23 @@ defmodule PhoenixKit.Newsletters.Web.VerificationTest do
   end
 
   describe "starting a batch" do
+    test "rechecks the configured engine before starting from an already open page" do
+      role = audience(["a@example.com"])
+      socket = visit(%{"source" => "user_group", "roles" => [role.uuid]})
+
+      Fake.put(:enabled, false)
+      {:noreply, disabled} = Verification.handle_event("start_batch", %{}, socket)
+      assert disabled.assigns.engine == :disabled
+      assert disabled.assigns.flash["error"] =~ "switched off"
+      refute_received {:start_batch, _, _, _, _}
+
+      Application.delete_env(:phoenix_kit_newsletters, @engine_key)
+      {:noreply, unavailable} = Verification.handle_event("start_batch", %{}, socket)
+      assert unavailable.assigns.engine == :unavailable
+      assert unavailable.assigns.flash["error"] =~ "not available"
+      refute_received {:start_batch, _, _, _, _}
+    end
+
     test "asks the engine for the audience's addresses under a role-group source" do
       role = audience(["a@example.com", "b@example.com"])
       user = %User{uuid: Ecto.UUID.generate()}
@@ -901,6 +918,26 @@ defmodule PhoenixKit.Newsletters.Web.VerificationTest do
         )
 
       assert socket.assigns.batch.processed == 2
+    end
+
+    test "late active snapshots cannot reopen a finished or cancelled batch", %{
+      socket: socket,
+      batch: batch
+    } do
+      for state <- ~w(done cancelled) do
+        terminal = %{batch | state: state, finished_at: DateTime.utc_now()}
+        Fake.put(:batch, terminal)
+
+        {:noreply, finished} =
+          Verification.handle_info({:email_verify_batch, terminal}, socket)
+
+        for processed <- [batch.processed, batch.processed + 1] do
+          late = %{batch | processed: processed}
+
+          assert {:noreply, ^finished} =
+                   Verification.handle_info({:email_verify_batch, late}, finished)
+        end
+      end
     end
 
     test "the end of the batch re-reads the batch and the table", %{socket: socket, batch: batch} do

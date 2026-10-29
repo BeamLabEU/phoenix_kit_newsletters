@@ -88,6 +88,7 @@ defmodule PhoenixKitNewsletters.MigrationsLegacyNamesTest do
 
     schema = "nlln_" <> Integer.to_string(System.unique_integer([:positive]))
     {:ok, _tables} = ModuleChainCheck.build_alone(Repo, Migrations, schema)
+    invalid_schema = schema <> "_bad"
 
     on_exit(fn ->
       if previous_repo,
@@ -96,10 +97,13 @@ defmodule PhoenixKitNewsletters.MigrationsLegacyNamesTest do
 
       Sandbox.mode(Repo, :auto)
       Repo.query!(~s(DROP SCHEMA IF EXISTS "#{schema}" CASCADE))
+      Repo.query!(~s(DROP SCHEMA IF EXISTS "#{invalid_schema}" CASCADE))
       Sandbox.mode(Repo, :manual)
     end)
 
-    %{schema: schema}
+    create_invalid_index_fixture!(invalid_schema)
+
+    %{schema: schema, invalid_schema: invalid_schema}
   end
 
   setup do
@@ -364,6 +368,39 @@ defmodule PhoenixKitNewsletters.MigrationsLegacyNamesTest do
   # ── foreign keys and primary keys ──────────────────────────────────────
 
   describe "a foreign key or primary key that cannot be taken for the object" do
+    test "a primary key whose canonical name is held by a CHECK is left alone", %{schema: schema} do
+      to_legacy!(schema, [hd(@pkeys)], [])
+
+      Repo.query!(
+        ~s[ALTER TABLE "#{schema}"."#{@broadcasts}" ADD CONSTRAINT phoenix_kit_newsletters_broadcasts_pkey CHECK (total_recipients >= 0)]
+      )
+
+      set_marker!(schema, 2)
+      before = names(schema)
+      log = run(schema, :up, 3)
+
+      assert names(schema) == before
+      assert log =~ "phoenix_kit_newsletters_broadcasts_pkey is already in use"
+      assert Migrations.migrated_version_runtime(prefix: schema) == 3
+    end
+
+    test "a primary key on other columns is not given the manifest's name", %{schema: schema} do
+      Repo.query!(
+        ~s[ALTER TABLE "#{schema}"."#{@deliveries}" DROP CONSTRAINT phoenix_kit_newsletters_deliveries_pkey]
+      )
+
+      Repo.query!(
+        ~s[ALTER TABLE "#{schema}"."#{@deliveries}" ADD CONSTRAINT phoenix_kit_mailing_deliveries_pkey PRIMARY KEY (uuid, broadcast_uuid)]
+      )
+
+      set_marker!(schema, 2)
+      before = names(schema)
+      log = run(schema, :up, 3)
+
+      assert names(schema) == before
+      refute renamed_in?(log, "phoenix_kit_newsletters_deliveries_pkey")
+    end
+
     test "a foreign key whose canonical name is held by another key is not renamed over it", %{
       schema: schema
     } do
@@ -481,8 +518,7 @@ defmodule PhoenixKitNewsletters.MigrationsLegacyNamesTest do
           :method,
           :sort_order,
           :operator_class,
-          :collation,
-          :invalid
+          :collation
         ] do
       test "in #{difference} is not renamed", %{schema: schema} do
         {legacy, definition} = lookalike!(schema, unquote(difference))
@@ -494,6 +530,24 @@ defmodule PhoenixKitNewsletters.MigrationsLegacyNamesTest do
         assert indexdef(schema, legacy) == definition
         refute log =~ "renamed #{legacy} to"
       end
+    end
+
+    test "in validity is not renamed, without requiring catalog-write privileges", %{
+      invalid_schema: schema
+    } do
+      name = "idx_mailing_deliveries_message_id"
+      definition = indexdef(schema, name)
+
+      assert %{rows: [[false]]} =
+               Repo.query!("SELECT indisvalid FROM pg_index WHERE indexrelid = to_regclass($1)", [
+                 "#{schema}.#{name}"
+               ])
+
+      set_marker!(schema, 2)
+      log = run(schema, :up, 3)
+
+      assert indexdef(schema, name) == definition
+      refute log =~ "renamed #{name} to"
     end
 
     test "in uniqueness is not renamed", %{schema: schema} do
@@ -643,13 +697,6 @@ defmodule PhoenixKitNewsletters.MigrationsLegacyNamesTest do
     Repo.query!(~s[DROP INDEX "#{schema}"."#{canonical}"])
     Repo.query!(create)
 
-    if difference == :invalid do
-      Repo.query!(
-        "UPDATE pg_index SET indisvalid = false WHERE indexrelid = to_regclass($1)",
-        ["#{schema}.#{legacy}"]
-      )
-    end
-
     {legacy, indexdef(schema, legacy)}
   end
 
@@ -669,7 +716,6 @@ defmodule PhoenixKitNewsletters.MigrationsLegacyNamesTest do
         :sort_order -> "USING btree (status DESC)"
         :operator_class -> "USING btree (status varchar_pattern_ops)"
         :collation -> ~s[USING btree (status COLLATE "C")]
-        :invalid -> "USING btree (status)"
       end
 
     {"idx_newsletters_broadcasts_status", "idx_mailing_broadcasts_status",
@@ -681,6 +727,38 @@ defmodule PhoenixKitNewsletters.MigrationsLegacyNamesTest do
       Repo.query!("SELECT pg_get_indexdef(to_regclass($1))", ["#{schema}.#{name}"])
 
     definition
+  end
+
+  # A failed concurrent build leaves a real invalid index behind. It cannot
+  # run inside the per-test sandbox transaction and needs no superuser rights.
+  defp create_invalid_index_fixture!(schema) do
+    {:ok, _tables} = ModuleChainCheck.build_alone(Repo, Migrations, schema)
+
+    Sandbox.unboxed_run(Repo, fn ->
+      Repo.query!("DROP INDEX #{schema}.idx_newsletters_deliveries_message_id")
+
+      %{rows: [[broadcast]]} =
+        Repo.query!(
+          "INSERT INTO #{schema}.#{@broadcasts} (subject) VALUES ('invalid index') RETURNING uuid"
+        )
+
+      Repo.query!(
+        """
+        INSERT INTO #{schema}.#{@deliveries} (broadcast_uuid, recipient_email, message_id)
+        VALUES ($1, 'a@example.com', 'duplicate'), ($1, 'b@example.com', 'duplicate')
+        """,
+        [broadcast]
+      )
+
+      assert {:error, %Postgrex.Error{postgres: %{code: :unique_violation}}} =
+               Repo.query("""
+               CREATE UNIQUE INDEX CONCURRENTLY idx_mailing_deliveries_message_id
+               ON #{schema}.#{@deliveries} (message_id) WHERE (message_id IS NOT NULL)
+               """)
+
+      Repo.query!("DELETE FROM #{schema}.#{@deliveries}")
+      Repo.query!("DELETE FROM #{schema}.#{@broadcasts}")
+    end)
   end
 
   defp fk_target(schema, name) do

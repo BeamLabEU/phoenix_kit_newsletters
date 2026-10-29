@@ -1015,12 +1015,12 @@ msgstr "Saadetise sihtrühma aadresside kontroll"
 msgid "Checked"
 msgstr "Kontrollitud"
 
-#: lib/phoenix_kit/newsletters/web/verification.ex:466
+#: lib/phoenix_kit/newsletters/web/verification.ex:476
 #, elixir-autogen, elixir-format
 msgid "Could not start the verification"
 msgstr "Kontrolli ei õnnestunud käivitada"
 
-#: lib/phoenix_kit/newsletters/web/verification.ex:509
+#: lib/phoenix_kit/newsletters/web/verification.ex:519
 #, elixir-autogen, elixir-format
 msgid "DNS error"
 msgstr "DNS-i viga"
@@ -1030,12 +1030,12 @@ msgstr "DNS-i viga"
 msgid "Disposable"
 msgstr "Ühekordne"
 
-#: lib/phoenix_kit/newsletters/web/verification.ex:507
+#: lib/phoenix_kit/newsletters/web/verification.ex:517
 #, elixir-autogen, elixir-format
 msgid "Disposable domain"
 msgstr "Ühekordne domeen"
 
-#: lib/phoenix_kit/newsletters/web/verification.ex:491
+#: lib/phoenix_kit/newsletters/web/verification.ex:501
 #, elixir-autogen, elixir-format
 msgid "Domain OK (no SMTP)"
 msgstr "Domeen OK (ilma SMTP-ta)"
@@ -1055,12 +1055,12 @@ msgstr "Märked"
 msgid "Free"
 msgstr "Tasuta"
 
-#: lib/phoenix_kit/newsletters/web/verification.ex:487
+#: lib/phoenix_kit/newsletters/web/verification.ex:497
 #, elixir-autogen, elixir-format
 msgid "Invalid"
 msgstr "Kehtetu"
 
-#: lib/phoenix_kit/newsletters/web/verification.ex:505
+#: lib/phoenix_kit/newsletters/web/verification.ex:515
 #, elixir-autogen, elixir-format
 msgid "Invalid syntax"
 msgstr "Vigane süntaks"
@@ -1070,17 +1070,17 @@ msgstr "Vigane süntaks"
 msgid "Last verification finished: %{at} (%{total} addresses)"
 msgstr "Viimane kontroll lõppes: %{at} (aadresse: %{total})"
 
-#: lib/phoenix_kit/newsletters/web/verification.ex:511
+#: lib/phoenix_kit/newsletters/web/verification.ex:521
 #, elixir-autogen, elixir-format
 msgid "Mailbox not probed (SMTP check is off)"
 msgstr "Postkasti ei kontrollitud (SMTP-kontroll on väljas)"
 
-#: lib/phoenix_kit/newsletters/web/verification.ex:513
+#: lib/phoenix_kit/newsletters/web/verification.ex:523
 #, elixir-autogen, elixir-format
 msgid "Mailbox not probed (SMTP error)"
 msgstr "Postkasti ei kontrollitud (SMTP viga)"
 
-#: lib/phoenix_kit/newsletters/web/verification.ex:512
+#: lib/phoenix_kit/newsletters/web/verification.ex:522
 #, elixir-autogen, elixir-format
 msgid "Mailbox not probed (SMTP unavailable)"
 msgstr "Postkasti ei kontrollitud (SMTP pole saadaval)"
@@ -1100,12 +1100,12 @@ msgstr "Kontrollitavaid aadresse pole"
 msgid "No addresses with this status."
 msgstr "Selle olekuga aadresse pole."
 
-#: lib/phoenix_kit/newsletters/web/verification.ex:490
+#: lib/phoenix_kit/newsletters/web/verification.ex:500
 #, elixir-autogen, elixir-format
 msgid "Not checked"
 msgstr "Kontrollimata"
 
-#: lib/phoenix_kit/newsletters/web/verification.ex:489
+#: lib/phoenix_kit/newsletters/web/verification.ex:499
 #, elixir-autogen, elixir-format
 msgid "Not sure"
 msgstr "Pole kindel"
@@ -1141,22 +1141,22 @@ msgstr "Rolliaadress"
 msgid "Starting..."
 msgstr "Käivitan..."
 
-#: lib/phoenix_kit/newsletters/web/verification.ex:488
+#: lib/phoenix_kit/newsletters/web/verification.ex:498
 #, elixir-autogen, elixir-format
 msgid "Temporary problem"
 msgstr "Ajutine probleem"
 
-#: lib/phoenix_kit/newsletters/web/verification.ex:460
+#: lib/phoenix_kit/newsletters/web/verification.ex:470
 #, elixir-autogen, elixir-format
 msgid "The address verification engine is not available"
 msgstr "Aadresside kontrollimootor pole saadaval"
 
-#: lib/phoenix_kit/newsletters/web/verification.ex:452
+#: lib/phoenix_kit/newsletters/web/verification.ex:462
 #, elixir-autogen, elixir-format
 msgid "The audience is too large for one batch (at most %{max} addresses)"
 msgstr "Sihtrühm on ühe partii jaoks liiga suur (kuni %{max} aadressi)"
 
-#: lib/phoenix_kit/newsletters/web/verification.ex:508
+#: lib/phoenix_kit/newsletters/web/verification.ex:518
 #, elixir-autogen, elixir-format
 msgid "The domain accepts no mail"
 msgstr "Domeen ei võta posti vastu"
@@ -1171,22 +1171,22 @@ msgstr "Host-rakenduse Oban-i seadistuses puudub järjekord, milles kontrollimoo
 msgid "The last verification was cancelled after %{processed} of %{total} addresses"
 msgstr "Viimane kontroll tühistati pärast %{processed} aadressi %{total}-st"
 
-#: lib/phoenix_kit/newsletters/web/verification.ex:449
+#: lib/phoenix_kit/newsletters/web/verification.ex:459
 #, elixir-autogen, elixir-format
 msgid "There are no sendable addresses to verify"
 msgstr "Kontrollimiseks pole saadetavaid aadresse"
 
-#: lib/phoenix_kit/newsletters/web/verification.ex:506
+#: lib/phoenix_kit/newsletters/web/verification.ex:516
 #, elixir-autogen, elixir-format
 msgid "Unknown top-level domain"
 msgstr "Tundmatu ülemtaseme domeen"
 
-#: lib/phoenix_kit/newsletters/web/verification.ex:486
+#: lib/phoenix_kit/newsletters/web/verification.ex:496
 #, elixir-autogen, elixir-format
 msgid "Valid"
 msgstr "Kehtiv"
 
-#: lib/phoenix_kit/newsletters/web/verification.ex:334
+#: lib/phoenix_kit/newsletters/web/verification.ex:344
 #, elixir-autogen, elixir-format
 msgid "Verification started"
 msgstr "Kontroll käivitatud"
@@ -1201,22 +1201,22 @@ msgstr "Kontrolli nimekirja"
 msgid "Verifying: %{processed} of %{total}"
 msgstr "Kontrollin: %{processed} / %{total}"
 
-#: lib/phoenix_kit/newsletters/web/verification.ex:458
+#: lib/phoenix_kit/newsletters/web/verification.ex:468
 #, elixir-autogen, elixir-format
 msgid "A verification of this audience is already running"
 msgstr "Selle sihtrühma kontroll juba töötab"
 
-#: lib/phoenix_kit/newsletters/web/verification.ex:464
+#: lib/phoenix_kit/newsletters/web/verification.ex:474
 #, elixir-autogen, elixir-format
 msgid "The verification failed to start: the verification engine reported an error"
 msgstr "Kontrolli käivitamine ebaõnnestus: kontrollimootor teatas veast"
 
-#: lib/phoenix_kit/newsletters/web/verification.ex:461
+#: lib/phoenix_kit/newsletters/web/verification.ex:471
 #, elixir-autogen, elixir-format
 msgid "Address verification is switched off"
 msgstr "Aadresside kontroll on välja lülitatud"
 
-#: lib/phoenix_kit/newsletters/web/verification.ex:510
+#: lib/phoenix_kit/newsletters/web/verification.ex:520
 #, elixir-autogen, elixir-format
 msgid "Verification failed, will need a re-run"
 msgstr "Kontroll ebaõnnestus, vaja uuesti käivitada"
@@ -1228,62 +1228,62 @@ msgid_plural "%{count} addresses waiting for the SMTP check"
 msgstr[0] "%{count} aadress ootab SMTP-kontrolli"
 msgstr[1] "%{count} aadressi ootavad SMTP-kontrolli"
 
-#: lib/phoenix_kit/newsletters/web/verification.ex:515
+#: lib/phoenix_kit/newsletters/web/verification.ex:525
 #, elixir-autogen, elixir-format
 msgid "Catch-all"
 msgstr "Catch-all"
 
-#: lib/phoenix_kit/newsletters/web/verification.ex:521
+#: lib/phoenix_kit/newsletters/web/verification.ex:531
 #, elixir-autogen, elixir-format
 msgid "Could not connect to the mail server"
 msgstr "Postiserveriga ei õnnestunud ühendust luua"
 
-#: lib/phoenix_kit/newsletters/web/verification.ex:518
+#: lib/phoenix_kit/newsletters/web/verification.ex:528
 #, elixir-autogen, elixir-format
 msgid "Greylisted"
 msgstr "Hallnimekirjas (greylisting)"
 
-#: lib/phoenix_kit/newsletters/web/verification.ex:519
+#: lib/phoenix_kit/newsletters/web/verification.ex:529
 #, elixir-autogen, elixir-format
 msgid "Mail server blocked the check"
 msgstr "Postiserver blokeeris kontrolli"
 
-#: lib/phoenix_kit/newsletters/web/verification.ex:522
+#: lib/phoenix_kit/newsletters/web/verification.ex:532
 #, elixir-autogen, elixir-format
 msgid "Mail server rejected the sender"
 msgstr "Postiserver lükkas saatja tagasi"
 
-#: lib/phoenix_kit/newsletters/web/verification.ex:516
+#: lib/phoenix_kit/newsletters/web/verification.ex:526
 #, elixir-autogen, elixir-format
 msgid "Mailbox does not exist"
 msgstr "Postkasti pole olemas"
 
-#: lib/phoenix_kit/newsletters/web/verification.ex:517
+#: lib/phoenix_kit/newsletters/web/verification.ex:527
 #, elixir-autogen, elixir-format
 msgid "Mailbox is full"
 msgstr "Postkast on täis"
 
-#: lib/phoenix_kit/newsletters/web/verification.ex:520
+#: lib/phoenix_kit/newsletters/web/verification.ex:530
 #, elixir-autogen, elixir-format
 msgid "SMTP check timed out"
 msgstr "SMTP-kontrolli ooteaeg ületati"
 
-#: lib/phoenix_kit/newsletters/web/verification.ex:492
+#: lib/phoenix_kit/newsletters/web/verification.ex:502
 #, elixir-autogen, elixir-format
 msgid "Waiting for SMTP"
 msgstr "Ootab SMTP-d"
 
-#: lib/phoenix_kit/newsletters/web/verification.ex:514
+#: lib/phoenix_kit/newsletters/web/verification.ex:524
 #, elixir-autogen, elixir-format
 msgid "Waiting for the SMTP check"
 msgstr "Ootab SMTP-kontrolli"
 
-#: lib/phoenix_kit/newsletters/web/verification.ex:524
+#: lib/phoenix_kit/newsletters/web/verification.ex:534
 #, elixir-autogen, elixir-format
 msgid "Mail server reset the connection"
 msgstr "Postiserver katkestas ühenduse"
 
-#: lib/phoenix_kit/newsletters/web/verification.ex:523
+#: lib/phoenix_kit/newsletters/web/verification.ex:533
 #, elixir-autogen, elixir-format
 msgid "Mailbox confirmed by the SMTP check"
 msgstr "Postkasti olemasolu kinnitas SMTP-kontroll"
