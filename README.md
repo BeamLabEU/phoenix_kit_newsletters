@@ -55,6 +55,10 @@ through its own migration chain, `PhoenixKitNewsletters.Migrations`. Core's
 `V1` adopts that current shape (verbatim, including the five later core
 migrations that layered send profiles, CRM-sourced recipients and
 `attachments` on top) and stamps a version marker; it changes nothing else.
+A host that once renamed these tables from their earlier `mailing` name and kept
+the old primary key, foreign key and index names gets them renamed to the current
+ones by `V3` (nothing is created or dropped), so `mix phoenix_kit.repair` finds
+them where they are instead of proposing a second copy of each.
 `mix phoenix_kit.update` in the host discovers and drives this chain the
 same way it drives core's own.
 
