@@ -114,7 +114,7 @@
           type="button"
           class="btn btn-primary btn-sm"
           phx-click="start_batch"
-          disabled={batch_active?(@batch)}
+          disabled={batch_active?(@batch) or @starting}
           phx-disable-with={gettext("Starting...")}
         >
           <.icon name="hero-play" class="w-4 h-4" /> {gettext("Verify the list")}

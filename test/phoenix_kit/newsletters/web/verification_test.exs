@@ -59,6 +59,24 @@ defmodule PhoenixKit.Newsletters.Web.VerificationTest do
     socket
   end
 
+  # The click, then the batch start it runs in a task: waits for the task's
+  # result and hands it to `handle_async/3`, as the LiveView process would.
+  defp start_via_event(socket) do
+    {:noreply, socket} =
+      Verification.handle_event("start_batch", %{}, %{socket | transport_pid: self()})
+
+    if socket.assigns.starting do
+      receive do
+        {_prefix, :async_result, {:start, {_ref, _cid, :start_batch, result}}} ->
+          Verification.handle_async(:start_batch, result, socket)
+      after
+        1_000 -> flunk("the batch start did not report")
+      end
+    else
+      {:noreply, socket}
+    end
+  end
+
   defp render_page(socket) do
     socket.assigns
     |> Map.merge(%{url_path: "/admin/newsletters/verification", phoenix_kit_current_scope: nil})
@@ -193,7 +211,7 @@ defmodule PhoenixKit.Newsletters.Web.VerificationTest do
 
       assert socket.assigns.emails == []
 
-      {:noreply, socket} = Verification.handle_event("start_batch", %{}, socket)
+      {:noreply, socket} = start_via_event(socket)
       assert socket.assigns.flash["error"] =~ "verification engine is not available"
 
       {:noreply, socket} =
@@ -519,13 +537,13 @@ defmodule PhoenixKit.Newsletters.Web.VerificationTest do
       socket = visit(%{"source" => "user_group", "roles" => [role.uuid]})
 
       Fake.put(:enabled, false)
-      {:noreply, disabled} = Verification.handle_event("start_batch", %{}, socket)
+      {:noreply, disabled} = start_via_event(socket)
       assert disabled.assigns.engine == :disabled
       assert disabled.assigns.flash["error"] =~ "switched off"
       refute_received {:start_batch, _, _, _, _}
 
       Application.delete_env(:phoenix_kit_newsletters, @engine_key)
-      {:noreply, unavailable} = Verification.handle_event("start_batch", %{}, socket)
+      {:noreply, unavailable} = start_via_event(socket)
       assert unavailable.assigns.engine == :unavailable
       assert unavailable.assigns.flash["error"] =~ "not available"
       refute_received {:start_batch, _, _, _, _}
@@ -541,7 +559,7 @@ defmodule PhoenixKit.Newsletters.Web.VerificationTest do
           mounted(socket(%{phoenix_kit_current_user: user}))
         )
 
-      {:noreply, socket} = Verification.handle_event("start_batch", %{}, socket)
+      {:noreply, socket} = start_via_event(socket)
 
       assert_received {:start_batch, emails, "newsletters_user_group", ref, opts}
       assert Enum.sort(emails) == ["a@example.com", "b@example.com"]
@@ -570,7 +588,7 @@ defmodule PhoenixKit.Newsletters.Web.VerificationTest do
       {:ok, _} = Lists.add_contact_to_list(contact, list, source: "manual")
 
       socket = visit(%{"source" => "crm_list", "list" => list.uuid})
-      {:noreply, _} = Verification.handle_event("start_batch", %{}, socket)
+      {:noreply, _} = start_via_event(socket)
 
       assert_received {:start_batch, [email], "newsletters_crm_list", ref, opts}
       assert email == contact.email
@@ -584,7 +602,7 @@ defmodule PhoenixKit.Newsletters.Web.VerificationTest do
       socket =
         visit(%{"source" => "user_group", "roles" => [role.uuid]}, mounted(connected_socket()))
 
-      {:noreply, socket} = Verification.handle_event("start_batch", %{}, socket)
+      {:noreply, socket} = start_via_event(socket)
 
       assert_received {:subscribe_batch, uuid}
       assert uuid == socket.assigns.batch.uuid
@@ -592,7 +610,7 @@ defmodule PhoenixKit.Newsletters.Web.VerificationTest do
 
     test "reports an empty audience without calling the engine" do
       socket = visit(%{"source" => "user_group"})
-      {:noreply, socket} = Verification.handle_event("start_batch", %{}, socket)
+      {:noreply, socket} = start_via_event(socket)
 
       assert socket.assigns.flash["error"] =~ "no sendable addresses"
       refute_received {:start_batch, _, _, _, _}
@@ -612,7 +630,7 @@ defmodule PhoenixKit.Newsletters.Web.VerificationTest do
         })
 
         socket = visit(%{"source" => "user_group", "roles" => [role.uuid]})
-        {:noreply, socket} = Verification.handle_event("start_batch", %{}, socket)
+        {:noreply, socket} = start_via_event(socket)
 
         assert socket.assigns.flash["error"] =~ "already running"
         refute_received {:start_batch, _, _, _, _}
@@ -632,7 +650,7 @@ defmodule PhoenixKit.Newsletters.Web.VerificationTest do
       })
 
       socket = visit(%{"source" => "user_group", "roles" => [role.uuid]})
-      {:noreply, _socket} = Verification.handle_event("start_batch", %{}, socket)
+      {:noreply, _socket} = start_via_event(socket)
       assert_received {:start_batch, ["a@example.com"], _, _, _}
     end
 
@@ -643,7 +661,7 @@ defmodule PhoenixKit.Newsletters.Web.VerificationTest do
 
       for engine <- [:disabled, :unavailable] do
         socket = %{socket | assigns: %{socket.assigns | engine: engine}}
-        {:noreply, socket} = Verification.handle_event("start_batch", %{}, socket)
+        {:noreply, socket} = start_via_event(socket)
 
         assert socket.assigns.flash["error"]
         refute_received {:start_batch, _, _, _, _}
@@ -656,12 +674,12 @@ defmodule PhoenixKit.Newsletters.Web.VerificationTest do
       socket = visit(%{"source" => "user_group", "roles" => [role.uuid]})
 
       disabled = %{socket | assigns: %{socket.assigns | engine: :disabled}}
-      {:noreply, disabled} = Verification.handle_event("start_batch", %{}, disabled)
+      {:noreply, disabled} = start_via_event(disabled)
       assert disabled.assigns.flash["error"] =~ "switched off"
       refute disabled.assigns.flash["error"] =~ "not available"
 
       missing = %{socket | assigns: %{socket.assigns | engine: :unavailable}}
-      {:noreply, missing} = Verification.handle_event("start_batch", %{}, missing)
+      {:noreply, missing} = start_via_event(missing)
       assert missing.assigns.flash["error"] =~ "verification engine is not available"
     end
 
@@ -670,11 +688,75 @@ defmodule PhoenixKit.Newsletters.Web.VerificationTest do
       socket = visit(%{"source" => "user_group", "roles" => [role.uuid]})
 
       Fake.put(:start_batch, {:error, {:engine_error, "boom"}})
-      {:noreply, socket} = Verification.handle_event("start_batch", %{}, socket)
+      {:noreply, socket} = start_via_event(socket)
 
       assert socket.assigns.flash["error"] =~ "failed to start"
       assert socket.assigns.flash["error"] =~ "verification engine reported an error"
       refute socket.assigns.flash["error"] =~ "not available"
+    end
+
+    test "the engine is called from a task, not the page, and the page waits for the answer" do
+      role = audience(["a@example.com"])
+      socket = visit(%{"source" => "user_group", "roles" => [role.uuid]})
+
+      {:noreply, started} =
+        Verification.handle_event("start_batch", %{}, %{socket | transport_pid: self()})
+
+      assert started.assigns.starting
+      assert started.assigns.batch == nil
+      assert render_page(started) =~ ~r/id="verification-start"[^>]*disabled/
+
+      # A second click while the first is in flight is refused, not run twice.
+      {:noreply, again} =
+        Verification.handle_event("start_batch", %{}, started)
+
+      assert again.assigns.flash["error"] =~ "already running"
+
+      assert_receive {_prefix, :async_result, {:start, {_ref, _cid, :start_batch, result}}}, 1_000
+      assert_received {:start_batch, ["a@example.com"], _, _, _}
+      refute_received {:start_batch, _, _, _, _}
+
+      {:noreply, done} = Verification.handle_async(:start_batch, result, started)
+      refute done.assigns.starting
+      assert done.assigns.batch.state == "queued"
+      assert done.assigns.flash["info"] =~ "started"
+    end
+
+    test "a crashed start releases the button and says it failed" do
+      role = audience(["a@example.com"])
+      socket = visit(%{"source" => "user_group", "roles" => [role.uuid]})
+      socket = %{socket | assigns: %{socket.assigns | starting: true}}
+
+      {:noreply, socket} = Verification.handle_async(:start_batch, {:exit, :boom}, socket)
+
+      refute socket.assigns.starting
+      assert socket.assigns.flash["error"] =~ "failed to start"
+    end
+
+    test "switching the audience back does not subscribe to a batch twice" do
+      role = audience(["a@example.com"])
+      other = audience(["b@example.com"])
+
+      running = %{
+        uuid: Ecto.UUID.generate(),
+        state: "running",
+        processed: 0,
+        total: 1,
+        counts: %{},
+        finished_at: nil
+      }
+
+      Fake.put(:latest_batch, running)
+      Fake.put(:batch, running)
+
+      params = %{"source" => "user_group", "roles" => [role.uuid]}
+      socket = visit(params, mounted(connected_socket()))
+      socket = visit(%{"source" => "user_group", "roles" => [other.uuid]}, socket)
+      visit(params, socket)
+
+      uuid = running.uuid
+      assert_received {:subscribe_batch, ^uuid}
+      refute_received {:subscribe_batch, ^uuid}
     end
 
     test "turns the engine's errors into messages" do
@@ -687,7 +769,7 @@ defmodule PhoenixKit.Newsletters.Web.VerificationTest do
             {{:error, :boom}, "Could not start"}
           ] do
         Fake.put(:start_batch, reply)
-        {:noreply, socket} = Verification.handle_event("start_batch", %{}, socket)
+        {:noreply, socket} = start_via_event(socket)
         assert socket.assigns.flash["error"] =~ text
       end
     end

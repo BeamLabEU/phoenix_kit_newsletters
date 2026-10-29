@@ -17,7 +17,27 @@ defmodule PhoenixKitNewsletters.Test.FakeVerificationEngine do
   @doc "Scripts an answer: `:enabled`, `:queue_configured`, `:results`, `:latest_batch`, `:batch`, `:start_batch`, `:smtp_mode`, `:runner_status`, `:settings_path`, `:raise`."
   def put(key, value), do: Process.put({__MODULE__, key}, value)
 
-  defp get(key, default), do: Process.get({__MODULE__, key}, default)
+  # A call made from a task the page started (`start_async`) is answered from,
+  # and reported to, the test process that started it: `Task` records it as the
+  # caller.
+  defp owner do
+    case Process.get(:"$callers") do
+      [pid | _] -> pid
+      _ -> self()
+    end
+  end
+
+  defp get(key, default) do
+    pid = owner()
+
+    dictionary =
+      if pid == self(), do: Process.get(), else: elem(Process.info(pid, :dictionary), 1)
+
+    case List.keyfind(dictionary, {__MODULE__, key}, 0) do
+      {_key, value} -> value
+      nil -> default
+    end
+  end
 
   defp maybe_raise do
     case get(:raise, nil) do
@@ -37,14 +57,14 @@ defmodule PhoenixKitNewsletters.Test.FakeVerificationEngine do
 
   @impl true
   def results_for(emails) do
-    send(self(), {:results_for, emails})
+    send(owner(), {:results_for, emails})
     maybe_raise()
     Map.take(get(:results, %{}), emails)
   end
 
   @impl true
   def statuses_for(emails) do
-    send(self(), {:statuses_for, emails})
+    send(owner(), {:statuses_for, emails})
     maybe_raise()
 
     get(:results, %{})
@@ -54,7 +74,7 @@ defmodule PhoenixKitNewsletters.Test.FakeVerificationEngine do
 
   @impl true
   def summary(emails) do
-    send(self(), {:summary, emails})
+    send(owner(), {:summary, emails})
     results = get(:results, %{})
     counts = Enum.frequencies_by(emails, &status(results[&1]))
 
@@ -67,7 +87,7 @@ defmodule PhoenixKitNewsletters.Test.FakeVerificationEngine do
   def start_batch([], _source_type, _source_ref, _opts), do: {:error, :no_emails}
 
   def start_batch(emails, source_type, source_ref, opts) do
-    send(self(), {:start_batch, emails, source_type, source_ref, opts})
+    send(owner(), {:start_batch, emails, source_type, source_ref, opts})
 
     get(
       :start_batch,
@@ -85,19 +105,19 @@ defmodule PhoenixKitNewsletters.Test.FakeVerificationEngine do
 
   @impl true
   def latest_batch(source_type, source_ref) do
-    send(self(), {:latest_batch, source_type, source_ref})
+    send(owner(), {:latest_batch, source_type, source_ref})
     get(:latest_batch, nil)
   end
 
   @impl true
   def get_batch(uuid) do
-    send(self(), {:get_batch, uuid})
+    send(owner(), {:get_batch, uuid})
     get(:batch, nil)
   end
 
   @impl true
   def subscribe_batch(uuid) do
-    send(self(), {:subscribe_batch, uuid})
+    send(owner(), {:subscribe_batch, uuid})
     :ok
   end
 

@@ -379,6 +379,11 @@ exist with this API, so change them only additively (a new callback goes in
   `"newsletters_user_group"` (ref = list uuid / digest of the sorted role
   uuids). `start_batch` is guarded server-side: engine `:ready`, non-empty
   audience, no queued/running batch for the source.
+- `start_batch/4` blocks while the engine stores every item (seconds for a large
+  audience), so the page runs it with `start_async/3` and finishes in
+  `handle_async/3`; the `starting` assign disables the button and refuses a
+  second click meanwhile. Tests drive it through `start_via_event/1`; the fake
+  engine answers calls made from that task by looking up the `$callers` owner.
 - Progress arrives over the engine's PubSub topic. Subscribe first, then
   re-read the batch (a batch finishing in between is not missed); the table is
   re-read only when the batch ends.

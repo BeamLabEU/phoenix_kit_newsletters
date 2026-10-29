@@ -88,7 +88,8 @@ defmodule PhoenixKit.Newsletters.Web.Verification do
     |> assign(:total, 0)
     |> assign(:summary, nil)
     |> assign(:batch, nil)
-    |> assign(:subscribed_batch, nil)
+    |> assign(:subscribed_batches, MapSet.new())
+    |> assign(:starting, false)
     |> assign(:smtp_wait, false)
     |> assign(:settings_path, nil)
     |> assign(:runner_tick, false)
@@ -176,12 +177,37 @@ defmodule PhoenixKit.Newsletters.Web.Verification do
       socket.assigns.emails == [] ->
         {:noreply, put_flash(socket, :error, start_error(:no_emails))}
 
-      batch_active?(socket.assigns.batch) ->
+      batch_active?(socket.assigns.batch) or socket.assigns.starting ->
         {:noreply, put_flash(socket, :error, start_error(:already_running))}
 
       true ->
         {:noreply, start_batch(socket)}
     end
+  end
+
+  # The engine stores every item of the batch before it answers, which takes
+  # seconds for a large audience, so the call runs in a task: the page keeps
+  # answering and the button stays disabled until `handle_async/3` has the batch.
+  @impl true
+  def handle_async(:start_batch, {:ok, {:ok, batch}}, socket) do
+    {:noreply,
+     socket
+     |> assign(:starting, false)
+     |> track_batch(batch)
+     |> load_table(socket.assigns.page)
+     |> load_summary()
+     |> put_flash(:info, gettext("Verification started"))}
+  end
+
+  def handle_async(:start_batch, {:ok, {:error, reason}}, socket) do
+    {:noreply, socket |> assign(:starting, false) |> put_flash(:error, start_error(reason))}
+  end
+
+  def handle_async(:start_batch, {:exit, _reason}, socket) do
+    {:noreply,
+     socket
+     |> assign(:starting, false)
+     |> put_flash(:error, start_error({:engine_error, nil}))}
   end
 
   @impl true
@@ -335,17 +361,11 @@ defmodule PhoenixKit.Newsletters.Web.Verification do
     {type, ref, title} = batch_source(socket.assigns)
     opts = [title: title, created_by_uuid: current_user_uuid(socket)]
 
-    case EmailVerification.start_batch(socket.assigns.emails, type, ref, opts) do
-      {:ok, batch} ->
-        socket
-        |> track_batch(batch)
-        |> load_table(socket.assigns.page)
-        |> load_summary()
-        |> put_flash(:info, gettext("Verification started"))
+    emails = socket.assigns.emails
 
-      {:error, reason} ->
-        put_flash(socket, :error, start_error(reason))
-    end
+    socket
+    |> assign(:starting, true)
+    |> start_async(:start_batch, fn -> EmailVerification.start_batch(emails, type, ref, opts) end)
   end
 
   # The batch's source: what `source_type` / `source_ref` the engine stores it
@@ -439,11 +459,13 @@ defmodule PhoenixKit.Newsletters.Web.Verification do
     assign(socket, :runner_tick, true)
   end
 
-  defp subscribe_once(%{assigns: %{subscribed_batch: uuid}} = socket, uuid), do: socket
-
   defp subscribe_once(socket, uuid) do
-    EmailVerification.subscribe_batch(uuid)
-    assign(socket, :subscribed_batch, uuid)
+    if MapSet.member?(socket.assigns.subscribed_batches, uuid) do
+      socket
+    else
+      EmailVerification.subscribe_batch(uuid)
+      update(socket, :subscribed_batches, &MapSet.put(&1, uuid))
+    end
   end
 
   defp progress_of(snapshot),
