@@ -56,6 +56,13 @@ defmodule PhoenixKitNewsletters.MigrationsV2Test do
     def down, do: :ok
   end
 
+  defmodule BareUpToOne do
+    @moduledoc false
+    use Ecto.Migration
+    def up, do: PhoenixKitNewsletters.Migrations.up(prefix: "nlv2_bare", version: 1)
+    def down, do: :ok
+  end
+
   describe "an install with operator templates and broadcasts" do
     setup do
       create_host(@prefix, email_templates?: true)
@@ -495,6 +502,21 @@ defmodule PhoenixKitNewsletters.MigrationsV2Test do
                }
              ] =
                template_fks(@bare)
+    end
+
+    # What a host's migration file pinned to V1 does on a core 3.x database,
+    # which no longer creates the emails module's table: V1 builds without
+    # its template key, and V2 then adds the one to the layouts table.
+    test "V1 runs from nothing too, without the email-templates key" do
+      run_migration(BareUpToOne)
+
+      assert version(@bare) == 1
+      assert template_fks(@bare) == []
+
+      run_migration(BareUpToTwo)
+
+      assert version(@bare) == 2
+      assert [%{target: "phoenix_kit_newsletters_layouts"}] = template_fks(@bare)
     end
   end
 
