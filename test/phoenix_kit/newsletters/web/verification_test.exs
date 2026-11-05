@@ -733,6 +733,31 @@ defmodule PhoenixKit.Newsletters.Web.VerificationTest do
       assert socket.assigns.flash["error"] =~ "failed to start"
     end
 
+    # The engine takes seconds to store a large batch, and the audience picker
+    # stays live meanwhile.
+    test "a batch that answers after the audience changed is not shown for the new one" do
+      first = audience(["a@example.com"])
+      second = audience(["b@example.com"])
+
+      socket =
+        visit(%{"source" => "user_group", "roles" => [first.uuid]}, mounted(connected_socket()))
+
+      {:noreply, socket} = Verification.handle_event("start_batch", %{}, socket)
+      assert socket.assigns.starting
+
+      socket = visit(%{"source" => "user_group", "roles" => [second.uuid]}, socket)
+
+      assert_receive {_prefix, :async_result, {:start, {_ref, _cid, :start_batch, result}}}, 1_000
+      {:noreply, socket} = Verification.handle_async(:start_batch, result, socket)
+
+      assert_received {:start_batch, ["a@example.com"], _, _, _}
+      refute socket.assigns.starting
+      assert socket.assigns.emails == ["b@example.com"]
+      assert socket.assigns.batch == nil
+      refute_received {:subscribe_batch, _}
+      assert socket.assigns.flash["info"] =~ "started"
+    end
+
     test "switching the audience back does not subscribe to a batch twice" do
       role = audience(["a@example.com"])
       other = audience(["b@example.com"])

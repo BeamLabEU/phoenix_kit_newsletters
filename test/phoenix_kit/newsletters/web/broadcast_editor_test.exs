@@ -12,6 +12,7 @@ defmodule PhoenixKit.Newsletters.Web.BroadcastEditorTest do
 
   alias PhoenixKit.Newsletters
   alias PhoenixKit.Newsletters.Web.BroadcastEditor
+  alias PhoenixKit.Users.Roles
   alias PhoenixKitCRM.Lists
 
   setup do
@@ -58,6 +59,29 @@ defmodule PhoenixKit.Newsletters.Web.BroadcastEditorTest do
 
     assert updated.assigns.source_type == "user_group"
     assert updated.assigns.crm_list_uuid == ""
+  end
+
+  # The button only checks `@subject == ""`, so spaces reach the changeset.
+  test "Send now reports a rejected subject as a sentence, not as a changeset" do
+    {:ok, role} = Roles.create_role(%{name: "ERole#{System.unique_integer([:positive])}"})
+
+    socket =
+      socket(%{source_type: "user_group", role_uuids: [role.uuid], available_roles: [role]})
+
+    {:noreply, updated} =
+      BroadcastEditor.handle_event(
+        "submit",
+        %{
+          "action" => "send_now",
+          "subject" => "   ",
+          "source_type" => "user_group",
+          "role_uuids" => [role.uuid]
+        },
+        socket
+      )
+
+    assert updated.assigns.flash["error"] =~ "subject: can't be blank"
+    refute updated.assigns.flash["error"] =~ "Changeset"
   end
 
   test "picking a value without changing source_type doesn't clear anything" do

@@ -16,12 +16,34 @@ defmodule PhoenixKit.Newsletters.I18nTest do
 
   alias PhoenixKit.Dashboard.Tab
   alias PhoenixKit.Newsletters
+  alias PhoenixKit.Newsletters.Broadcast
+  alias PhoenixKit.Newsletters.Delivery
   alias PhoenixKit.Newsletters.Gettext, as: NewslettersGettext
+  alias PhoenixKit.Newsletters.Web.BroadcastDetails
+  alias PhoenixKit.Newsletters.Web.Broadcasts
 
   setup do
     original = Gettext.get_locale(NewslettersGettext)
     on_exit(fn -> Gettext.put_locale(NewslettersGettext, original) end)
     :ok
+  end
+
+  # An unknown status falls through to the raw value, so a status added to a
+  # schema without a label shows up untranslated instead of failing.
+  describe "status labels (drift guard)" do
+    test "every broadcast status has a label on both broadcast pages" do
+      for status <- Broadcast.valid_statuses(), page <- [Broadcasts, BroadcastDetails] do
+        refute page.status_label(status) == status,
+               "#{inspect(page)}.status_label/1 has no clause for #{inspect(status)}"
+      end
+    end
+
+    test "every delivery status has a label" do
+      for status <- Delivery.valid_statuses() do
+        refute BroadcastDetails.delivery_label(status) == status,
+               "BroadcastDetails.delivery_label/1 has no clause for #{inspect(status)}"
+      end
+    end
   end
 
   describe "admin_tabs/0 wiring" do

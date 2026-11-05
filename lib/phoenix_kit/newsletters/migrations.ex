@@ -287,15 +287,19 @@ defmodule PhoenixKitNewsletters.Migrations do
   At target 2, V1's own guard for the old FK is not emitted (it is
   superseded), so a run up to V2 — from 0, from 1, or repeated — never
   creates the reference V2 removes and never resolves the email-templates
-  table through `::regclass`. At target 1, V1 is byte-for-byte what it
-  always was (the drift guard pins it).
+  table through `::regclass`. At target 1 the guard is emitted behind a
+  `to_regclass` check, the one deliberate change to the published V1: core
+  3.x no longer creates that table, and a host's migration file pinned to V1
+  still runs this on a database without it. Where the table exists the
+  statement does what it always did (the drift guard pins the text).
 
   Rolling back below 2 moves the marker only: the layouts table, its rows
   and the new FK all stay. Going back UP to exactly version 1 afterwards is
-  not a supported path: V1's frozen guard would try to re-add the old FK
-  under the name the new one already holds, and Postgres refuses it
-  (`duplicate_object`) — loudly, inside the migration's transaction, with
-  nothing changed. Up to 3 (the current version) is a no-op.
+  not a supported path: where the email-templates table exists, V1's guard
+  would try to re-add the old FK under the name the new one already holds,
+  and Postgres refuses it (`duplicate_object`) — loudly, inside the
+  migration's transaction, with nothing changed. Up to 3 (the current
+  version) is a no-op.
 
   ### V3 — the objects a pre-rename host kept under their old names
 
@@ -1089,6 +1093,16 @@ defmodule PhoenixKitNewsletters.Migrations do
   # V2+ shape change (with its own manifest/floor implications, see the
   # moduledoc's Phase 1), never something V1's silent adoption should paper
   # over by dropping and re-adding someone's live constraint.
+  defp fk_guard(qualified, constraint_name, column, references, on_delete) do
+    """
+    DO $$
+    BEGIN
+      #{fk_guard_body(qualified, constraint_name, column, references, on_delete)}
+    END
+    $$
+    """
+  end
+
   # `fk_guard/5` for a referenced table that may not exist: nothing when it is
   # missing. Nested, not `AND`ed, so the inner `::regclass` cast is never
   # evaluated against a missing table.
@@ -1099,16 +1113,6 @@ defmodule PhoenixKitNewsletters.Migrations do
       IF to_regclass('#{references}') IS NOT NULL THEN
         #{fk_guard_body(qualified, constraint_name, column, references, on_delete)}
       END IF;
-    END
-    $$
-    """
-  end
-
-  defp fk_guard(qualified, constraint_name, column, references, on_delete) do
-    """
-    DO $$
-    BEGIN
-      #{fk_guard_body(qualified, constraint_name, column, references, on_delete)}
     END
     $$
     """

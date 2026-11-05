@@ -90,6 +90,7 @@ defmodule PhoenixKit.Newsletters.Web.Verification do
     |> assign(:batch, nil)
     |> assign(:subscribed_batches, MapSet.new())
     |> assign(:starting, false)
+    |> assign(:starting_audience, nil)
     |> assign(:smtp_wait, false)
     |> assign(:settings_path, nil)
     |> assign(:runner_tick, false)
@@ -193,9 +194,7 @@ defmodule PhoenixKit.Newsletters.Web.Verification do
     {:noreply,
      socket
      |> assign(:starting, false)
-     |> track_batch(batch)
-     |> load_table(socket.assigns.page)
-     |> load_summary()
+     |> follow_started_batch(batch)
      |> put_flash(:info, gettext("Verification started"))}
   end
 
@@ -365,8 +364,24 @@ defmodule PhoenixKit.Newsletters.Web.Verification do
 
     socket
     |> assign(:starting, true)
+    |> assign(:starting_audience, socket.assigns.audience_key)
     |> start_async(:start_batch, fn -> EmailVerification.start_batch(emails, type, ref, opts) end)
   end
+
+  # The audience picker stays live while the engine stores the batch. If it moved
+  # on, the page shows another audience and this batch is not its own:
+  # `load_batch/1` finds it again when the operator comes back.
+  defp follow_started_batch(
+         %{assigns: %{audience_key: key, starting_audience: key}} = socket,
+         batch
+       ) do
+    socket
+    |> track_batch(batch)
+    |> load_table(socket.assigns.page)
+    |> load_summary()
+  end
+
+  defp follow_started_batch(socket, _batch), do: socket
 
   # The batch's source: what `source_type` / `source_ref` the engine stores it
   # under, and a title for the engine's own listings. Roles go in as a digest of

@@ -91,6 +91,17 @@ defmodule PhoenixKitNewsletters.MigrationsV2Test do
       {:ok, user: user, operator: operator, system: system, broadcasts: broadcasts}
     end
 
+    # The other side of "V1 runs from nothing too": where the table exists, the
+    # `to_regclass` check must still let the key through.
+    test "V1 keeps its key to the email-templates table where that table exists" do
+      assert [
+               %{
+                 name: "fk_newsletters_broadcasts_template",
+                 target: "phoenix_kit_email_templates"
+               }
+             ] = template_fks(@prefix)
+    end
+
     test "copies every operator row under its own uuid, maps as they are",
          %{operator: operator, user: user} do
       templates_before =

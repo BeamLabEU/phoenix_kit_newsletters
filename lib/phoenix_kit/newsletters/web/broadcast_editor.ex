@@ -276,9 +276,8 @@ defmodule PhoenixKit.Newsletters.Web.BroadcastEditor do
             {:noreply, put_flash(socket, :error, SendError.message(reason))}
         end
 
-      {:error, reason} ->
-        {:noreply,
-         put_flash(socket, :error, gettext("Failed to save: %{reason}", reason: inspect(reason)))}
+      {:error, changeset} ->
+        {:noreply, put_flash(socket, :error, validation_error(changeset))}
     end
   end
 
@@ -568,16 +567,20 @@ defmodule PhoenixKit.Newsletters.Web.BroadcastEditor do
          |> push_navigate(to: Routes.path("/admin/newsletters/broadcasts"))}
 
       {:error, changeset} ->
-        errors =
-          changeset
-          |> Ecto.Changeset.traverse_errors(fn {msg, _opts} -> msg end)
-          |> Enum.map_join(", ", fn {field, msgs} -> "#{field}: #{Enum.join(msgs, ", ")}" end)
-
         {:noreply,
          socket
          |> assign(:saving, false)
-         |> put_flash(:error, gettext("Validation failed: %{errors}", errors: errors))}
+         |> put_flash(:error, validation_error(changeset))}
     end
+  end
+
+  defp validation_error(changeset) do
+    errors =
+      changeset
+      |> Ecto.Changeset.traverse_errors(fn {msg, _opts} -> msg end)
+      |> Enum.map_join(", ", fn {field, msgs} -> "#{field}: #{Enum.join(msgs, ", ")}" end)
+
+    gettext("Validation failed: %{errors}", errors: errors)
   end
 
   # Snapshots the CURRENTLY-live name of each selected role uuid alongside
