@@ -330,7 +330,10 @@ installs (core 3.0 no longer creates module tables).
   Find/drop old `template_uuid` FKs by columns/target, not names; NULL dangling
   references with NOTICEs; add `fk_newsletters_broadcasts_template` → layouts
   `ON DELETE SET NULL`. At target ≥ 2, omit V1's legacy template-FK guard so
-  absent email-template tables are never resolved via `::regclass`.
+  absent email-template tables are never resolved via `::regclass`. At target
+  1 that guard is itself wrapped in `IF to_regclass(...) IS NOT NULL` (nested,
+  never `AND`ed with the cast): core 3.x no longer creates the emails module's
+  table, and a host file pinned to V1 still runs it there.
 - **V3 canonical names:** stamp `pknl_schema:3`; rename legacy primary keys,
   FKs and indexes to manifest names only for exactly one full semantic match
   with a free target name. NOTICE successful renames; WARNING on ambiguity or

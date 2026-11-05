@@ -735,10 +735,12 @@ defmodule PhoenixKitNewsletters.Migrations do
       ),
       # Superseded by V2, which points `template_uuid` at this package's own
       # layouts table. Emitted only when V1 is the target, so a run up to V2
-      # never re-creates the reference V2 replaces — and never touches
-      # `phoenix_kit_email_templates` at all, a table a host may not have.
+      # never re-creates the reference V2 replaces. Even then only where
+      # `phoenix_kit_email_templates` exists: core 3.x no longer creates it
+      # (the emails module owns it), and a host's migration file pinned to V1
+      # still runs this on a database without it.
       if target == 1 do
-        fk_guard(
+        optional_fk_guard(
           q_broadcasts,
           "fk_newsletters_broadcasts_template",
           "template_uuid",
@@ -1087,24 +1089,45 @@ defmodule PhoenixKitNewsletters.Migrations do
   # V2+ shape change (with its own manifest/floor implications, see the
   # moduledoc's Phase 1), never something V1's silent adoption should paper
   # over by dropping and re-adding someone's live constraint.
+  # `fk_guard/5` for a referenced table that may not exist: nothing when it is
+  # missing. Nested, not `AND`ed, so the inner `::regclass` cast is never
+  # evaluated against a missing table.
+  defp optional_fk_guard(qualified, constraint_name, column, references, on_delete) do
+    """
+    DO $$
+    BEGIN
+      IF to_regclass('#{references}') IS NOT NULL THEN
+        #{fk_guard_body(qualified, constraint_name, column, references, on_delete)}
+      END IF;
+    END
+    $$
+    """
+  end
+
   defp fk_guard(qualified, constraint_name, column, references, on_delete) do
     """
     DO $$
     BEGIN
-      IF NOT EXISTS (
-        SELECT 1 FROM pg_constraint
-        WHERE conrelid = '#{qualified}'::regclass
-          AND contype = 'f'
-          AND confrelid = '#{references}'::regclass
-          AND conkey = ARRAY[(
-            SELECT attnum FROM pg_attribute
-            WHERE attrelid = '#{qualified}'::regclass AND attname = '#{column}'
-          )]::smallint[]
-      ) THEN
-        ALTER TABLE #{qualified} ADD CONSTRAINT #{constraint_name} FOREIGN KEY (#{column}) REFERENCES #{references}(uuid) ON DELETE #{on_delete};
-      END IF;
+      #{fk_guard_body(qualified, constraint_name, column, references, on_delete)}
     END
     $$
+    """
+  end
+
+  defp fk_guard_body(qualified, constraint_name, column, references, on_delete) do
+    """
+    IF NOT EXISTS (
+      SELECT 1 FROM pg_constraint
+      WHERE conrelid = '#{qualified}'::regclass
+        AND contype = 'f'
+        AND confrelid = '#{references}'::regclass
+        AND conkey = ARRAY[(
+          SELECT attnum FROM pg_attribute
+          WHERE attrelid = '#{qualified}'::regclass AND attname = '#{column}'
+        )]::smallint[]
+    ) THEN
+      ALTER TABLE #{qualified} ADD CONSTRAINT #{constraint_name} FOREIGN KEY (#{column}) REFERENCES #{references}(uuid) ON DELETE #{on_delete};
+    END IF;
     """
   end
 
