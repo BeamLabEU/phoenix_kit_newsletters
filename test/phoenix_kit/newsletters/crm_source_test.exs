@@ -460,4 +460,73 @@ defmodule PhoenixKit.Newsletters.CRMSourceTest do
       assert uuid == ops.uuid
     end
   end
+
+  describe "a trashed contact" do
+    test "is not a recipient", %{list: list} do
+      kept = add_contact()
+      trashed = add_contact()
+      add_member(list, kept)
+      add_member(list, trashed)
+      {:ok, _trashed} = Contacts.trash_contact(trashed)
+
+      assert CRMSource.sendable_recipients(list.uuid) == [
+               %{contact_uuid: kept.uuid, email: kept.email}
+             ]
+    end
+
+    test "counts as unsendable, and the totals still add up", %{list: list} do
+      trashed = add_contact()
+      add_member(list, trashed)
+      add_member(list, add_contact())
+      {:ok, _trashed} = Contacts.trash_contact(trashed)
+
+      assert %{total: 2, sendable: 1, no_email: 0, unsendable: 1} = CRMSource.preflight(list.uuid)
+    end
+
+    test "with no email is not also counted as no_email", %{list: list} do
+      contact = add_contact(%{email: nil})
+      add_member(list, contact)
+      {:ok, _trashed} = Contacts.trash_contact(contact)
+
+      assert %{total: 1, sendable: 0, no_email: 0, unsendable: 1} = CRMSource.preflight(list.uuid)
+    end
+
+    test "comes back when restored", %{list: list} do
+      contact = add_contact()
+      add_member(list, contact)
+      {:ok, trashed} = Contacts.trash_contact(contact)
+      {:ok, _restored} = Contacts.restore_contact(trashed)
+
+      assert [%{email: _}] = CRMSource.sendable_recipients(list.uuid)
+    end
+  end
+
+  describe "sendable_recipient?/2" do
+    test "is true for a subscribed member", %{list: list} do
+      contact = add_contact()
+      add_member(list, contact)
+
+      assert CRMSource.sendable_recipient?(list.uuid, contact.email)
+    end
+
+    test "does not care about the address's case", %{list: list} do
+      contact = add_contact(%{email: "Mixed.Case@Example.com"})
+      add_member(list, contact)
+
+      assert CRMSource.sendable_recipient?(list.uuid, "mixed.case@example.com")
+    end
+
+    test "turns false the moment the contact opts out", %{list: list} do
+      contact = add_contact()
+      add_member(list, contact)
+      {:ok, _contact} = Lists.opt_out(contact)
+
+      refute CRMSource.sendable_recipient?(list.uuid, contact.email)
+    end
+
+    test "is false for an address that is not on the list, and for an unknown list", %{list: list} do
+      refute CRMSource.sendable_recipient?(list.uuid, "stranger@example.com")
+      refute CRMSource.sendable_recipient?(Ecto.UUID.generate(), "stranger@example.com")
+    end
+  end
 end

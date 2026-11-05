@@ -15,6 +15,17 @@ defmodule PhoenixKit.Newsletters.Broadcaster do
   exceed it together. Provider-side quotas (SES in particular) are the real
   backstop — this keeps an ordinary send from tripping them, it is not a
   distributed rate limiter.
+
+  ## One transaction
+
+  The flip to `sending`, the delivery rows and their jobs commit together. The
+  sweep (`Newsletters.repair_stuck_sending_broadcasts/0`) marks any `sending`
+  broadcast with nothing pending as `sent`, so a `sending` row with no deliveries
+  yet would be finished with nobody mailed. A crash anywhere inside restores the
+  old status, and the send can simply be tried again.
+
+  The status is judged on the locked row, not on the struct passed in, which may
+  be as old as the page it came from.
   """
 
   require Logger
@@ -30,12 +41,22 @@ defmodule PhoenixKit.Newsletters.Broadcaster do
 
   @batch_size 500
 
+  # Spans every batch of inserts. The default would cap the whole transaction at
+  # 15 seconds, and a large audience needs longer.
+  @send_timeout :timer.minutes(10)
+
+  @startable_statuses ["draft", "scheduled", "failed"]
+
   @hour_seconds 3600
   @day_seconds 86_400
 
   @doc """
-  Starts sending a broadcast. Transitions status to `sending`,
-  creates delivery records, and enqueues Oban jobs.
+  Starts sending a broadcast. Transitions status to `sending`, creates delivery
+  records and enqueues Oban jobs, all in one transaction (see the moduledoc).
+
+  Returns `{:error, {:invalid_status, status}}` when the row, as it is now, cannot
+  start, whatever the struct passed in says, `{:error, :not_found}` when it is
+  gone, and `{:error, changeset}` when it no longer validates.
 
   Accepts `"failed"` alongside `"draft"`/`"scheduled"` — a broadcast that
   failed terminally (see `Newsletters.process_scheduled_broadcasts/0`,
@@ -44,15 +65,7 @@ defmodule PhoenixKit.Newsletters.Broadcaster do
   retry against a still-broken cause (list still archived) fails the same
   way and the broadcast stays `"failed"` — no separate retry-specific path.
   """
-  def send(%Broadcast{status: "draft"} = broadcast) do
-    send_if_valid(broadcast)
-  end
-
-  def send(%Broadcast{status: "scheduled"} = broadcast) do
-    send_if_valid(broadcast)
-  end
-
-  def send(%Broadcast{status: "failed"} = broadcast) do
+  def send(%Broadcast{status: status} = broadcast) when status in @startable_statuses do
     send_if_valid(broadcast)
   end
 
@@ -70,7 +83,7 @@ defmodule PhoenixKit.Newsletters.Broadcaster do
   # An archived CRM list must never receive a send. CRMSource's own
   # sendable_query/1 already excludes an archived list's members (so
   # do_send/1 would just resolve to 0 recipients), but refusing explicitly
-  # up front — before status flips to "sending" — keeps the broadcast's
+  # up front, before the status changes, keeps the broadcast's
   # own status honest instead of quietly "succeeding" at sending to no
   # one. A missing list (deleted, or CRM not installed) is unchanged from
   # before: proceeds and resolves to 0 recipients rather than erroring.
@@ -89,25 +102,10 @@ defmodule PhoenixKit.Newsletters.Broadcaster do
   defp do_send(broadcast) do
     repo = repo()
 
-    # Render markdown to HTML and plain text before sending
-    html = Content.render_markdown(broadcast.markdown_body)
-    text = Content.strip_html(html)
-
-    {:ok, broadcast} =
-      Newsletters.update_broadcast(broadcast, %{
-        status: "sending",
-        html_body: html,
-        text_body: text,
-        sent_at: UtilsDate.utc_now()
-      })
-
-    # Recipients are resolved once, upfront, and reused for both the
-    # total_recipients count and the actual enqueue below (rather than
-    # two separate identical queries).
+    # Outside the transaction: resolving a large audience is the slow part, and
+    # the row lock taken below should not be held for it. Resolved once, and
+    # reused for both the count and the enqueue.
     recipients = resolve_recipients(broadcast)
-
-    total = length(recipients)
-    {:ok, broadcast} = Newsletters.update_broadcast(broadcast, %{total_recipients: total})
 
     # Resolve the very profile the worker will send with, so the throttle we
     # apply here matches the rate limits of the profile that actually sends.
@@ -116,36 +114,58 @@ defmodule PhoenixKit.Newsletters.Broadcaster do
       |> DeliveryWorker.resolve_send_profile()
       |> send_interval_seconds()
 
-    # Process in batches using transaction-wrapped stream
-    case repo.transaction(fn -> enqueue_all_recipients(broadcast, recipients, repo, interval) end) do
-      {:ok, %{inserted: inserted, duplicate: duplicate}} ->
-        # total_recipients was set from the pre-send estimate above; a
-        # re-enqueue of a broadcast that already has deliveries (the
-        # V155 unique indexes turning some inserts into no-ops) means
-        # `inserted` here is only THIS round's delta, not the audience
-        # size — using it directly would zero out total_recipients on a
-        # duplicate-only resend even though the broadcast's original N
-        # deliveries still exist and sent_count keeps climbing toward
-        # them. The actual row count for the broadcast is the correct
-        # figure regardless of how many resend rounds contributed to it.
-        actual_total = count_deliveries(repo, broadcast.uuid)
+    result =
+      repo.transaction(
+        fn -> start_sending(broadcast.uuid, recipients, repo, interval) end,
+        timeout: @send_timeout
+      )
 
-        {:ok, broadcast} =
-          if actual_total != total do
-            Newsletters.update_broadcast(broadcast, %{total_recipients: actual_total})
-          else
-            {:ok, broadcast}
-          end
+    with {:ok, {broadcast, %{inserted: inserted, duplicate: duplicate}}} <- result do
+      Logger.info(
+        "Broadcaster: Enqueued #{inserted} deliveries for broadcast #{broadcast.uuid}" <>
+          duplicate_log(duplicate) <> throttle_log(interval, inserted)
+      )
 
-        Logger.info(
-          "Broadcaster: Enqueued #{inserted} deliveries for broadcast #{broadcast.uuid}" <>
-            duplicate_log(duplicate) <> throttle_log(interval, inserted)
-        )
+      {:ok, broadcast}
+    end
+  end
 
-        {:ok, broadcast}
+  defp start_sending(broadcast_uuid, recipients, repo, interval) do
+    with %Broadcast{status: status} = locked when status in @startable_statuses <-
+           Newsletters.lock_broadcast(broadcast_uuid),
+         # Render markdown to HTML and plain text before sending
+         html = Content.render_markdown(locked.markdown_body),
+         {:ok, sending} <-
+           Newsletters.update_broadcast(locked, %{
+             status: "sending",
+             html_body: html,
+             text_body: Content.strip_html(html),
+             sent_at: UtilsDate.utc_now(),
+             total_recipients: length(recipients)
+           }) do
+      counts = enqueue_all_recipients(sending, recipients, repo, interval)
 
-      {:error, reason} ->
-        {:error, reason}
+      # The audience just resolved is only an estimate of the rows: a re-enqueue
+      # of a broadcast that already has deliveries (the V155 unique indexes
+      # turning some inserts into no-ops) inserts only this round's delta, so
+      # neither figure is the size of the send. The row count is, however many
+      # resend rounds contributed to it.
+      {correct_total(sending, repo), counts}
+    else
+      %Broadcast{status: status} -> repo.rollback({:invalid_status, status})
+      nil -> repo.rollback(:not_found)
+      {:error, changeset} -> repo.rollback(changeset)
+    end
+  end
+
+  defp correct_total(broadcast, repo) do
+    case count_deliveries(repo, broadcast.uuid) do
+      total when total == broadcast.total_recipients ->
+        broadcast
+
+      total ->
+        {:ok, corrected} = Newsletters.update_broadcast(broadcast, %{total_recipients: total})
+        corrected
     end
   end
 

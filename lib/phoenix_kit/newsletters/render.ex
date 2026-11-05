@@ -33,6 +33,12 @@ defmodule PhoenixKit.Newsletters.Render do
 
   `header` and `footer` must be written with three braces: they are HTML.
 
+  `{{logo_url}}`, `{{accent_color}}`, `{{site_name}}` and `{{site_url}}` are not
+  the layout's alone: `site_variables/0` binds them for a subject pattern, a body
+  without a layout and the text part as well, and `{{subject}}` works in a body
+  either way. `{{{header}}}` and `{{{footer}}}` are for layouts only, since
+  without one core's standard layout places them itself.
+
   Without a layout — none chosen, the row is gone, it has no HTML at all,
   or the language it resolves to does not place the body — the body is
   wrapped in core's standard email layout for the `"newsletters"` group
@@ -54,9 +60,11 @@ defmodule PhoenixKit.Newsletters.Render do
 
   use Gettext, backend: PhoenixKit.Newsletters.Gettext
 
+  alias PhoenixKit.Email.Branding
   alias PhoenixKit.Email.Content, as: EmailContent
   alias PhoenixKit.Email.Layout, as: CoreLayout
   alias PhoenixKit.Newsletters.Layout
+  alias PhoenixKit.Settings
   alias PhoenixKit.Templates.Substitution
   alias PhoenixKit.Utils.Routes
 
@@ -103,7 +111,8 @@ defmodule PhoenixKit.Newsletters.Render do
         |> Substitution.substitute(bound, escape: true)
 
       :none ->
-        body = Substitution.substitute(body_html, stringify(variables), escape: true)
+        bound = variables |> stringify() |> put_subject(Keyword.get(opts, :subject))
+        body = Substitution.substitute(body_html, bound, escape: true)
 
         if CoreLayout.document?(body) do
           body
@@ -187,6 +196,19 @@ defmodule PhoenixKit.Newsletters.Render do
   end
 
   @doc """
+  The site's own variables, as core's layout binds them, for everything that is
+  not a layout: `logo_url`, `accent_color`, `site_name` and `site_url`. The same
+  values as `chrome/2`'s, without rendering a header and footer for them.
+  """
+  @spec site_variables() :: variables()
+  def site_variables do
+    Map.merge(Branding.variables(), %{
+      "site_name" => Settings.get_project_title(),
+      "site_url" => Routes.base_url()
+    })
+  end
+
+  @doc """
   Core's header, footer and branding variables for one email, in the
   `"newsletters"` group — `PhoenixKit.Email.Layout.render_parts/2`, so a
   layout places exactly what core's own layout would: `_header-newsletters`
@@ -230,6 +252,9 @@ defmodule PhoenixKit.Newsletters.Render do
   defp wrapper(html, _locale) when is_binary(html) do
     if Layout.places_content?(html), do: {:ok, html}, else: :none
   end
+
+  defp put_subject(variables, nil), do: variables
+  defp put_subject(variables, subject), do: Map.put_new(variables, "subject", subject)
 
   # A function replacement, not a string one: a replacement string would
   # read `\1`-style sequences in the body as back-references.

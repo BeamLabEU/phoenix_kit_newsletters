@@ -15,10 +15,12 @@ defmodule PhoenixKit.Newsletters.Web.BroadcastDetailsTest do
   @moduletag :requires_v158
 
   alias PhoenixKit.Newsletters
+  alias PhoenixKit.Newsletters.Delivery
   alias PhoenixKit.Newsletters.Web.BroadcastDetails
   alias PhoenixKit.Settings
   alias PhoenixKit.Users.Auth.User
   alias PhoenixKit.Users.Roles
+  alias PhoenixKitNewsletters.Test.Repo
 
   setup do
     Newsletters.enable_system()
@@ -164,6 +166,7 @@ defmodule PhoenixKit.Newsletters.Web.BroadcastDetailsTest do
         assigns:
           Map.merge(socket().assigns, %{
             broadcast_id: broadcast.uuid,
+            page_param: nil,
             broadcast: broadcast,
             confirm_action: :retry_send,
             show_confirm_modal: true,
@@ -210,6 +213,134 @@ defmodule PhoenixKit.Newsletters.Web.BroadcastDetailsTest do
       assert Newsletters.get_broadcast!(broadcast.uuid).status == "sent"
       # The refusal also refreshes the page off its stale copy.
       assert updated.assigns.broadcast.status == "sent"
+    end
+  end
+
+  describe "cancelling" do
+    defp cancel_socket(broadcast) do
+      %Phoenix.LiveView.Socket{
+        assigns:
+          Map.merge(socket().assigns, %{
+            broadcast_id: broadcast.uuid,
+            page_param: nil,
+            broadcast: broadcast,
+            confirm_action: :cancel_broadcast,
+            show_confirm_modal: true,
+            flash: %{},
+            __changed__: %{}
+          })
+      }
+    end
+
+    defp confirm_cancel(broadcast) do
+      {:noreply, updated} =
+        BroadcastDetails.handle_event("confirm_action", %{}, cancel_socket(broadcast))
+
+      updated
+    end
+
+    for status <- ~w(scheduled sending) do
+      test "stops a #{status} broadcast" do
+        broadcast = create_user_group_broadcast([Ecto.UUID.generate()], ["Marketing"])
+        {:ok, broadcast} = Newsletters.update_broadcast(broadcast, %{status: unquote(status)})
+
+        updated = confirm_cancel(broadcast)
+
+        assert updated.assigns.flash["info"] =~ "cancelled"
+        assert updated.assigns.broadcast.status == "cancelled"
+        assert Newsletters.get_broadcast!(broadcast.uuid).status == "cancelled"
+      end
+    end
+
+    test "a click that arrives after the send finished leaves it sent" do
+      broadcast = create_user_group_broadcast([Ecto.UUID.generate()], ["Marketing"])
+      {:ok, _} = Newsletters.update_broadcast(broadcast, %{status: "sent"})
+      stale = %{broadcast | status: "sending"}
+
+      updated = confirm_cancel(stale)
+
+      assert updated.assigns.flash["error"] =~ "cannot be cancelled"
+      assert Newsletters.get_broadcast!(broadcast.uuid).status == "sent"
+      # The refusal also refreshes the page off its stale copy.
+      assert updated.assigns.broadcast.status == "sent"
+    end
+  end
+
+  describe "recipient_display/1" do
+    test "shows the address a managed organization's mail goes to, not its login" do
+      organization = %User{
+        email: "org-1@organization.invalid",
+        managed_by_members: true,
+        contact_email: "office@example.com"
+      }
+
+      assert BroadcastDetails.recipient_display(%{user: organization}) == "office@example.com"
+    end
+
+    test "falls back to the login when there is no address to show" do
+      organization = %User{email: "org-1@organization.invalid", managed_by_members: true}
+
+      assert BroadcastDetails.recipient_display(%{user: organization}) ==
+               "org-1@organization.invalid"
+    end
+  end
+
+  describe "the deliveries list" do
+    defp with_deliveries(count) do
+      broadcast = create_user_group_broadcast([Ecto.UUID.generate()], ["Marketing"])
+      now = DateTime.utc_now() |> DateTime.truncate(:second)
+
+      rows =
+        for n <- 1..count do
+          %{
+            uuid: UUIDv7.generate(),
+            broadcast_uuid: broadcast.uuid,
+            recipient_email: "reader-#{n}@example.com",
+            status: "pending",
+            inserted_at: now,
+            updated_at: now
+          }
+        end
+
+      Repo.insert_all(Delivery, rows)
+      broadcast
+    end
+
+    defp at_page(broadcast, params) do
+      {:noreply, updated} =
+        BroadcastDetails.handle_params(Map.put(params, "id", broadcast.uuid), "/", socket())
+
+      updated
+    end
+
+    test "shows a page at a time, and knows how many there are" do
+      broadcast = with_deliveries(51)
+
+      first = at_page(broadcast, %{})
+      assert length(first.assigns.deliveries) == 50
+      assert first.assigns.total_count == 51
+      assert first.assigns.total_pages == 2
+
+      second = at_page(broadcast, %{"page" => "2"})
+      assert length(second.assigns.deliveries) == 1
+      assert second.assigns.page == 2
+    end
+
+    test "a page past the end lands on the last one" do
+      broadcast = with_deliveries(51)
+
+      assert %{page: 2, deliveries: [_one]} = at_page(broadcast, %{"page" => "9"}).assigns
+    end
+
+    test "an id that is not a uuid is reported, not crashed on" do
+      {:noreply, updated} =
+        BroadcastDetails.handle_params(
+          %{"id" => "garbage"},
+          "/",
+          %{socket() | assigns: Map.put(socket().assigns, :flash, %{})}
+        )
+
+      assert updated.assigns.flash["error"] =~ "not found"
     end
   end
 end

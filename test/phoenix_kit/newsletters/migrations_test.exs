@@ -655,12 +655,12 @@ defmodule PhoenixKitNewsletters.MigrationsTest do
     end
 
     @v3_canonical_names [
-      "phoenix_kit_newsletters_broadcasts_pkey",
       "phoenix_kit_newsletters_deliveries_pkey",
-      "fk_newsletters_broadcasts_created_by",
-      "fk_newsletters_broadcasts_template",
       "fk_newsletters_deliveries_broadcast",
       "fk_newsletters_deliveries_user",
+      "phoenix_kit_newsletters_broadcasts_pkey",
+      "fk_newsletters_broadcasts_created_by",
+      "fk_newsletters_broadcasts_template",
       "idx_newsletters_broadcasts_status",
       "idx_newsletters_broadcasts_scheduled_at",
       "idx_newsletters_broadcasts_crm_list",
@@ -694,9 +694,33 @@ defmodule PhoenixKitNewsletters.MigrationsTest do
       end
     end
 
-    test "V3 renames exactly these objects: primary keys, then foreign keys, then indexes" do
+    test "V3 renames exactly these objects: deliveries' keys, broadcasts' keys, then indexes" do
       for prefix <- ["public", "newsletters_alt"] do
         assert Enum.map(v3_renames(prefix), &renamed_to/1) == @v3_canonical_names
+      end
+    end
+
+    # A key rename takes ACCESS EXCLUSIVE on its table, and the delivery worker
+    # writes a delivery before its broadcast. The opposite order can deadlock,
+    # and a worker aborted after the provider accepted the mail sends it twice.
+    # Each rename is conditional, so it has to be every deliveries key before any
+    # broadcasts key: only then does no host lock broadcasts first.
+    test "V3 renames every deliveries key before any broadcasts key" do
+      for prefix <- ["public", "newsletters_alt"] do
+        tables =
+          prefix
+          |> v3_renames()
+          |> Enum.filter(&(&1 =~ "RENAME CONSTRAINT"))
+          |> Enum.map(fn statement ->
+            [table] =
+              Regex.run(~r/ALTER TABLE \S+?\.phoenix_kit_newsletters_(\w+)/, statement,
+                capture: :all_but_first
+              )
+
+            table
+          end)
+
+        assert Enum.dedup(tables) == ["deliveries", "broadcasts"]
       end
     end
 

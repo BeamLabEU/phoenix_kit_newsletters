@@ -17,6 +17,11 @@ defmodule PhoenixKit.Newsletters.Web.PreferenceCenterLive do
   informational message, never a crash, when CRM isn't installed — the
   CRM dependency is optional everywhere else in this package
   (`CRMSource`), and this page is no exception.
+
+  A token visitor is the recipient of the email the link came from, so a
+  contact with a language of its own sees the page in it, logged in or not.
+  The token names no list, so a contact without one keeps what core's mount
+  chose, like the account path.
   """
 
   use Phoenix.LiveView
@@ -27,7 +32,9 @@ defmodule PhoenixKit.Newsletters.Web.PreferenceCenterLive do
   alias PhoenixKit.Newsletters
   alias PhoenixKit.Newsletters.CRMSource
   alias PhoenixKit.Newsletters.PreferenceToken
+  alias PhoenixKit.Newsletters.RecipientLanguage
   alias PhoenixKit.Users.Auth.Scope
+  alias PhoenixKit.Utils.RecipientLocale
   alias PhoenixKit.Utils.Routes
 
   @impl true
@@ -70,7 +77,9 @@ defmodule PhoenixKit.Newsletters.Web.PreferenceCenterLive do
   defp resolve_access(socket, %{"token" => token}) when is_binary(token) and token != "" do
     with {:ok, contact_uuid} <- PreferenceToken.verify(token),
          %{} = contact <- CRMSource.get_contact(contact_uuid) do
-      load_lists(socket, :token, contact)
+      socket
+      |> use_language_of(contact)
+      |> load_lists(:token, contact)
     else
       _ -> assign(socket, mode: :invalid_token, contact: nil, lists: [])
     end
@@ -96,6 +105,23 @@ defmodule PhoenixKit.Newsletters.Web.PreferenceCenterLive do
       socket
       |> put_flash(:error, gettext("Please log in to manage your email subscriptions"))
       |> push_navigate(to: Routes.path("/phoenix_kit/users/log-in") <> "?return_to=#{return_to}")
+    end
+  end
+
+  # Set on the process, not wrapped in `in_locale/2`: this process goes on to
+  # render and to answer events, as with core's own `put_gettext_locale`. Both
+  # locales, because the page's wrapper reads core's backend and this package's
+  # reads the global one. `mount/3` has already translated the title.
+  defp use_language_of(socket, contact) do
+    case RecipientLanguage.stated(contact) do
+      nil ->
+        socket
+
+      language ->
+        locale = RecipientLocale.gettext_locale(language)
+        Gettext.put_locale(PhoenixKitWeb.Gettext, locale)
+        Gettext.put_locale(locale)
+        assign(socket, :page_title, gettext("Email preferences"))
     end
   end
 

@@ -8,6 +8,7 @@ defmodule PhoenixKit.Newsletters.Web.BroadcastDetails do
 
   import PhoenixKitWeb.Components.Core.EmptyState
   import PhoenixKitWeb.Components.Core.Icon
+  import PhoenixKitWeb.Components.Core.Pagination
   import PhoenixKitWeb.Components.Core.PkLink
   import PhoenixKitWeb.Components.Core.TableDefault
 
@@ -21,9 +22,11 @@ defmodule PhoenixKit.Newsletters.Web.BroadcastDetails do
   alias PhoenixKit.Newsletters.CRMSource
   alias PhoenixKit.Newsletters.Layout
   alias PhoenixKit.Newsletters.UserGroupSource
+  alias PhoenixKit.Newsletters.Web.Paging
   alias PhoenixKit.Newsletters.Web.SendError
   alias PhoenixKit.Newsletters.Web.Timezone
   alias PhoenixKit.Settings
+  alias PhoenixKit.Users.Auth.User
   alias PhoenixKit.Utils.Format
   alias PhoenixKit.Utils.Routes
 
@@ -45,6 +48,11 @@ defmodule PhoenixKit.Newsletters.Web.BroadcastDetails do
         |> assign(:broadcast, nil)
         |> assign(:deliveries, [])
         |> assign(:delivery_stats, %{})
+        |> assign(:page_param, nil)
+        |> assign(:page, 1)
+        |> assign(:per_page, Paging.per_page())
+        |> assign(:total_count, 0)
+        |> assign(:total_pages, 1)
         |> assign(:crm_list, nil)
         |> assign(:crm_preflight, nil)
         |> assign(:user_group_preflight, nil)
@@ -68,11 +76,12 @@ defmodule PhoenixKit.Newsletters.Web.BroadcastDetails do
   end
 
   @impl true
-  def handle_params(%{"id" => id}, _url, socket) do
+  def handle_params(%{"id" => id} = params, _url, socket) do
     {:noreply,
      socket
      |> assign_tz()
      |> assign(:broadcast_id, id)
+     |> assign(:page_param, params["page"])
      |> assign(:loading, true)
      |> load_broadcast_data()}
   end
@@ -149,16 +158,30 @@ defmodule PhoenixKit.Newsletters.Web.BroadcastDetails do
 
   # --- Private ---
 
+  # Decided by the database, not by this page's copy: see
+  # `Newsletters.cancel_broadcast/1`. A refusal reloads, because the usual reason
+  # is that the page is out of date.
   defp cancel_broadcast(socket) do
-    case Newsletters.update_broadcast(socket.assigns.broadcast, %{status: "cancelled"}) do
-      {:ok, broadcast} ->
+    case Newsletters.cancel_broadcast(socket.assigns.broadcast) do
+      {:ok, _broadcast} ->
         {:noreply,
          socket
-         |> assign(:broadcast, broadcast)
-         |> put_flash(:info, gettext("Broadcast cancelled"))}
+         |> put_flash(:info, gettext("Broadcast cancelled"))
+         |> load_broadcast_data()}
 
-      {:error, _changeset} ->
-        {:noreply, put_flash(socket, :error, gettext("Failed to cancel broadcast"))}
+      {:error, {:invalid_status, status}} ->
+        {:noreply,
+         socket
+         |> put_flash(
+           :error,
+           gettext("A broadcast with status %{status} cannot be cancelled.",
+             status: status_label(status)
+           )
+         )
+         |> load_broadcast_data()}
+
+      {:error, :not_found} ->
+        {:noreply, load_broadcast_data(socket)}
     end
   end
 
@@ -233,13 +256,16 @@ defmodule PhoenixKit.Newsletters.Web.BroadcastDetails do
 
     try do
       broadcast = Newsletters.get_broadcast_with_template!(id)
+      stats = Newsletters.get_delivery_stats(id)
+      total = stats |> Map.values() |> Enum.sum()
+      {page, offset} = Paging.resolve(socket.assigns.page_param, total)
+
       # Recipient addresses only with `newsletters.audiences`.
       deliveries =
         if Access.can_see_audiences?(Access.scope(socket)),
-          do: Newsletters.list_deliveries(id),
+          do: Newsletters.list_deliveries(id, %{limit: Paging.per_page(), offset: offset}),
           else: []
 
-      stats = Newsletters.get_delivery_stats(id)
       # The CRM list behind a broadcast is resolved only for a viewer who
       # also holds the CRM module's key.
       crm? = Access.crm_lists?(Access.scope(socket))
@@ -248,6 +274,9 @@ defmodule PhoenixKit.Newsletters.Web.BroadcastDetails do
       |> assign(:broadcast, broadcast)
       |> assign(:deliveries, deliveries)
       |> assign(:delivery_stats, stats)
+      |> assign(:page, page)
+      |> assign(:total_count, total)
+      |> assign(:total_pages, Paging.total_pages(total))
       |> assign(:crm_list, if(crm?, do: CRMSource.get_list(broadcast.crm_list_uuid)))
       |> assign(:crm_preflight, if(crm?, do: crm_preflight(broadcast)))
       |> assign(:user_group_preflight, user_group_preflight(broadcast))
@@ -255,12 +284,17 @@ defmodule PhoenixKit.Newsletters.Web.BroadcastDetails do
       |> assign(:loading, false)
       |> assign(:page_title, broadcast.subject)
     rescue
-      Ecto.NoResultsError ->
+      _ in [Ecto.NoResultsError, Ecto.Query.CastError] ->
         socket
         |> assign(:loading, false)
         |> put_flash(:error, gettext("Broadcast not found"))
         |> push_navigate(to: Routes.path("/admin/newsletters/broadcasts"))
     end
+  end
+
+  defp page_url(page, broadcast_uuid) do
+    query = if page > 1, do: "?page=#{page}", else: ""
+    Routes.path("/admin/newsletters/broadcasts/#{broadcast_uuid}#{query}")
   end
 
   defp crm_preflight(%{source_type: "crm_list", crm_list_uuid: crm_list_uuid})
@@ -329,9 +363,13 @@ defmodule PhoenixKit.Newsletters.Web.BroadcastDetails do
     end
   end
 
-  # A delivery is addressable by a core User (newsletters-list broadcast)
-  # or a snapshotted recipient_email (CRM-list broadcast) — see
-  # Delivery's moduledoc.
+  # A delivery is addressable by a core User (role broadcast), shown by the
+  # address its mail goes to, or a snapshotted recipient_email (CRM-list
+  # broadcast) — see Delivery's moduledoc.
+  def recipient_display(%{user: %User{} = user}) do
+    UserGroupSource.delivery_address(user) || user.email
+  end
+
   def recipient_display(%{user: %{email: email}}), do: email
   def recipient_display(%{recipient_email: email}) when is_binary(email), do: email
   def recipient_display(%{user_uuid: user_uuid}), do: user_uuid

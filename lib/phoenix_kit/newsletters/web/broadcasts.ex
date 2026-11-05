@@ -8,12 +8,14 @@ defmodule PhoenixKit.Newsletters.Web.Broadcasts do
 
   import PhoenixKitWeb.Components.Core.EmptyState
   import PhoenixKitWeb.Components.Core.Icon
+  import PhoenixKitWeb.Components.Core.Pagination
   import PhoenixKitWeb.Components.Core.PkLink
   import PhoenixKitWeb.Components.Core.TableDefault
 
   import PhoenixKit.Newsletters.Web.Timezone, only: [format_datetime: 2]
 
   alias PhoenixKit.Newsletters
+  alias PhoenixKit.Newsletters.Web.Paging
   alias PhoenixKit.Newsletters.Web.Timezone
   alias PhoenixKit.Settings
   alias PhoenixKit.Utils.Routes
@@ -28,6 +30,10 @@ defmodule PhoenixKit.Newsletters.Web.Broadcasts do
         |> assign(:project_title, Settings.get_project_title())
         |> assign(:broadcasts, [])
         |> assign(:status_filter, "")
+        |> assign(:page, 1)
+        |> assign(:per_page, Paging.per_page())
+        |> assign(:total_count, 0)
+        |> assign(:total_pages, 1)
 
       {:ok, socket}
     else
@@ -41,14 +47,29 @@ defmodule PhoenixKit.Newsletters.Web.Broadcasts do
   @impl true
   def handle_params(params, _url, socket) do
     status = params["status"] || ""
+    total = Newsletters.count_broadcasts(%{status: status})
+    {page, offset} = Paging.resolve(params["page"], total)
 
-    broadcasts = Newsletters.list_broadcasts(%{status: status})
+    broadcasts =
+      Newsletters.list_broadcasts(%{status: status, limit: Paging.per_page(), offset: offset})
 
     {:noreply,
      socket
      |> assign_tz()
      |> assign(:status_filter, status)
-     |> assign(:broadcasts, broadcasts)}
+     |> assign(:broadcasts, broadcasts)
+     |> assign(:page, page)
+     |> assign(:total_count, total)
+     |> assign(:total_pages, Paging.total_pages(total))}
+  end
+
+  defp page_url(page, status) do
+    params = Enum.reject([status: status, page: page], fn {_k, v} -> v in ["", 1] end)
+
+    case URI.encode_query(params) do
+      "" -> Routes.path("/admin/newsletters/broadcasts")
+      query -> Routes.path("/admin/newsletters/broadcasts?#{query}")
+    end
   end
 
   # Resolves and assigns the viewer's timezone from handle_params (not

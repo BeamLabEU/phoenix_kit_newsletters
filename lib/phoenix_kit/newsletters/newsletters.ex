@@ -2,8 +2,9 @@ defmodule PhoenixKit.Newsletters do
   @moduledoc """
   Newsletters module — email broadcasts and subscription management.
 
-  Provides newsletter list management, broadcast creation with Markdown editor,
-  per-recipient delivery tracking via Oban workers, and unsubscribe flow.
+  Provides broadcast creation with a Markdown editor, audiences from CRM lists
+  and core roles, per-recipient delivery tracking via Oban workers, and the
+  unsubscribe flow.
 
   Broadcasts are sent inside an operator-authored layout
   (`PhoenixKit.Newsletters.Layouts`, this package's own table) or, without
@@ -14,6 +15,8 @@ defmodule PhoenixKit.Newsletters do
   use Gettext, backend: PhoenixKit.Newsletters.Gettext
 
   require Logger
+
+  import Ecto.Query
 
   alias PhoenixKit.Dashboard.Tab
   alias PhoenixKit.Newsletters.PermissionBackfill
@@ -291,6 +294,28 @@ defmodule PhoenixKit.Newsletters do
   @impl PhoenixKit.Module
   def expected_schema, do: PhoenixKit.Newsletters.ExpectedSchema
 
+  @doc """
+  The stored files this module's tables point at, for core's orphan check: a
+  broadcast's `attachments`, which are read again at send time. Without this a
+  file attached to a broadcast counts as an orphan and can be deleted.
+
+  Expanded and matched by equality, as core does for its own JSONB lists: `@>`
+  per file cannot be hashed. The table's CHECK guarantees an array to expand.
+  """
+  @impl PhoenixKit.Module
+  def file_references do
+    [
+      {"phoenix_kit_newsletters_broadcasts",
+       dynamic(
+         [f],
+         fragment(
+           "NOT EXISTS (SELECT 1 FROM phoenix_kit_newsletters_broadcasts nb CROSS JOIN LATERAL jsonb_array_elements_text(nb.attachments) AS na(file_uuid) WHERE na.file_uuid = ?::text)",
+           f.uuid
+         )
+       )}
+    ]
+  end
+
   alias PhoenixKit.Newsletters.{
     Broadcast,
     Broadcaster,
@@ -298,7 +323,14 @@ defmodule PhoenixKit.Newsletters do
     Delivery
   }
 
-  import Ecto.Query
+  alias PhoenixKit.Newsletters.Workers.DeliveryWorker
+  alias PhoenixKit.Utils.Date, as: UtilsDate
+
+  # A scheduled broadcast has not started and a sending one can still stop;
+  # every other status is either not under way or already over.
+  @cancellable_statuses ["scheduled", "sending"]
+
+  @broadcast_counters [:sent_count, :delivered_count, :opened_count, :bounced_count]
 
   # ============================================================================
   # Broadcasts
@@ -310,6 +342,13 @@ defmodule PhoenixKit.Newsletters do
     |> order_by([b], desc: b.inserted_at)
     |> apply_pagination(filters)
     |> repo().all()
+  end
+
+  @doc "How many broadcasts `list_broadcasts/1` pages through for `filters`."
+  def count_broadcasts(filters \\ %{}) do
+    Broadcast
+    |> maybe_filter_broadcast_status(filters)
+    |> repo().aggregate(:count)
   end
 
   def get_broadcast!(uuid), do: repo().get!(Broadcast, uuid)
@@ -334,6 +373,92 @@ defmodule PhoenixKit.Newsletters do
     |> repo().update()
   end
 
+  @doc """
+  Writes `attrs` to a broadcast only while the database still has it as a draft.
+
+  The struct is only as fresh as the page that holds it, so the row is locked
+  and judged as it is now: an open tab must not rewrite, or bring back, a
+  broadcast that has been sent or cancelled since.
+  """
+  @spec update_draft(Broadcast.t(), map()) ::
+          {:ok, Broadcast.t()}
+          | {:error, Ecto.Changeset.t() | {:invalid_status, String.t()} | :not_found}
+  def update_draft(%Broadcast{uuid: uuid}, attrs) do
+    repo().transaction(fn ->
+      case lock_broadcast(uuid) do
+        %Broadcast{status: "draft"} = draft -> update_or_rollback(draft, attrs)
+        %Broadcast{status: status} -> repo().rollback({:invalid_status, status})
+        nil -> repo().rollback(:not_found)
+      end
+    end)
+  end
+
+  defp update_or_rollback(broadcast, attrs) do
+    case update_broadcast(broadcast, attrs) do
+      {:ok, updated} -> updated
+      {:error, changeset} -> repo().rollback(changeset)
+    end
+  end
+
+  @doc false
+  # For a caller inside a transaction that decides on the row's real status:
+  # whoever holds this lock sees any concurrent status change, or blocks it.
+  def lock_broadcast(uuid) do
+    Broadcast
+    |> where([b], b.uuid == ^uuid)
+    |> lock("FOR UPDATE")
+    |> repo().one()
+  end
+
+  @doc """
+  Stops a broadcast that is scheduled or sending, in one conditional statement,
+  so a late click cannot turn a finished broadcast into a cancelled one.
+
+  Only the broadcast row is written: queued jobs stop themselves at their
+  status guard, and mail already handed to a provider cannot be retracted.
+  """
+  @spec cancel_broadcast(Broadcast.t()) ::
+          {:ok, Broadcast.t()} | {:error, {:invalid_status, String.t()} | :not_found}
+  def cancel_broadcast(%Broadcast{uuid: uuid}) do
+    {_count, cancelled} =
+      Broadcast
+      |> where([b], b.uuid == ^uuid and b.status in ^@cancellable_statuses)
+      |> select([b], b)
+      |> repo().update_all(set: [status: "cancelled", updated_at: UtilsDate.utc_now()])
+
+    case cancelled do
+      [broadcast] -> {:ok, broadcast}
+      [] -> cancel_refusal(uuid)
+    end
+  end
+
+  defp cancel_refusal(uuid) do
+    case repo().get(Broadcast, uuid) do
+      %Broadcast{status: status} -> {:error, {:invalid_status, status}}
+      nil -> {:error, :not_found}
+    end
+  end
+
+  @doc "Whether a broadcast in `status` can be cancelled."
+  @spec cancellable?(String.t()) :: boolean()
+  def cancellable?(status), do: status in @cancellable_statuses
+
+  @doc """
+  Adds one to a broadcast's counter, for a provider event.
+
+  `phoenix_kit_emails` calls this after `update_delivery_status/3`, so the
+  list's delivered and opened columns follow the provider. A broadcast that no
+  longer exists is not an error.
+  """
+  @spec increment_broadcast_counter(String.t(), atom()) :: :ok
+  def increment_broadcast_counter(broadcast_uuid, field) when field in @broadcast_counters do
+    Broadcast
+    |> where([b], b.uuid == ^broadcast_uuid)
+    |> repo().update_all(inc: [{field, 1}])
+
+    :ok
+  end
+
   def delete_broadcast(%Broadcast{status: "draft"} = broadcast), do: repo().delete(broadcast)
   def delete_broadcast(_), do: {:error, :cannot_delete_non_draft}
 
@@ -353,6 +478,14 @@ defmodule PhoenixKit.Newsletters do
     |> order_by([d], desc: d.inserted_at)
     |> apply_pagination(filters)
     |> repo().all()
+  end
+
+  @doc "How many deliveries `list_deliveries/2` pages through for `filters`."
+  def count_deliveries(broadcast_uuid, filters \\ %{}) do
+    Delivery
+    |> where([d], d.broadcast_uuid == ^broadcast_uuid)
+    |> maybe_filter_delivery_status(filters)
+    |> repo().aggregate(:count)
   end
 
   def get_delivery_stats(broadcast_uuid) do
@@ -384,7 +517,7 @@ defmodule PhoenixKit.Newsletters do
   def process_scheduled_broadcasts do
     repair_stuck_sending_broadcasts()
 
-    now = PhoenixKit.Utils.Date.utc_now()
+    now = UtilsDate.utc_now()
 
     broadcasts =
       Broadcast
@@ -394,13 +527,22 @@ defmodule PhoenixKit.Newsletters do
 
     count =
       Enum.reduce(broadcasts, 0, fn broadcast, acc ->
-        case Broadcaster.send(broadcast) do
+        case send_scheduled(broadcast) do
           {:ok, _} -> acc + 1
           {:error, reason} -> handle_scheduled_send_failure(broadcast, reason, acc)
         end
       end)
 
     {:ok, count}
+  end
+
+  # A send that raises rolls back and leaves the broadcast "scheduled", so it
+  # comes round again next tick. Unguarded, it would also stop every broadcast
+  # due after it, on every tick.
+  defp send_scheduled(broadcast) do
+    Broadcaster.send(broadcast)
+  rescue
+    exception -> {:error, {:raised, Exception.message(exception)}}
   end
 
   @doc false
@@ -420,7 +562,12 @@ defmodule PhoenixKit.Newsletters do
   # never double-transition a broadcast a concurrent DeliveryWorker
   # commit has already flipped (that row simply won't match "sending"
   # anymore) and never needs its own transaction.
+  #
+  # Orphaned deliveries go first, so a broadcast they were holding up finishes
+  # in this same pass.
   def repair_stuck_sending_broadcasts do
+    fail_orphaned_deliveries()
+
     {count, _} =
       Broadcast
       |> where([b], b.status == "sending")
@@ -434,23 +581,60 @@ defmodule PhoenixKit.Newsletters do
     count
   end
 
+  # A delivery stays "pending" for good when the job that owned it is gone: the
+  # node was killed on its last attempt, or someone cancelled the job by hand.
+  # Nothing would ever write it, so the broadcast could never finish. Judged per
+  # broadcast, and only once none of its jobs can still run, because that is one
+  # short-circuiting check where per-delivery would be one per recipient. A job
+  # lost early is therefore picked up when the rest of the queue has drained.
+  #
+  # Not counted as a bounce: no provider refused anything. Written delivery
+  # first, the order the worker writes in. Without Oban on this node there is no
+  # way to tell, so nothing is touched.
+  defp fail_orphaned_deliveries do
+    if Oban.whereis(Oban) do
+      Broadcast
+      |> where([b], b.status == "sending")
+      |> where([b], b.uuid in subquery(Delivery.non_terminal_broadcast_uuids_query()))
+      |> select([b], b.uuid)
+      |> repo().all()
+      |> Enum.reject(&DeliveryWorker.jobs_remaining?/1)
+      |> Enum.each(&fail_pending_deliveries/1)
+    end
+  end
+
+  defp fail_pending_deliveries(broadcast_uuid) do
+    {count, _} =
+      Delivery
+      |> where([d], d.broadcast_uuid == ^broadcast_uuid and d.status == "pending")
+      |> repo().update_all(
+        set: [
+          status: "failed",
+          error: "The delivery job ended without a result",
+          updated_at: UtilsDate.utc_now()
+        ]
+      )
+
+    Logger.warning(
+      "Newsletters: #{count} delivery(ies) of broadcast #{broadcast_uuid} had no job left; " <>
+        "marked failed"
+    )
+  end
+
   # Non-retryable: the CRM list won't become active again on its own, so
   # leaving status "scheduled" here would make every future tick re-fetch
   # this broadcast and log the same failure forever. Terminal "failed"
   # removes it from process_scheduled_broadcasts/0's `status == "scheduled"`
   # query. The list's own current status (already surfaced on
   # broadcast_details whenever it isn't "active") is the visible reason —
-  # no separate reason field needed.
+  # no separate reason field needed. Conditional, so an operator's cancel that
+  # landed since this tick read the row stands.
   defp handle_scheduled_send_failure(broadcast, {:crm_list_not_active, _status} = reason, acc) do
     Logger.error("Scheduled broadcast #{broadcast.uuid} failed permanently: #{inspect(reason)}")
 
-    case update_broadcast(broadcast, %{status: "failed"}) do
-      {:ok, _} ->
-        :ok
-
-      {:error, changeset} ->
-        Logger.error("Failed to mark broadcast as failed: #{inspect(changeset.errors)}")
-    end
+    Broadcast
+    |> where([b], b.uuid == ^broadcast.uuid and b.status == "scheduled")
+    |> repo().update_all(set: [status: "failed", updated_at: UtilsDate.utc_now()])
 
     acc
   end

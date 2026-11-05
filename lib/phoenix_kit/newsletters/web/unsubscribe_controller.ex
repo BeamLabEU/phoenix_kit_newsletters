@@ -2,12 +2,17 @@ defmodule PhoenixKit.Newsletters.Web.UnsubscribeController do
   @moduledoc false
 
   use PhoenixKitWeb, :controller
+  # After core's `use`: `gettext` reads the last backend named, and core's own
+  # catalogs do not have these strings.
+  use Gettext, backend: PhoenixKit.Newsletters.Gettext
 
   require Logger
 
   alias PhoenixKit.Newsletters.CRMSource
+  alias PhoenixKit.Newsletters.RecipientLanguage
   alias PhoenixKit.Newsletters.UserGroupSource
   alias PhoenixKit.Users.Auth
+  alias PhoenixKit.Utils.RecipientLocale
   alias PhoenixKit.Utils.Routes
 
   plug(:put_view, html: PhoenixKit.Newsletters.Web.UnsubscribeHTML)
@@ -51,17 +56,11 @@ defmodule PhoenixKit.Newsletters.Web.UnsubscribeController do
         render_role_optout_confirm(conn, token, user_uuid)
 
       _ ->
-        conn
-        |> put_flash(:error, "Invalid or expired unsubscribe link.")
-        |> redirect(to: Routes.path("/"))
+        expired_link(conn)
     end
   end
 
-  def unsubscribe(conn, _params) do
-    conn
-    |> put_flash(:error, "Invalid or expired unsubscribe link.")
-    |> redirect(to: Routes.path("/"))
-  end
+  def unsubscribe(conn, _params), do: expired_link(conn)
 
   # POST /newsletters/unsubscribe (scope=list) — crm_unsubscribe.html.heex's
   # "unsubscribe from this list" button; re-renders the same confirm page
@@ -79,9 +78,7 @@ defmodule PhoenixKit.Newsletters.Web.UnsubscribeController do
         handle_crm_list_unsubscribe(conn, token, contact_uuid, crm_list_uuid)
 
       _ ->
-        conn
-        |> put_flash(:error, "Invalid link.")
-        |> redirect(to: Routes.path("/"))
+        invalid_link(conn)
     end
   end
 
@@ -89,28 +86,11 @@ defmodule PhoenixKit.Newsletters.Web.UnsubscribeController do
   # secondary button.
   def process_unsubscribe(conn, %{"token" => token, "scope" => "all"}) do
     case verify_token(token) do
-      {:ok, %{contact_uuid: contact_uuid}} ->
-        with %{} = contact <- CRMSource.get_contact(contact_uuid),
-             {:ok, _contact} <- CRMSource.opt_out(contact) do
-          conn
-          |> put_flash(:info, "You have been unsubscribed from all newsletters.")
-          |> redirect(to: Routes.path("/"))
-        else
-          nil ->
-            conn
-            |> put_flash(:error, "Invalid link.")
-            |> redirect(to: Routes.path("/"))
-
-          {:error, _reason} ->
-            conn
-            |> put_flash(:error, "We could not unsubscribe you right now. Please try again.")
-            |> redirect(to: Routes.path("/"))
-        end
+      {:ok, %{contact_uuid: contact_uuid} = claims} ->
+        handle_unsubscribe_all(conn, contact_uuid, claims[:crm_list_uuid])
 
       _ ->
-        conn
-        |> put_flash(:error, "Invalid link.")
-        |> redirect(to: Routes.path("/"))
+        invalid_link(conn)
     end
   end
 
@@ -123,18 +103,12 @@ defmodule PhoenixKit.Newsletters.Web.UnsubscribeController do
         handle_role_optout(conn, token, user_uuid)
 
       _ ->
-        conn
-        |> put_flash(:error, "Invalid link.")
-        |> redirect(to: Routes.path("/"))
+        invalid_link(conn)
     end
   end
 
   # Catch-all for invalid/expired tokens or missing parameters
-  def process_unsubscribe(conn, _params) do
-    conn
-    |> put_flash(:error, "Invalid or expired unsubscribe link.")
-    |> redirect(to: Routes.path("/"))
-  end
+  def process_unsubscribe(conn, _params), do: expired_link(conn)
 
   # POST /newsletters/unsubscribe/one-click — the List-Unsubscribe-Post
   # header target (DeliveryWorker), always CSRF-exempt (see Web.Routes)
@@ -245,11 +219,7 @@ defmodule PhoenixKit.Newsletters.Web.UnsubscribeController do
           do: :already_unsubscribed,
           else: :confirm
 
-      conn
-      |> assign(:token, token)
-      |> assign(:crm_list, list)
-      |> assign(:crm_state, state)
-      |> render(:crm_unsubscribe)
+      render_crm(conn, token, list, state, RecipientLanguage.for_contact(contact, list))
     else
       _ -> render_crm_invalid(conn, token)
     end
@@ -265,22 +235,46 @@ defmodule PhoenixKit.Newsletters.Web.UnsubscribeController do
     with %{} = list <- CRMSource.get_list(crm_list_uuid),
          %{} = contact <- CRMSource.get_contact(contact_uuid),
          {:ok, _member} <- CRMSource.remove_from_list(contact, list) do
-      conn
-      |> assign(:token, token)
-      |> assign(:crm_list, list)
-      |> assign(:crm_state, :unsubscribed)
-      |> render(:crm_unsubscribe)
+      render_crm(conn, token, list, :unsubscribed, RecipientLanguage.for_contact(contact, list))
     else
       _ -> render_crm_invalid(conn, token)
     end
   end
 
   defp render_crm_invalid(conn, token) do
-    conn
-    |> assign(:token, token)
-    |> assign(:crm_list, nil)
-    |> assign(:crm_state, :invalid)
-    |> render(:crm_unsubscribe)
+    render_crm(conn, token, nil, :invalid, site_language())
+  end
+
+  defp render_crm(conn, token, list, state, language) do
+    RecipientLocale.in_locale(language, fn ->
+      conn
+      |> assign(:token, token)
+      |> assign(:crm_list, list)
+      |> assign(:crm_state, state)
+      |> render(:crm_unsubscribe)
+    end)
+  end
+
+  # POST — idempotent: CRMSource.opt_out/1 keeps the first opt-out's timestamp.
+  defp handle_unsubscribe_all(conn, contact_uuid, crm_list_uuid) do
+    case CRMSource.get_contact(contact_uuid) do
+      %{} = contact ->
+        language = RecipientLanguage.for_contact(contact, CRMSource.get_list(crm_list_uuid))
+        finish_unsubscribe_all(conn, CRMSource.opt_out(contact), language)
+
+      nil ->
+        invalid_link(conn)
+    end
+  end
+
+  defp finish_unsubscribe_all(conn, {:ok, _contact}, language) do
+    RecipientLocale.in_locale(language, fn ->
+      redirect_home(conn, :info, gettext("You've been unsubscribed from all newsletters."))
+    end)
+  end
+
+  defp finish_unsubscribe_all(conn, {:error, _reason}, language) do
+    unsubscribe_failed(conn, language)
   end
 
   # Best-effort "was this already removed" check, purely for the landing
@@ -305,11 +299,7 @@ defmodule PhoenixKit.Newsletters.Web.UnsubscribeController do
     case Auth.get_user(user_uuid) do
       %{} = user ->
         state = if UserGroupSource.opted_out?(user), do: :already_unsubscribed, else: :confirm
-
-        conn
-        |> assign(:token, token)
-        |> assign(:role_optout_state, state)
-        |> render(:role_optout_unsubscribe)
+        render_role_optout(conn, token, state, RecipientLocale.for_rendering(user))
 
       nil ->
         render_role_optout_invalid(conn, token)
@@ -322,17 +312,11 @@ defmodule PhoenixKit.Newsletters.Web.UnsubscribeController do
   defp handle_role_optout(conn, token, user_uuid) do
     case Auth.get_user(user_uuid) do
       %{} = user ->
-        case UserGroupSource.record_opt_out(user) do
-          {:ok, _updated_user} ->
-            conn
-            |> assign(:token, token)
-            |> assign(:role_optout_state, :unsubscribed)
-            |> render(:role_optout_unsubscribe)
+        language = RecipientLocale.for_rendering(user)
 
-          {:error, _reason} ->
-            conn
-            |> put_flash(:error, "We could not unsubscribe you right now. Please try again.")
-            |> redirect(to: Routes.path("/"))
+        case UserGroupSource.record_opt_out(user) do
+          {:ok, _updated_user} -> render_role_optout(conn, token, :unsubscribed, language)
+          {:error, _reason} -> unsubscribe_failed(conn, language)
         end
 
       nil ->
@@ -341,9 +325,49 @@ defmodule PhoenixKit.Newsletters.Web.UnsubscribeController do
   end
 
   defp render_role_optout_invalid(conn, token) do
+    render_role_optout(conn, token, :invalid, site_language())
+  end
+
+  defp render_role_optout(conn, token, state, language) do
+    RecipientLocale.in_locale(language, fn ->
+      conn
+      |> assign(:token, token)
+      |> assign(:role_optout_state, state)
+      |> render(:role_optout_unsubscribe)
+    end)
+  end
+
+  # Every response is in the language of the email the link came from, and these
+  # visitors have no session to take one from. A token that resolves to nobody
+  # falls back to the site's language.
+  #
+  # `in_locale/2` around the rendering rather than `Gettext.put_locale`: it
+  # restores the locale, and a keep-alive connection serves its next request from
+  # this same process.
+  defp site_language, do: RecipientLocale.for_rendering(nil)
+
+  defp expired_link(conn) do
+    RecipientLocale.in_locale(site_language(), fn ->
+      redirect_home(conn, :error, gettext("Invalid or expired unsubscribe link."))
+    end)
+  end
+
+  defp invalid_link(conn) do
+    RecipientLocale.in_locale(site_language(), fn ->
+      redirect_home(conn, :error, gettext("Invalid link."))
+    end)
+  end
+
+  defp unsubscribe_failed(conn, language) do
+    RecipientLocale.in_locale(language, fn ->
+      message = gettext("We could not unsubscribe you right now. Please try again.")
+      redirect_home(conn, :error, message)
+    end)
+  end
+
+  defp redirect_home(conn, kind, message) do
     conn
-    |> assign(:token, token)
-    |> assign(:role_optout_state, :invalid)
-    |> render(:role_optout_unsubscribe)
+    |> put_flash(kind, message)
+    |> redirect(to: Routes.path("/"))
   end
 end

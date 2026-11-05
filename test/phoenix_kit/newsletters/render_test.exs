@@ -224,4 +224,33 @@ defmodule PhoenixKit.Newsletters.RenderTest do
   end
 
   defp escape(text), do: text |> Phoenix.HTML.html_escape() |> Phoenix.HTML.safe_to_string()
+
+  describe "the site's variables outside a layout" do
+    test "site_variables/0 are the values core's layout binds" do
+      assert Render.site_variables() ==
+               nil |> Render.chrome() |> Map.fetch!(:variables) |> Map.delete("subject")
+    end
+
+    test "a layout's subject pattern can use them" do
+      layout = %Layout{
+        html_body: %{"en" => "<div>{{{content}}}</div>"},
+        subject: %{"en" => "{{subject}} | {{site_name}}"}
+      }
+
+      assert Render.subject("Hello", layout, "en", %{"site_name" => "Acme"}) == "Hello | Acme"
+    end
+
+    test "a body without a layout can use them, and its subject" do
+      html =
+        Render.html("<p>{{site_name}}: {{subject}}</p>", nil, %{"site_name" => "Acme"},
+          subject: "News"
+        )
+
+      assert html =~ "<p>Acme: News</p>"
+    end
+
+    test "the text part can use them" do
+      assert Render.text("From {{site_name}}", %{"site_name" => "Acme"}) == "From Acme"
+    end
+  end
 end

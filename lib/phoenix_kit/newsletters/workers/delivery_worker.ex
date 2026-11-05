@@ -43,19 +43,62 @@ defmodule PhoenixKit.Newsletters.Workers.DeliveryWorker do
   alias PhoenixKit.Newsletters.Broadcast
   alias PhoenixKit.Newsletters.CRMSource
   alias PhoenixKit.Newsletters.Delivery
+  alias PhoenixKit.Newsletters.EmailVerification
   alias PhoenixKit.Newsletters.Layout
   alias PhoenixKit.Newsletters.PreferenceToken
   alias PhoenixKit.Newsletters.RecipientLanguage
   alias PhoenixKit.Newsletters.Render
+  alias PhoenixKit.Newsletters.UserGroupSource
+  alias PhoenixKit.Users.Auth.User
   alias PhoenixKit.Utils.Date, as: UtilsDate
   alias PhoenixKit.Utils.Routes
 
+  # Seconds before the second and third attempts. Oban's default backoff puts
+  # about 36 seconds between the first attempt and the last, so a short provider
+  # outage would fail everyone it reached, and those have no resend path.
+  @retry_delays [300, 1_800]
+
+  @incomplete_job_states ~w(suspended available scheduled executing retryable)
+
   @impl Oban.Worker
-  def perform(%Oban.Job{
-        args: %{"delivery_uuid" => delivery_uuid, "broadcast_uuid" => broadcast_uuid},
-        attempt: attempt,
-        max_attempts: max_attempts
-      }) do
+  def backoff(%Oban.Job{attempt: attempt}) do
+    Enum.at(@retry_delays, attempt - 1, List.last(@retry_delays))
+  end
+
+  # A raise on the last attempt would otherwise leave the delivery "pending" with
+  # no job behind it, and the broadcast could never finish. Earlier attempts need
+  # nothing: the retry owns the row. Re-raised either way, so Oban records it.
+  @impl Oban.Worker
+  def perform(%Oban.Job{} = job) do
+    deliver(job)
+  catch
+    kind, reason ->
+      stacktrace = __STACKTRACE__
+      record_crash(job, {:crashed, Exception.format_banner(kind, reason, stacktrace)})
+      :erlang.raise(kind, reason, stacktrace)
+  end
+
+  defp record_crash(%Oban.Job{attempt: attempt, max_attempts: max_attempts} = job, reason)
+       when attempt >= max_attempts do
+    %{"delivery_uuid" => delivery_uuid, "broadcast_uuid" => broadcast_uuid} = job.args
+    record_permanent_failure(delivery_uuid, broadcast_uuid, reason)
+  catch
+    # What raised may be the database this needs. The original raise matters
+    # more, so it goes on, and the sweep picks the delivery up.
+    kind, reason ->
+      Logger.error(
+        "DeliveryWorker: could not record a crash: " <>
+          masked({kind, Exception.format_banner(kind, reason)})
+      )
+  end
+
+  defp record_crash(%Oban.Job{}, _reason), do: :ok
+
+  defp deliver(%Oban.Job{
+         args: %{"delivery_uuid" => delivery_uuid, "broadcast_uuid" => broadcast_uuid},
+         attempt: attempt,
+         max_attempts: max_attempts
+       }) do
     with {:ok, delivery} <- get_delivery(delivery_uuid),
          {:ok, delivery} <- guard_unsent(delivery),
          # Re-read (get_broadcast/1 hits the DB, it does not trust the job
@@ -79,6 +122,7 @@ defmodule PhoenixKit.Newsletters.Workers.DeliveryWorker do
          # doc for the per-file skip behavior and the cross-job cache.
          attachments = resolve_attachments(broadcast),
          {:ok, _still_sendable} <- recheck_broadcast_sendable(broadcast_uuid),
+         :ok <- guard_recipient_sendable(delivery, broadcast),
          {:ok, result} <-
            send_email(
              %{broadcast | subject: subject},
@@ -89,26 +133,16 @@ defmodule PhoenixKit.Newsletters.Workers.DeliveryWorker do
              list_unsubscribe_url,
              attachments
            ) do
-      message_id = extract_message_id(result)
-
-      update_delivery_result(
-        delivery,
-        "sent",
-        %{sent_at: UtilsDate.utc_now(), message_id: message_id},
-        broadcast_uuid,
-        :sent_count
-      )
-
+      record_accepted(delivery, result, broadcast_uuid)
       :ok
     else
       # A retry (Oban's own, or a re-enqueue) landing on a delivery that
-      # already succeeded — most plausibly the DB write for "sent" landed
-      # but this same job was retried anyway (a crash/restart racing the
-      # ack). Not a failure: skip re-sending rather than emailing the
-      # recipient twice.
-      {:error, {:already_sent, %Delivery{uuid: uuid}}} ->
+      # already concluded — most plausibly the DB write landed but this same
+      # job was retried anyway (a crash/restart racing the ack). Not a
+      # failure: skip re-sending rather than emailing the recipient twice.
+      {:error, {:already_sent, %Delivery{uuid: uuid, status: status}}} ->
         Logger.info(
-          "DeliveryWorker: delivery #{uuid} already marked sent — skipping duplicate send"
+          "DeliveryWorker: delivery #{uuid} is already \"#{status}\" — skipping duplicate send"
         )
 
         :ok
@@ -136,29 +170,84 @@ defmodule PhoenixKit.Newsletters.Workers.DeliveryWorker do
           # metric the blocklist exists to protect. Cancel instead of burning
           # all 3 Oban attempts.
           Logger.warning(
-            "DeliveryWorker: permanent failure for #{delivery_uuid}: #{inspect(reason)}"
+            "DeliveryWorker: permanent failure for #{delivery_uuid}: #{masked(reason)}"
           )
 
           record_permanent_failure(delivery_uuid, broadcast_uuid, reason)
-          {:cancel, inspect(reason)}
+          {:cancel, masked(reason)}
         else
-          Logger.error("DeliveryWorker: Failed delivery #{delivery_uuid}: #{inspect(reason)}")
+          Logger.error("DeliveryWorker: Failed delivery #{delivery_uuid}: #{masked(reason)}")
           handle_failure(delivery_uuid, broadcast_uuid, reason, attempt >= max_attempts)
-          {:error, inspect(reason)}
+          {:error, masked(reason)}
         end
     end
   end
 
-  # Idempotency guard: a delivery whose status is already "sent" must
-  # never be re-sent, regardless of why perform/1 got invoked again.
-  defp guard_unsent(%Delivery{status: "sent"} = delivery), do: {:error, {:already_sent, delivery}}
-  defp guard_unsent(delivery), do: {:ok, delivery}
+  # An SMTP error can quote the recipient, and this text reaches the log, the
+  # delivery row and Oban's job errors.
+  defp masked(reason), do: reason |> inspect() |> EmailVerification.mask_addresses()
 
-  # The only broadcast status a delivery job may send under. Broadcaster's
-  # do_send/1 flips the broadcast to "sending" BEFORE it enqueues anything,
-  # so "sending" is the only state a real job has ever run under; every
-  # other status ("draft", "scheduled", "sent", "cancelled", "failed") means
-  # either the job predates the send or the send is over.
+  @doc false
+  # The provider has the mail, so from here on the job must not fail or retry:
+  # a retry sends it again. A write that does not land is logged, the job ends,
+  # and the sweep settles the row. Not `defp` so the shapes core answers with can
+  # be unit-tested directly, same rationale as `resolve_send_profile/1`.
+  def record_accepted(delivery, result, broadcast_uuid) do
+    case write_accepted(delivery, result, broadcast_uuid) do
+      {:ok, _delivery} -> :ok
+      {:error, reason} -> log_unrecorded(delivery, reason)
+    end
+  catch
+    kind, reason -> log_unrecorded(delivery, Exception.format_banner(kind, reason))
+  end
+
+  defp log_unrecorded(delivery, reason) do
+    Logger.error(
+      "DeliveryWorker: delivery #{delivery.uuid} went out but could not be recorded: " <>
+        masked(reason)
+    )
+  end
+
+  # Core answers `{:ok, _}` for mail it did not hand to anyone, with a fixed id
+  # (`"no-deliverable-recipients"`, `"dev-mailbox-suppressed"`). Nobody received
+  # it, so it is not "sent", and the id is not a message's: `message_id` is
+  # unique, so the second such delivery anywhere could not be written at all.
+  defp write_accepted(delivery, %{suppressed: true, id: id}, broadcast_uuid) do
+    update_delivery_result(
+      delivery,
+      "blocked",
+      %{error: "suppressed: #{id}"},
+      broadcast_uuid,
+      nil
+    )
+  end
+
+  defp write_accepted(delivery, result, broadcast_uuid) do
+    attrs = %{sent_at: UtilsDate.utc_now(), message_id: extract_message_id(result)}
+
+    case update_delivery_result(delivery, "sent", attrs, broadcast_uuid, :sent_count) do
+      {:ok, _delivery} = written ->
+        written
+
+      # The id is what could not be stored: a provider reused one, or a receipt
+      # parsed to the same text twice. The mail still went out, and losing the id
+      # costs only status tracking.
+      {:error, _changeset} ->
+        attrs = %{attrs | message_id: nil}
+        update_delivery_result(delivery, "sent", attrs, broadcast_uuid, :sent_count)
+    end
+  end
+
+  # Idempotency guard: only a "pending" delivery may be sent, whatever got
+  # perform/1 invoked again. Every other status has an attempt behind it, and
+  # re-sending one would mail the recipient twice and walk its status back.
+  defp guard_unsent(%Delivery{status: "pending"} = delivery), do: {:ok, delivery}
+  defp guard_unsent(delivery), do: {:error, {:already_sent, delivery}}
+
+  # The only broadcast status a delivery job may send under. Broadcaster
+  # commits the flip to "sending" together with the jobs, so "sending" is the
+  # only state a real job has ever run under; every other status ("draft",
+  # "scheduled", "sent", "cancelled", "failed") means the send is over.
   #
   # This is an allow-list, and the direction matters. A deny-list naming
   # just "cancelled" and "failed" is equivalent TODAY and fails open: add a
@@ -209,29 +298,80 @@ defmodule PhoenixKit.Newsletters.Workers.DeliveryWorker do
     end
   end
 
+  # A throttled broadcast can run for days after its audience was resolved, so
+  # the question that picked this recipient is asked again, last thing before the
+  # provider call, against the source's current state: an opt-out, a removal from
+  # the list or role, a deactivation or a trashed contact all stop the mail here.
+  # Blocked rather than left pending, so the broadcast still finishes, and with
+  # no counter, because nothing bounced.
+  defp guard_recipient_sendable(delivery, broadcast) do
+    if recipient_sendable?(delivery, broadcast) do
+      :ok
+    else
+      {:error, {:blocked, :no_longer_sendable}}
+    end
+  end
+
+  defp recipient_sendable?(%Delivery{user_uuid: uuid}, broadcast) when is_binary(uuid) do
+    broadcast |> Broadcast.role_uuids() |> UserGroupSource.sendable_recipient?(uuid)
+  end
+
+  defp recipient_sendable?(%Delivery{recipient_email: email}, %{crm_list_uuid: list_uuid})
+       when is_binary(email) and is_binary(list_uuid) do
+    CRMSource.sendable_recipient?(list_uuid, email)
+  end
+
+  defp recipient_sendable?(_delivery, _broadcast), do: false
+
   @doc false
-  # Blocklisted recipient, or the send profile's integration is deleted /
-  # misconfigured. Neither improves on retry, and neither is a bounce.
+  # Blocklisted recipient, or a send profile whose integration is deleted or
+  # misconfigured (the reasons `PhoenixKit.Mailer.deliver_via_integration/3`
+  # documents). None improves on retry, and none is a bounce.
   def permanent_failure?({:blocked, _reason}), do: true
   def permanent_failure?(:deleted), do: true
   def permanent_failure?(:not_configured), do: true
   def permanent_failure?(:unsupported_provider), do: true
   def permanent_failure?({:unsupported_provider, _}), do: true
+  def permanent_failure?({:incomplete_credentials, _}), do: true
   def permanent_failure?({:invalid_smtp_port, _}), do: true
+  def permanent_failure?({:invalid_security, _}), do: true
+  def permanent_failure?({:invalid_verify_cert, _}), do: true
+  def permanent_failure?({:invalid_auth, _}), do: true
+  def permanent_failure?({:invalid_timeout, _}), do: true
+  def permanent_failure?(:invalid_ca_cert), do: true
+  def permanent_failure?(:no_ca_store), do: true
+  def permanent_failure?({:smtp_endpoint_refused, _}), do: true
+  # The row went away under the job, which is what deleting a user does.
+  def permanent_failure?(:delivery_not_found), do: true
   def permanent_failure?(_), do: false
+
+  @doc false
+  # Whether any job of this broadcast can still run. Through `Oban.Repo`, which
+  # knows the prefix the host keeps Oban's table under.
+  def jobs_remaining?(broadcast_uuid) do
+    worker = Oban.Worker.to_string(__MODULE__)
+
+    Oban.Repo.exists?(
+      Oban.config(),
+      from(j in Oban.Job,
+        where: j.worker == ^worker and j.state in ^@incomplete_job_states,
+        where: fragment("?->>'broadcast_uuid' = ?", j.args, ^broadcast_uuid)
+      )
+    )
+  end
 
   defp record_permanent_failure(delivery_uuid, broadcast_uuid, reason) do
     status = if match?({:blocked, _}, reason), do: "blocked", else: "failed"
 
     case get_delivery(delivery_uuid) do
-      {:ok, delivery} ->
+      {:ok, %Delivery{status: "pending"} = delivery} ->
         # Deliberately passes no counter_field — neither :sent_count nor
         # :bounced_count is touched, so a blocklisted/misconfigured
         # recipient never re-inflates the bounce-rate metric. It still
         # goes through update_delivery_result/5 (not a bare status write)
         # so the broadcast-finalize check runs: a broadcast whose very
         # last delivery lands here must still be able to flip to "sent".
-        update_delivery_result(delivery, status, %{error: inspect(reason)}, broadcast_uuid, nil)
+        update_delivery_result(delivery, status, %{error: masked(reason)}, broadcast_uuid, nil)
 
       _ ->
         :ok
@@ -251,10 +391,13 @@ defmodule PhoenixKit.Newsletters.Workers.DeliveryWorker do
     Ecto.NoResultsError -> {:error, :broadcast_not_found}
   end
 
+  # The struct's `email` becomes the address the mail goes to, which for a
+  # managed organization is not its login. `nil` when there is none:
+  # guard_recipient_sendable/2 stops such a delivery before anything is sent.
   defp get_user(user_uuid) do
-    case repo().get(PhoenixKit.Users.Auth.User, user_uuid) do
-      nil -> {:error, :user_not_found}
-      user -> {:ok, user}
+    case repo().get(User, user_uuid) do
+      nil -> {:error, {:blocked, :recipient_gone}}
+      user -> {:ok, %{user | email: UserGroupSource.delivery_address(user)}}
     end
   end
 
@@ -272,7 +415,7 @@ defmodule PhoenixKit.Newsletters.Workers.DeliveryWorker do
     {:ok, %{uuid: nil, username: nil, email: email}}
   end
 
-  defp get_recipient(%Delivery{}), do: {:error, :no_recipient}
+  defp get_recipient(%Delivery{}), do: {:error, {:blocked, :recipient_gone}}
 
   # Everything in the reader's language: the layout's translation, its
   # subject pattern and core's chrome (see Render's moduledoc). The text
@@ -304,11 +447,12 @@ defmodule PhoenixKit.Newsletters.Workers.DeliveryWorker do
     do: Render.html(body_html, layout, variables, opts)
 
   defp build_variables(recipient, unsubscribe_url, preferences_url) do
-    %{
+    Render.site_variables()
+    |> Map.merge(%{
       "name" => recipient.username || recipient.email,
       "email" => recipient.email,
       "unsubscribe_url" => unsubscribe_url
-    }
+    })
     |> maybe_put_preferences_url(preferences_url)
   end
 
@@ -455,6 +599,11 @@ defmodule PhoenixKit.Newsletters.Workers.DeliveryWorker do
     end
   end
 
+  # Always on this process, never through the emails package's queue
+  # (`skip_queue: true` below). This job already paces and retries the send, the
+  # delivery needs the provider's own message id for status events, not a queue
+  # reference, and the queue re-sends through the default integration, which
+  # would take the mail off the send profile chosen for it.
   defp send_email(
          broadcast,
          recipient,
@@ -667,7 +816,7 @@ defmodule PhoenixKit.Newsletters.Workers.DeliveryWorker do
     |> Swoosh.Email.text_body(text_body)
     |> maybe_put_list_unsubscribe_headers(broadcast, list_unsubscribe_url)
     |> maybe_put_attachments(attachments)
-    |> PhoenixKit.Mailer.deliver_email()
+    |> PhoenixKit.Mailer.deliver_email(skip_queue: true)
   end
 
   defp deliver_profile_email(
@@ -684,7 +833,7 @@ defmodule PhoenixKit.Newsletters.Workers.DeliveryWorker do
     |> build_profile_email(broadcast, recipient, html_body, text_body)
     |> maybe_put_list_unsubscribe_headers(broadcast, list_unsubscribe_url)
     |> maybe_put_attachments(attachments)
-    |> PhoenixKit.Mailer.deliver_via_integration(profile.integration_uuid)
+    |> PhoenixKit.Mailer.deliver_via_integration(profile.integration_uuid, skip_queue: true)
   end
 
   @doc false
@@ -770,7 +919,7 @@ defmodule PhoenixKit.Newsletters.Workers.DeliveryWorker do
         update_delivery_result(
           delivery,
           "failed",
-          %{error: inspect(reason)},
+          %{error: masked(reason)},
           broadcast_uuid,
           :bounced_count
         )
@@ -792,7 +941,7 @@ defmodule PhoenixKit.Newsletters.Workers.DeliveryWorker do
   def handle_failure(delivery_uuid, _broadcast_uuid, reason, false) do
     case get_delivery(delivery_uuid) do
       {:ok, delivery} ->
-        Newsletters.update_delivery_status(delivery, delivery.status, %{error: inspect(reason)})
+        Newsletters.update_delivery_status(delivery, delivery.status, %{error: masked(reason)})
 
       _ ->
         :ok
@@ -843,21 +992,22 @@ defmodule PhoenixKit.Newsletters.Workers.DeliveryWorker do
     :ok
   end
 
-  # Every delivery has left Delivery's only non-terminal status (see
-  # Delivery.non_terminal_broadcast_uuids_query/0) while the broadcast is
-  # still "sending": flip to "sent" in one statement — no separate
+  # Every delivery has left Delivery's only non-terminal status while the
+  # broadcast is still "sending": flip to "sent" in one statement — no separate
   # exists?/count round trip to race against a concurrent transition. The
-  # `status == "sending"` guard makes this race-safe when two workers
-  # finish within the same window — both may see coverage satisfied after
-  # their own transition, but only the one whose UPDATE commits first
-  # actually matches the WHERE clause; the other's matches zero rows
-  # (status is already "sent") and silently no-ops. Also backs
-  # `Newsletters.repair_stuck_sending_broadcasts/0`'s sweep for
-  # broadcasts that got stuck before this existed.
+  # `status == "sending"` guard makes this race-safe when two workers finish
+  # within the same window: both may see coverage satisfied after their own
+  # transition, but only the first UPDATE to commit matches the WHERE clause.
+  #
+  # Asks about this broadcast alone, and stops at its first pending delivery.
+  # This runs once per delivery under the broadcast's row lock, so scanning every
+  # pending row in the table here would make a send quadratic in its audience.
   defp maybe_finalize_broadcast(broadcast_uuid) do
+    pending = Delivery.non_terminal_for_broadcast_query(broadcast_uuid)
+
     Broadcast
     |> where([b], b.uuid == ^broadcast_uuid and b.status == "sending")
-    |> where([b], b.uuid not in subquery(Delivery.non_terminal_broadcast_uuids_query()))
+    |> where([b], not exists(pending))
     |> repo().update_all(set: [status: "sent"])
 
     :ok

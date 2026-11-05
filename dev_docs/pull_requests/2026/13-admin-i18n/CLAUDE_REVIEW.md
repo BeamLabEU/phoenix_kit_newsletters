@@ -50,16 +50,28 @@ shows up untranslated without failing anything. `I18nTest` now checks every
 passed before any change, and fails when a clause is deleted (checked by removing
 `"failed"` from `Broadcasts`).
 
-### IMPROVEMENT - MEDIUM — The public unsubscribe flow is English only — NOT FIXED
+### IMPROVEMENT - MEDIUM — The public unsubscribe flow was English only — FIXED
 
-`UnsubscribeController` has no `gettext` and both `unsubscribe_html` templates have
-none, so a reader of a Russian or Estonian newsletter unsubscribes in English. The
-preference center is translated.
+`UnsubscribeController` and both `unsubscribe_html` templates had no `gettext`, so
+a reader of a Russian or Estonian newsletter unsubscribed in English. Out of this
+PR's stated scope, and first left open for a decision on the language source.
 
-Out of this PR's stated scope (the admin panel), and it is a feature rather than a
-fix: a token visitor has no session locale, so the page needs a decision on where
-the language comes from (`RecipientLanguage` from the token's subject is the
-obvious candidate), plus reviewed translations for a compliance-sensitive page.
+Every response is now in the language of the email the link came from:
+`RecipientLanguage.for_contact/2` (contact, then list, then site) for CRM tokens
+and `preferred_locale` for role tokens. Rendering runs inside
+`RecipientLocale.in_locale/2`, because a keep-alive connection reuses the process
+and a plain `put_locale` would leak one recipient's language into the next
+request. Both modules name this package's backend after core's `use`, which binds
+core's; without that the strings compile and silently stay English. A test
+mutation confirmed both of these are caught.
+
+The preference center had the same gap for token visitors. Its token names no
+list, and a LiveView process outlives a callback, so it overrides core's mount only
+for a contact's own stated language, and sets the locale on the process.
+
+The list name lost its bold, since a translated sentence cannot carry markup
+safely without `raw`. The et and ru strings were written here and follow the
+existing catalogs' terms, but have had no native review.
 
 ### NITPICK — Dead clauses in `BroadcastEditor.status_label/1` — NOT FIXED
 

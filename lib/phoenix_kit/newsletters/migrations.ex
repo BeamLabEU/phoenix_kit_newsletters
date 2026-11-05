@@ -356,6 +356,17 @@ defmodule PhoenixKitNewsletters.Migrations do
   can be run again. On a site that is sending a broadcast, update in a quiet
   window.
 
+  The deliveries keys are renamed before the broadcasts keys, because that is
+  the order `DeliveryWorker.update_delivery_result/5` locks in: it writes the
+  delivery, then bumps the broadcast's counter, in one transaction. Renaming in
+  the opposite order lets the two deadlock, and when the worker is the one
+  Postgres aborts, the status write rolls back after the provider accepted the
+  mail, so the delivery stays `pending` and a retry sends it again. A rename is
+  conditional, so it is every deliveries key before any broadcasts key, not
+  merely the primary keys. A host that crosses V2 in the same migration has
+  already locked broadcasts by then (V2 re-points its foreign key), which is one
+  more reason for the quiet window.
+
   `mix phoenix_kit.update` brings a host there. Until it has, `mix
   phoenix_kit.repair` does not check this package's tables at all (it reports
   the module as behind), so upgrading the package and running repair before
@@ -1272,23 +1283,21 @@ defmodule PhoenixKitNewsletters.Migrations do
     {"fk_newsletters_deliveries_user", @deliveries, "user_uuid", @users, "c"}
   ]
 
+  @v3_key_order [@deliveries, @broadcasts]
+
   defp v3_statements(_prefix, target) when target < 3, do: []
 
   defp v3_statements(prefix, _target) do
-    pkeys =
-      for table <- [@broadcasts, @deliveries],
-          do: rename_pkey(table, Helpers.qualify_table(table, prefix), prefix)
-
-    fks =
-      for {name, table, column, references, on_delete} <- @v3_fks do
-        rename_fk(
-          name,
-          Helpers.qualify_table(table, prefix),
-          column,
-          Helpers.qualify_table(references, prefix),
-          on_delete
-        )
-      end
+    # A key rename takes ACCESS EXCLUSIVE on its table, so this is a lock order:
+    # the delivery worker's, see the moduledoc. All of one table's keys, then the
+    # other's, because each rename only happens if the host needs it: pairing the
+    # primary keys first would lock broadcasts first on a host whose deliveries
+    # primary key is already canonical but whose foreign keys are not.
+    keys =
+      for table <- @v3_key_order,
+          qualified = Helpers.qualify_table(table, prefix),
+          statement <- [rename_pkey(table, qualified, prefix) | rename_fks(table, prefix)],
+          do: statement
 
     indexes =
       for {name, table, unique?, columns, predicate} <- @v3_indexes do
@@ -1302,7 +1311,19 @@ defmodule PhoenixKitNewsletters.Migrations do
         )
       end
 
-    [@v3_lock_timeout] ++ pkeys ++ fks ++ indexes ++ [@v3_lock_timeout_reset]
+    [@v3_lock_timeout] ++ keys ++ indexes ++ [@v3_lock_timeout_reset]
+  end
+
+  defp rename_fks(table, prefix) do
+    for {name, ^table, column, references, on_delete} <- @v3_fks do
+      rename_fk(
+        name,
+        Helpers.qualify_table(table, prefix),
+        column,
+        Helpers.qualify_table(references, prefix),
+        on_delete
+      )
+    end
   end
 
   # The shape of every rename: find the objects that ARE the one meant, under

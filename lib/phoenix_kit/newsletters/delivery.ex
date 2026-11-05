@@ -10,9 +10,10 @@ defmodule PhoenixKit.Newsletters.Delivery do
 
   @primary_key {:uuid, UUIDv7, autogenerate: true}
 
-  # "blocked" = the recipient is on the suppression list; the send was
-  # correctly refused. Distinct from "failed"/"bounced" so it never
-  # pollutes bounce metrics.
+  # "blocked" = the send was correctly refused and no mail left: the recipient
+  # is on the suppression list, stopped being a sendable recipient after the
+  # audience was resolved, or core suppressed the message. Distinct from
+  # "failed"/"bounced" so it never pollutes bounce metrics.
   @valid_statuses ["pending", "sent", "delivered", "opened", "bounced", "failed", "blocked"]
 
   # The only status meaning "no attempt has finished yet" — a delivery
@@ -133,18 +134,24 @@ defmodule PhoenixKit.Newsletters.Delivery do
   @doc false
   # UUIDs of every broadcast that still has at least one delivery in a
   # non-terminal status — i.e. broadcasts that are NOT yet safe to
-  # finalize. Shared by Newsletters.repair_stuck_sending_broadcasts/0 (all
-  # "sending" broadcasts, one batch statement) and
-  # DeliveryWorker.maybe_finalize_broadcast/1 (a single broadcast, checked
-  # right after each delivery's status transition) via `not in
-  # subquery(...)`, so the completion definition lives in exactly one
-  # place. Built from `@non_terminal_statuses` (not raw SQL), so it
+  # finalize, for Newsletters.repair_stuck_sending_broadcasts/0's batch
+  # statement. Built from `@non_terminal_statuses` (not raw SQL), so it
   # automatically targets this schema's configured `@schema_prefix`.
   def non_terminal_broadcast_uuids_query do
     from(d in __MODULE__,
       where: d.status in ^@non_terminal_statuses,
       select: d.broadcast_uuid,
       distinct: true
+    )
+  end
+
+  @doc false
+  # The same definition for one broadcast, for a `not exists(...)` right after a
+  # delivery's status transition (DeliveryWorker.maybe_finalize_broadcast/1).
+  def non_terminal_for_broadcast_query(broadcast_uuid) do
+    from(d in __MODULE__,
+      where: d.broadcast_uuid == ^broadcast_uuid and d.status in ^@non_terminal_statuses,
+      select: 1
     )
   end
 end

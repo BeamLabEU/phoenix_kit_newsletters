@@ -216,4 +216,38 @@ defmodule PhoenixKit.Newsletters.Web.PreferenceCenterLiveTest do
       assert CRMSource.get_contact(contact.uuid).opted_out_at == nil
     end
   end
+
+  # Core's mount sets the locale from the URL or the site default, never from the
+  # recipient, so a token visitor needs the contact's language put in its place.
+  describe "a token visitor's language" do
+    test "is the contact's own, for this package and for core's wrapper" do
+      contact = add_contact(%{locale: "ru"})
+
+      {:ok, socket} =
+        mount_and_resolve(%{"token" => PreferenceToken.sign(contact.uuid)}, %{}, socket())
+
+      assert socket.assigns.mode == :token
+      assert Gettext.get_locale() == "ru"
+      assert Gettext.get_locale(PhoenixKitWeb.Gettext) == "ru"
+      assert socket.assigns.page_title == "Настройки рассылок"
+    end
+
+    test "stays what core's mount chose when the contact states none" do
+      Gettext.put_locale("et")
+      contact = add_contact()
+
+      {:ok, _socket} =
+        mount_and_resolve(%{"token" => PreferenceToken.sign(contact.uuid)}, %{}, socket())
+
+      assert Gettext.get_locale() == "et"
+    end
+
+    test "an invalid token changes nothing" do
+      Gettext.put_locale("et")
+      {:ok, socket} = mount_and_resolve(%{"token" => "nope"}, %{}, socket())
+
+      assert socket.assigns.mode == :invalid_token
+      assert Gettext.get_locale() == "et"
+    end
+  end
 end

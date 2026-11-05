@@ -28,4 +28,20 @@ defmodule PhoenixKit.Newsletters.RecipientLanguage do
   end
 
   def for_recipient(_recipient, _broadcast), do: RecipientLocale.for_rendering(nil)
+
+  @doc """
+  The language to answer a CRM recipient in on a public page their email links
+  to: the contact's own, else the list's (`nil` when the link names none), else
+  the site's content language. The order `for_recipient/2` uses for the email, so
+  the page reads like the message it was opened from. Never `nil`.
+  """
+  @spec for_contact(map(), map() | nil) :: String.t()
+  def for_contact(contact, list \\ nil) do
+    stated(contact) || stated(list) || RecipientLocale.for_rendering(nil)
+  end
+
+  @doc "The language a contact or a list states for itself, or `nil`."
+  @spec stated(map() | nil) :: String.t() | nil
+  def stated(%{locale: locale}) when is_binary(locale) and locale != "", do: locale
+  def stated(_record), do: nil
 end

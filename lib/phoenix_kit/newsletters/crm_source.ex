@@ -20,8 +20,8 @@ defmodule PhoenixKit.Newsletters.CRMSource do
 
   A member is sendable when `status == "subscribed"`, the contact isn't
   opted out (`opted_out_at` lives on the contact, applying across every
-  list it belongs to), and the membership has a snapshotted email —
-  matching the contract documented on `PhoenixKitCRM.Lists`.
+  list it belongs to) or trashed, and the membership has a snapshotted
+  email — matching the contract documented on `PhoenixKitCRM.Lists`.
   """
 
   import Ecto.Query
@@ -113,14 +113,32 @@ defmodule PhoenixKit.Newsletters.CRMSource do
   end
 
   @doc """
+  Whether `email` is, right now, a sendable recipient of the list — the question
+  `sendable_recipients/1` answers for everyone, asked for one address. The worker
+  asks it just before sending, because a throttled broadcast can run for days
+  after its audience was resolved. `false` without CRM: consent cannot be read.
+  """
+  @spec sendable_recipient?(String.t(), String.t()) :: boolean()
+  def sendable_recipient?(crm_list_uuid, email) do
+    if available?() do
+      crm_list_uuid
+      |> sendable_query()
+      |> where([m], m.email == ^email)
+      |> repo().exists?()
+    else
+      false
+    end
+  end
+
+  @doc """
   Preflight breakdown for a CRM list, for the broadcast editor/details
   "N members: M sendable, K no email, L unsubscribed/opted-out" summary.
 
   `sendable` counts before `sendable_recipients/1`'s email dedup — a
   defensive display figure, not necessarily the exact number of emails
-  that go out (see its moduledoc). `unsendable` covers both non-subscribed
+  that go out (see its moduledoc). `unsendable` covers non-subscribed
   memberships (pending/removed) and subscribed memberships whose contact
-  has since opted out.
+  has since opted out or been trashed.
   """
   @spec preflight(String.t()) :: %{
           total: non_neg_integer(),
@@ -156,6 +174,7 @@ defmodule PhoenixKit.Newsletters.CRMSource do
       where: m.list_uuid == ^crm_list_uuid,
       where: m.status == "subscribed",
       where: is_nil(c.opted_out_at),
+      where: c.status != "trashed",
       where: not is_nil(m.email),
       where: l.status == "active",
       order_by: [asc: m.uuid],
@@ -186,19 +205,20 @@ defmodule PhoenixKit.Newsletters.CRMSource do
         sendable:
           filter(
             count(m.uuid),
-            m.status == "subscribed" and is_nil(c.opted_out_at) and not is_nil(m.email) and
-              l.status == "active"
+            m.status == "subscribed" and is_nil(c.opted_out_at) and c.status != "trashed" and
+              not is_nil(m.email) and l.status == "active"
           ),
         no_email:
           filter(
             count(m.uuid),
-            m.status == "subscribed" and is_nil(c.opted_out_at) and is_nil(m.email) and
-              l.status == "active"
+            m.status == "subscribed" and is_nil(c.opted_out_at) and c.status != "trashed" and
+              is_nil(m.email) and l.status == "active"
           ),
         unsendable:
           filter(
             count(m.uuid),
-            m.status != "subscribed" or not is_nil(c.opted_out_at) or l.status != "active"
+            m.status != "subscribed" or not is_nil(c.opted_out_at) or c.status == "trashed" or
+              l.status != "active"
           )
       }
     )

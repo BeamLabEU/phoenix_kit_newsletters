@@ -129,4 +129,43 @@ defmodule PhoenixKit.Newsletters.Web.DeadRenderTest do
       assert redirected_to(get(conn, "/newsletters/preferences")) =~ "log-in"
     end
   end
+
+  describe "broadcast actions and paging" do
+    defp broadcast(attrs) do
+      {:ok, broadcast} =
+        Newsletters.create_broadcast(
+          Map.merge(
+            %{
+              subject: "Rendered",
+              source_type: "crm_list",
+              crm_list_uuid: Ecto.UUID.generate()
+            },
+            attrs
+          )
+        )
+
+      broadcast
+    end
+
+    test "a scheduled broadcast can be cancelled from its page", %{conn: conn} do
+      scheduled = broadcast(%{status: "scheduled"})
+
+      assert html_response(get(conn, "/broadcasts/#{scheduled.uuid}"), 200) =~ "Cancel broadcast"
+    end
+
+    test "a sent broadcast cannot", %{conn: conn} do
+      sent = broadcast(%{status: "sent"})
+
+      refute html_response(get(conn, "/broadcasts/#{sent.uuid}"), 200) =~ "Cancel broadcast"
+    end
+
+    test "the list offers the next page", %{conn: conn} do
+      for _ <- 1..51, do: broadcast(%{})
+
+      html = html_response(get(conn, "/broadcasts"), 200)
+
+      assert html =~ "page=2"
+      assert html =~ "51"
+    end
+  end
 end

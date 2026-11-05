@@ -141,6 +141,19 @@
         </.table_default_row>
       </.table_default_body>
     </.table_default>
+    <div :if={@total_pages > 1} class="flex flex-wrap items-center justify-between gap-2 mt-4">
+      <.pagination_info
+        page={@page}
+        per_page={@per_page}
+        total_count={@total_count}
+        noun_plural={gettext("broadcasts")}
+      />
+      <.pagination_controls
+        page={@page}
+        total_pages={@total_pages}
+        build_url={&page_url(&1, @status_filter)}
+      />
+    </div>
   <% end %>
 </div>
 </PhoenixKitWeb.Components.LayoutWrapper.app_layout>

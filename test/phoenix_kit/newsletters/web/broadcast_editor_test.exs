@@ -10,10 +10,14 @@ defmodule PhoenixKit.Newsletters.Web.BroadcastEditorTest do
 
   use PhoenixKitNewsletters.DataCase, async: false
 
+  import Ecto.Query, only: [from: 2]
+
   alias PhoenixKit.Newsletters
+  alias PhoenixKit.Newsletters.Broadcast
   alias PhoenixKit.Newsletters.Web.BroadcastEditor
   alias PhoenixKit.Users.Roles
   alias PhoenixKitCRM.Lists
+  alias PhoenixKitNewsletters.Test.Repo
 
   setup do
     Newsletters.enable_system()
@@ -80,7 +84,7 @@ defmodule PhoenixKit.Newsletters.Web.BroadcastEditorTest do
         socket
       )
 
-    assert updated.assigns.flash["error"] =~ "subject: can't be blank"
+    assert updated.assigns.flash["error"] =~ "Subject: can't be blank"
     refute updated.assigns.flash["error"] =~ "Changeset"
   end
 
@@ -189,7 +193,7 @@ defmodule PhoenixKit.Newsletters.Web.BroadcastEditorTest do
           subject: "Hello",
           source_type: "crm_list",
           crm_list_uuid: Ecto.UUID.generate(),
-          status: "scheduled",
+          status: "draft",
           scheduled_at: ~U[2026-07-20 18:58:00Z]
         })
 
@@ -538,6 +542,149 @@ defmodule PhoenixKit.Newsletters.Web.BroadcastEditorTest do
 
       {:noreply, updated} = BroadcastEditor.handle_params(%{}, "/", socket)
       assert updated.assigns.template_uuid == layout.uuid
+    end
+  end
+
+  describe "only a draft is edited" do
+    @describetag :requires_v158
+
+    defp persisted(attrs \\ %{}) do
+      base = %{
+        subject: "Original",
+        source_type: "crm_list",
+        crm_list_uuid: Ecto.UUID.generate(),
+        markdown_body: "Body"
+      }
+
+      {:ok, broadcast} = Newsletters.create_broadcast(Map.merge(base, attrs))
+      broadcast
+    end
+
+    defp edit_socket do
+      socket(%{
+        phoenix_kit_current_user: %{user_timezone: "0"},
+        live_action: :edit,
+        page_title: ""
+      })
+    end
+
+    defp open_for_edit(id) do
+      BroadcastEditor.handle_params(%{"id" => id}, "/edit", edit_socket())
+    end
+
+    defp edited_params, do: %{"subject" => "EDITED", "source_type" => "crm_list"}
+
+    for status <- ~w(scheduled sending sent cancelled failed) do
+      test "a #{status} broadcast opens its details instead of the form" do
+        broadcast = persisted(%{status: unquote(status)})
+
+        assert {:noreply, updated} = open_for_edit(broadcast.uuid)
+
+        assert updated.assigns.flash["error"] =~ "Only a draft"
+        assert {:live, :redirect, %{to: to}} = updated.redirected
+        assert to =~ broadcast.uuid
+        assert updated.assigns.broadcast == nil
+      end
+    end
+
+    test "a draft opens in the form" do
+      broadcast = persisted()
+
+      assert {:noreply, updated} = open_for_edit(broadcast.uuid)
+      assert updated.assigns.broadcast.uuid == broadcast.uuid
+      assert updated.redirected == nil
+    end
+
+    test "an id that is not a uuid is reported, not crashed on" do
+      assert {:noreply, updated} = open_for_edit("garbage")
+      assert updated.assigns.flash["error"] =~ "not found"
+    end
+
+    for status <- ~w(scheduled sending sent cancelled) do
+      test "Save draft from a tab open since the broadcast became #{status} changes nothing" do
+        stale = persisted()
+        {:ok, _moved_on} = Newsletters.update_broadcast(stale, %{status: unquote(status)})
+
+        assert {:noreply, updated} =
+                 BroadcastEditor.handle_event(
+                   "save_draft",
+                   edited_params(),
+                   socket(%{broadcast: stale, crm_list_uuid: stale.crm_list_uuid})
+                 )
+
+        assert updated.assigns.flash["error"] =~ "Only a draft"
+
+        assert %Broadcast{subject: "Original", status: unquote(status)} =
+                 Newsletters.get_broadcast!(stale.uuid)
+      end
+
+      test "Send now from a tab open since the broadcast became #{status} changes nothing" do
+        stale = persisted()
+        {:ok, _moved_on} = Newsletters.update_broadcast(stale, %{status: unquote(status)})
+
+        assert {:noreply, _updated} =
+                 BroadcastEditor.handle_event(
+                   "send_now",
+                   edited_params(),
+                   socket(%{broadcast: stale, crm_list_uuid: stale.crm_list_uuid})
+                 )
+
+        assert %Broadcast{subject: "Original", status: unquote(status), sent_at: nil} =
+                 Newsletters.get_broadcast!(stale.uuid)
+      end
+    end
+
+    test "a save on a broadcast deleted since reports it" do
+      stale = persisted()
+      {:ok, _deleted} = Newsletters.delete_broadcast(stale)
+
+      assert {:noreply, updated} =
+               BroadcastEditor.handle_event(
+                 "save_draft",
+                 edited_params(),
+                 socket(%{broadcast: stale, crm_list_uuid: stale.crm_list_uuid})
+               )
+
+      assert updated.assigns.flash["error"] =~ "not found"
+    end
+  end
+
+  describe "a Send now that is refused" do
+    @describetag :requires_v158
+
+    test "keeps the one draft it saved, however many times it is clicked" do
+      {:ok, list} = Lists.create_list(%{name: "Archived #{System.unique_integer([:positive])}"})
+      {:ok, _list} = Lists.archive_list(list)
+
+      subject = "Refused #{System.unique_integer([:positive])}"
+      params = %{"subject" => subject, "source_type" => "crm_list", "crm_list_uuid" => list.uuid}
+
+      socket =
+        Enum.reduce(1..3, socket(%{}), fn _click, socket ->
+          {:noreply, updated} = BroadcastEditor.handle_event("send_now", params, socket)
+          assert updated.assigns.flash["error"] =~ "not active"
+          updated
+        end)
+
+      assert [%Broadcast{uuid: uuid, status: "draft"}] =
+               Repo.all(from(b in Broadcast, where: b.subject == ^subject))
+
+      assert socket.assigns.broadcast.uuid == uuid
+    end
+  end
+
+  describe "a crafted role uuid" do
+    test "never reaches the assigns, so it can't be saved or queried" do
+      valid = Ecto.UUID.generate()
+
+      {:noreply, updated} =
+        BroadcastEditor.handle_event(
+          "validate",
+          %{"source_type" => "user_group", "role_uuids" => ["garbage", valid, %{"x" => "1"}]},
+          socket(%{source_type: "user_group", available_roles: []})
+        )
+
+      assert updated.assigns.role_uuids == [valid]
     end
   end
 end

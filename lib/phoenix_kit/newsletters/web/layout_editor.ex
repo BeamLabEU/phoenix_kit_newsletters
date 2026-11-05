@@ -28,6 +28,7 @@ defmodule PhoenixKit.Newsletters.Web.LayoutEditor do
   alias PhoenixKit.Newsletters.Layouts
   alias PhoenixKit.Newsletters.Paths
   alias PhoenixKit.Newsletters.Render
+  alias PhoenixKit.Newsletters.Web.FormErrors
   alias PhoenixKit.Newsletters.Web.LanguageOptions
   alias PhoenixKit.Settings
   alias PhoenixKit.Utils.Routes
@@ -151,7 +152,7 @@ defmodule PhoenixKit.Newsletters.Web.LayoutEditor do
          |> push_navigate(to: Paths.layouts_index())}
 
       {:error, changeset} ->
-        {:noreply, assign(socket, :errors, error_messages(changeset))}
+        {:noreply, assign(socket, :errors, FormErrors.messages(changeset))}
     end
   end
 
@@ -165,7 +166,7 @@ defmodule PhoenixKit.Newsletters.Web.LayoutEditor do
       changeset =
         Layouts.change_layout(socket.assigns.edited_layout || %Layout{}, attrs(socket))
 
-      assign(socket, :errors, error_messages(changeset))
+      assign(socket, :errors, FormErrors.messages(changeset))
     end
   end
 
@@ -265,7 +266,8 @@ defmodule PhoenixKit.Newsletters.Web.LayoutEditor do
                 language_map(socket.assigns.translations["subject"], keys["subject"], locale),
               html_body: %{locale => html}
             },
-            locale
+            locale,
+            Render.site_variables()
           )
 
         # The preview shows this language's own HTML, not a fallback: an
@@ -300,30 +302,6 @@ defmodule PhoenixKit.Newsletters.Web.LayoutEditor do
       _ -> nil
     end
   end
-
-  defp error_messages(changeset) do
-    changeset
-    |> Ecto.Changeset.traverse_errors(&translate_error/1)
-    |> Enum.flat_map(fn {field, messages} ->
-      Enum.map(messages, &"#{field_label(field)}: #{&1}")
-    end)
-  end
-
-  # Layout's messages are this package's msgids (`gettext_noop`); Ecto's own
-  # ("can't be blank", …) are not in the catalogue and come back as written.
-  defp translate_error({message, opts}) do
-    bindings = for {key, value} <- opts, scalar?(value), into: %{}, do: {key, value}
-    Gettext.dgettext(PhoenixKit.Newsletters.Gettext, "default", message, bindings)
-  end
-
-  defp scalar?(value), do: is_binary(value) or is_number(value) or is_atom(value)
-
-  defp field_label(:name), do: gettext("Name")
-  defp field_label(:display_name), do: gettext("Display name")
-  defp field_label(:subject), do: gettext("Subject")
-  defp field_label(:html_body), do: gettext("HTML")
-  defp field_label(:text_body), do: gettext("Text")
-  defp field_label(other), do: to_string(other)
 
   @doc false
   # What a new layout starts with: core's header and footer around the

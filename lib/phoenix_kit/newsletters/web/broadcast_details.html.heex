@@ -41,7 +41,7 @@
           </.pk_link>
         <% end %>
 
-        <%= if @broadcast.status == "sending" and @can_send do %>
+        <%= if Newsletters.cancellable?(@broadcast.status) and @can_send do %>
           <button
             type="button"
             phx-click="show_confirm"
@@ -310,6 +310,20 @@
               </div>
             <% end %>
           </div>
+        </div>
+
+        <div :if={@total_pages > 1} class="flex flex-wrap items-center justify-between gap-2 mt-4">
+          <.pagination_info
+            page={@page}
+            per_page={@per_page}
+            total_count={@total_count}
+            noun_plural={gettext("deliveries")}
+          />
+          <.pagination_controls
+            page={@page}
+            total_pages={@total_pages}
+            build_url={&page_url(&1, @broadcast.uuid)}
+          />
         </div>
       <% end %>
     <% end %>

@@ -5,7 +5,10 @@ defmodule PhoenixKit.Newsletters.Broadcast do
 
   use Ecto.Schema
   use PhoenixKit.SchemaPrefix
+  use Gettext, backend: PhoenixKit.Newsletters.Gettext
   import Ecto.Changeset
+
+  @type t :: %__MODULE__{}
 
   @primary_key {:uuid, UUIDv7, autogenerate: true}
 
@@ -169,7 +172,7 @@ defmodule PhoenixKit.Newsletters.Broadcast do
     if Enum.all?(attachments, &valid_uuid?/1) do
       changeset
     else
-      add_error(changeset, :attachments, "must be a list of valid file uuids")
+      add_error(changeset, :attachments, gettext_noop("must be a list of valid file uuids"))
     end
   end
 
@@ -195,7 +198,7 @@ defmodule PhoenixKit.Newsletters.Broadcast do
     if changeset |> get_field(:source_params) |> role_uuids() != [] do
       changeset
     else
-      add_error(changeset, :source_params, "select at least one role")
+      add_error(changeset, :source_params, gettext_noop("select at least one role"))
     end
   end
 

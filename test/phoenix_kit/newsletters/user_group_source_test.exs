@@ -296,4 +296,95 @@ defmodule PhoenixKit.Newsletters.UserGroupSourceTest do
                0
     end
   end
+
+  describe "where a user's mail goes" do
+    defp organization(attrs) do
+      create_user()
+      |> Ecto.Changeset.change(
+        Keyword.merge(
+          [
+            email: "org-#{System.unique_integer([:positive])}@organization.invalid",
+            account_type: "organization",
+            managed_by_members: true
+          ],
+          attrs
+        )
+      )
+      |> Repo.update!()
+    end
+
+    defp service_account do
+      create_user()
+      |> Ecto.Changeset.change(email: "svc-#{System.unique_integer([:positive])}@service.invalid")
+      |> Repo.update!()
+    end
+
+    test "a managed organization receives at its contact address" do
+      role = create_role()
+      org = organization(contact_email: "office@example.com") |> assign(role)
+
+      assert UserGroupSource.sendable_recipients([role.uuid]) == [
+               %{user_uuid: org.uuid, email: "office@example.com"}
+             ]
+    end
+
+    test "a managed organization without one has no address, and preflight says so" do
+      role = create_role()
+      organization([]) |> assign(role)
+
+      assert UserGroupSource.sendable_recipients([role.uuid]) == []
+
+      assert %{total: 1, sendable: 0, no_email: 1, unsendable: 0} =
+               UserGroupSource.preflight([role.uuid])
+    end
+
+    test "a reserved .invalid address is no address at all" do
+      role = create_role()
+      service_account() |> assign(role)
+
+      assert UserGroupSource.sendable_recipients([role.uuid]) == []
+      assert %{sendable: 0, no_email: 1} = UserGroupSource.preflight([role.uuid])
+    end
+
+    test "delivery_address/1 is nil for what cannot be reached" do
+      assert UserGroupSource.delivery_address(%User{email: "a@example.com"}) == "a@example.com"
+      assert UserGroupSource.delivery_address(%User{email: "a@x.invalid"}) == nil
+      assert UserGroupSource.delivery_address(%User{email: "a@X.INVALID "}) == nil
+      assert UserGroupSource.delivery_address(%User{email: ""}) == nil
+      assert UserGroupSource.delivery_address(%User{email: nil}) == nil
+    end
+  end
+
+  describe "sendable_recipient?/2" do
+    test "is true for an active user holding the role" do
+      role = create_role()
+      user = create_user() |> assign(role)
+
+      assert UserGroupSource.sendable_recipient?([role.uuid], user.uuid)
+    end
+
+    test "turns false the moment the user opts out" do
+      role = create_role()
+      user = create_user() |> assign(role)
+      {:ok, _user} = UserGroupSource.record_opt_out(user)
+
+      refute UserGroupSource.sendable_recipient?([role.uuid], user.uuid)
+    end
+
+    test "reads the row, so a deactivation since is seen" do
+      role = create_role()
+      user = create_user() |> assign(role)
+      user |> Ecto.Changeset.change(is_active: false) |> Repo.update!()
+
+      refute UserGroupSource.sendable_recipient?([role.uuid], user.uuid)
+    end
+
+    test "is false for a user outside these roles, and for no roles" do
+      role = create_role()
+      user = create_user()
+
+      refute UserGroupSource.sendable_recipient?([role.uuid], user.uuid)
+      refute UserGroupSource.sendable_recipient?([], user.uuid)
+    end
+  end
 end

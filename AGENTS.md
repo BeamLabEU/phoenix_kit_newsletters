@@ -99,7 +99,9 @@ and revert **both** `mix.exs` and `mix.lock` before committing.
   Do not use `PhoenixKitWeb, :live_view`. Admin templates wrap in
   `PhoenixKitWeb.Components.LayoutWrapper.app_layout`; preferences uses
   `AuthPageWrapper.auth_page_wrapper`. Controllers/HTML use
-  `PhoenixKitWeb, :controller` / `:html`.
+  `PhoenixKitWeb, :controller` / `:html`, then `use Gettext, backend:
+  PhoenixKit.Newsletters.Gettext`: core's `use` binds core's backend, and
+  without the second `use` strings silently stay English.
 - Admin assigns: `@phoenix_kit_current_scope`, `@phoenix_kit_current_user`,
   `@current_locale`, `@url_path`. Use `assign_new/3` for current user and
   tracked `@phoenix_kit_current_user` in templates; `assigns[...]` makes the
@@ -157,6 +159,13 @@ Tables are `phoenix_kit_newsletters_{broadcasts,deliveries,layouts}`:
   `crm_list_uuid` and `send_profile_uuid` are soft references without FKs.
   `delete_broadcast/1` deletes only drafts; otherwise
   `{:error, :cannot_delete_non_draft}`. No soft-delete sentinel.
+  A page's copy of a broadcast is as old as its tab, so every status decision
+  is made on the row: `update_draft/2` locks it and writes only a draft,
+  `cancel_broadcast/1` is one conditional UPDATE (`scheduled`/`sending` only),
+  and the editor redirects from `/edit` unless the row is a draft. Never write
+  an editor save or a cancel through `update_broadcast/2`. `file_references/0`
+  protects `attachments` from core's orphan check; list any new file column
+  there, because supplying a list takes over this module's tables.
 - `Delivery`: `pending` is the **only non-terminal status**; terminal statuses
   are `sent`, `delivered`, `opened`, `bounced`, `failed`, `blocked`.
   Exactly one owner: `user_uuid`, or `crm_contact_uuid` + `recipient_email`.
@@ -175,7 +184,10 @@ New broadcasts read `newsletters_default_template`, unset by default;
 the Layouts page writes it through `Layouts.set_default_layout/1`.
 
 `Content` renders Markdown with MDEx and **always** runs
-`PhoenixKit.Utils.HtmlSanitizer`. `Render` builds every email:
+`PhoenixKit.Utils.HtmlSanitizer`, then restores whole placeholders that comrak
+percent-encoded in `href`/`src`: `[x]({{unsubscribe_url}})` must reach the
+substitution pass. `strip_html/1` keeps link addresses and decodes entities, once.
+`Render` builds every email:
 
 1. Apply layout in recipient language, inserting the body at `{{{content}}}`
    (legacy `{{content}}` supported).
@@ -186,6 +198,10 @@ the Layouts page writes it through `Layouts.set_default_layout/1`.
    `preferences_url` from the map so it stays literal rather than linking `/`.
 3. With no layout or no body slot for that language, use core's standard
    `PhoenixKit.Email.Layout.wrap/3`, group `"newsletters"`. Never wrap text.
+
+`Render.site_variables/0` binds `logo_url`, `accent_color`, `site_name` and
+`site_url` for subject patterns, bodies without a layout and the text part;
+`header`/`footer` stay layout-only. A test holds it equal to core's values.
 
 `RecipientLanguage.for_recipient/2` resolves user `preferred_locale` via core's
 `RecipientLocale`, or CRM contact locale → list locale → site content language.
@@ -202,26 +218,35 @@ footer), with Branding logo/accent. Never rebuild core chrome here or read/write
 
 - `Broadcaster.send/1` accepts `draft`, `scheduled`, `failed`. Reject a CRM
   list not `active` with `{:crm_list_not_active, status}` **before** status
-  changes. Render Markdown, flip to `sending`, resolve recipients once:
-  CRM subscribed/not opted out/with email, deduplicated by downcased email;
-  role users active/not opted out, deduplicated by user.
-- Insert batches of 500 in one transaction; enqueue one `DeliveryWorker` per
-  inserted row. Correct `total_recipients` to actual row count afterwards so
-  a resend never zeroes it. `insert_all` bypasses changesets:
+  changes. Resolve recipients once, outside the transaction: CRM subscribed/not
+  opted out/not trashed/with email, deduplicated by downcased email; role users
+  active/not opted out/with a `delivery_address/1`, deduplicated by user.
+- **One transaction** locks the row, judges its status, flips to `sending` and
+  inserts every delivery and job, with an explicit `timeout:`. The sweep finishes
+  any `sending` broadcast with nothing pending, so a `sending` row must never be
+  visible without its deliveries: that loses the broadcast with nobody mailed.
+  Never split this. A raise restores the old status; a scheduled tick rescues
+  it per broadcast so one bad row cannot stop the ones after it.
+- Insert batches of 500; enqueue one `DeliveryWorker` per inserted row. Correct
+  `total_recipients` to actual row count in the same transaction so a resend
+  never zeroes it. `insert_all` bypasses changesets:
   `process_batch/5` manually checks user UUID or email presence and relies on
   the DB owner CHECK and partial unique indexes
   `idx_newsletters_deliveries_uniq_broadcast_{user,contact,email}` with
   `on_conflict: :nothing`, **no `conflict_target`**. New recipient sources
   require corresponding DB uniqueness before use.
 - Queue is **`newsletters_delivery`**, never `newsletters`; keep README host
-  config consistent. Worker: `max_attempts: 3`, unique on `delivery_uuid`
-  while incomplete. Profile `rate_per_hour`, `rate_per_day`, `pause_seconds`
+  config consistent. Worker: `max_attempts: 3`, retried after 5 then 30 minutes
+  (`backoff/1`), unique on `delivery_uuid` while incomplete. Always pass
+  `skip_queue: true`: the emails package's queue re-sends through the default
+  integration, off the send profile, and hands back a reference where the
+  message id belongs. Profile `rate_per_hour`, `rate_per_day`, `pause_seconds`
   determine the tightest interval (`send_interval_seconds/1`); schedule job N
   at N × interval continuously across batches, 0 = all at once. Throttling is
   per broadcast; concurrent broadcasts may exceed a profile's combined caps.
   No `newsletters_rate_limit` setting exists; do not re-add it.
-- Worker skips already-sent deliveries. It re-reads the broadcast and sends
-  **only under `"sending"`** (`@sendable_broadcast_statuses`,
+- Worker sends only `pending` deliveries (`guard_unsent/1`). It re-reads the
+  broadcast and sends **only under `"sending"`** (`@sendable_broadcast_statuses`,
   `guard_broadcast_sendable/1`). Keep this an allow-list: new statuses must
   stall rather than accidentally send.
 - **Recheck immediately before sending** (`recheck_broadcast_sendable/1`
@@ -231,6 +256,11 @@ footer), with Branding logo/accent. Never rebuild core chrome here or read/write
   Both status-guard skips return plain `:ok` and write **nothing** to delivery
   rows/counters. Leave them `pending`: a terminal status could finalize the
   broadcast, and `failed` would inflate bounce counts.
+- **Recheck the recipient too** (`guard_recipient_sendable/2`, last before
+  `send_email/7`): a throttled send runs for days. It asks the same source
+  query that resolved the audience (`sendable_recipient?/2`), so an opt-out,
+  removal, deactivation or trashed contact stops the mail. Record `blocked`, no
+  counter, so the broadcast still finishes. No CRM means no consent to read: blocked.
 - Sending uses the enabled broadcast profile, else default profile, else
   legacy `PhoenixKit.Mailer.deliver_email/1`. Sender falls back to
   `from_email` / `from_name` (`noreply@example.com` / `Newsletter`). Add
@@ -238,16 +268,30 @@ footer), with Branding logo/accent. Never rebuild core chrome here or read/write
   Resolve attachments last; warn/drop unreadable files instead of failing.
 - SMTP may return a raw receipt string. `extract_message_id/1` must **never
   raise** after provider acceptance: that would retry and duplicate email.
+  `record_accepted/3` keeps that promise for the whole write: past acceptance
+  the job never fails. Core's `suppressed: true` answers reached nobody, so they
+  record `blocked` and store no id (it is a constant, and `message_id` is unique).
+  A rejected id is dropped and the write retried; never retry the job.
 - Transient failures remain `pending` until retries are exhausted; early
   `failed` lets the broadcast finalize while a retry is queued. Result status,
   counter bump and finalization run in one transaction
   (`update_delivery_result/5`); finalize only when no delivery is pending.
-  Permanent failures (`{:blocked, _}`, `:deleted`, `:not_configured`,
-  `:unsupported_provider`, `{:invalid_smtp_port, _}`) cancel jobs without
-  counter bumps. Exhausted transient failures count as bounces.
+  Permanent failures (`permanent_failure?/1`: `{:blocked, _}` and the reasons
+  `deliver_via_integration/3` documents for an unusable connection) cancel jobs
+  without counter bumps. Exhausted transient failures count as bounces. A raise
+  on the last attempt records `failed` with no counter, then re-raises.
 - `process_scheduled_broadcasts/0` first repairs stuck `sending` broadcasts
   with one batch UPDATE, then sends due `scheduled` broadcasts. Inactive CRM
   lists mark the broadcast `failed` (retryable), avoiding failure every tick.
+  The repair first fails `pending` rows of a broadcast with no incomplete job
+  left (a killed node, a job cancelled by hand), through `Oban.Repo` for the
+  host's prefix, and skips this when no Oban runs on the node.
+- `maybe_finalize_broadcast/1` runs per delivery under the row lock, so it asks
+  about its own broadcast with `not exists`, never the table-wide subquery.
+- Mask addresses (`EmailVerification.mask_addresses/1`) in anything that reaches
+  a log, `delivery.error` or Oban's job errors: SMTP errors quote the recipient.
+- `increment_broadcast_counter/2` is called by `phoenix_kit_emails` after
+  `update_delivery_status/3`; its name and arity are that package's contract.
 
 ## Public unsubscribe & preferences
 
@@ -274,6 +318,12 @@ A per-list token must never grant full preference access.
   Without a token, find or lazily create/link an authenticated user's contact.
   Never use `Contacts.connect_user/2`; multiple unlinked contacts sharing an
   email count as no match. Degrade gracefully when CRM is unavailable.
+- Answer in the language of the email the link came from: contact → list → site
+  (`RecipientLanguage.for_contact/2`), user `preferred_locale` for role tokens.
+  The controller wraps rendering in `RecipientLocale.in_locale/2`, never
+  `put_locale`: a keep-alive connection reuses the process. Preferences has no
+  list in its token, so it overrides core's mount only for a contact's own
+  stated language, and sets the locale because the LiveView process lives on.
 
 ## Address verification
 
@@ -339,7 +389,10 @@ installs (core 3.0 no longer creates module tables).
   with a free target name. NOTICE successful renames; WARNING on ambiguity or
   collisions. Do not create/drop/rewrite objects or undo renames on down.
   Keep the 5 s `lock_timeout`: constraint renames take ACCESS EXCLUSIVE locks;
-  update busy hosts in a quiet window. Repair skips tables behind the chain.
+  update busy hosts in a quiet window. Rename every deliveries key before any
+  broadcasts key: that is the worker's lock order, and a deadlock that aborts
+  the worker after provider acceptance sends the mail twice. Repair skips
+  tables behind the chain.
 - `PhoenixKit.Newsletters.ExpectedSchema` is generated: regenerate after chain
   changes using the command in its header; never hand-edit it. Validate with
   `test/integration/{expected_schema,migrations_build_alone}_test.exs`.

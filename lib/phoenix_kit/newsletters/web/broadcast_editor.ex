@@ -25,6 +25,7 @@ defmodule PhoenixKit.Newsletters.Web.BroadcastEditor do
   }
 
   alias PhoenixKit.Newsletters.Paths
+  alias PhoenixKit.Newsletters.Web.FormErrors
   alias PhoenixKit.Newsletters.Web.LanguageOptions
   alias PhoenixKit.Newsletters.Web.SendError
   alias PhoenixKit.Newsletters.Web.Timezone
@@ -101,53 +102,19 @@ defmodule PhoenixKit.Newsletters.Web.BroadcastEditor do
 
   @impl true
   def handle_params(%{"id" => id}, _url, %{assigns: %{live_action: :edit}} = socket) do
-    crm_lists = crm_lists(socket)
-    broadcast = Newsletters.get_broadcast!(id)
-    templates = load_templates(broadcast.template_uuid)
-    socket = socket |> assign_tz() |> assign_preview_languages()
+    case Newsletters.get_broadcast!(id) do
+      %Broadcast{status: "draft"} = broadcast ->
+        {:noreply, load_draft(socket, broadcast)}
 
-    {:noreply,
-     socket
-     |> assign(:crm_lists, crm_lists)
-     |> assign(:templates, templates)
-     |> assign(:page_title, gettext("Edit"))
-     |> assign(:page_crumbs, [
-       %{
-         label: broadcast.subject,
-         path: Routes.path("/admin/newsletters/broadcasts/#{broadcast.uuid}")
-       }
-     ])
-     |> assign(:broadcast, broadcast)
-     |> assign(:subject, broadcast.subject || "")
-     |> assign(:source_type, broadcast.source_type)
-     |> assign(:crm_list_uuid, broadcast.crm_list_uuid || "")
-     |> assign(:available_roles, UserGroupSource.list_roles())
-     |> assign(:role_uuids, Broadcast.role_uuids(broadcast))
-     |> assign(:template_uuid, broadcast.template_uuid || "")
-     |> assign(:markdown_content, broadcast.markdown_body || "")
-     |> assign(
-       :preview_html,
-       render_preview(
-         broadcast.markdown_body,
-         broadcast.template_uuid,
-         templates,
-         socket.assigns.preview_locale,
-         broadcast.subject
-       )
-     )
-     |> assign(
-       :scheduled_at,
-       DateUtils.format_datetime_local(broadcast.scheduled_at, socket.assigns.tz)
-     )
-     |> assign(:attachments, broadcast.attachments || [])
-     |> load_attachment_files()
-     |> assign_preflight()}
+      # The details page offers Edit on a draft only, and this form saves as a
+      # draft. Open on anything else, it would take a sent or cancelled broadcast
+      # back to the start.
+      %Broadcast{} = broadcast ->
+        {:noreply, leave_for_details(socket, broadcast.uuid)}
+    end
   rescue
-    Ecto.NoResultsError ->
-      {:noreply,
-       socket
-       |> put_flash(:error, gettext("Broadcast not found"))
-       |> push_navigate(to: Routes.path("/admin/newsletters/broadcasts"))}
+    _ in [Ecto.NoResultsError, Ecto.Query.CastError] ->
+      {:noreply, leave_for_list(socket)}
   end
 
   def handle_params(_params, _url, socket) do
@@ -263,7 +230,7 @@ defmodule PhoenixKit.Newsletters.Web.BroadcastEditor do
   end
 
   defp send_now(socket) do
-    case save_broadcast_and_return(socket) do
+    case persist(socket, broadcast_attrs(socket, "draft")) do
       {:ok, broadcast} ->
         case Broadcaster.send(broadcast) do
           {:ok, _broadcast} ->
@@ -272,12 +239,17 @@ defmodule PhoenixKit.Newsletters.Web.BroadcastEditor do
              |> put_flash(:info, gettext("Broadcast is being sent"))
              |> push_navigate(to: Routes.path("/admin/newsletters/broadcasts/#{broadcast.uuid}"))}
 
+          # The draft is saved even though the send was refused: keeping it here
+          # is what makes the next click update it rather than insert another.
           {:error, reason} ->
-            {:noreply, put_flash(socket, :error, SendError.message(reason))}
+            {:noreply,
+             socket
+             |> assign(:broadcast, broadcast)
+             |> put_flash(:error, SendError.message(reason))}
         end
 
-      {:error, changeset} ->
-        {:noreply, put_flash(socket, :error, validation_error(changeset))}
+      {:error, reason} ->
+        {:noreply, save_refused(socket, reason)}
     end
   end
 
@@ -338,6 +310,72 @@ defmodule PhoenixKit.Newsletters.Web.BroadcastEditor do
   def handle_info(_msg, socket), do: {:noreply, socket}
 
   # --- Private ---
+
+  defp load_draft(socket, broadcast) do
+    crm_lists = crm_lists(socket)
+    templates = load_templates(broadcast.template_uuid)
+    socket = socket |> assign_tz() |> assign_preview_languages()
+
+    socket
+    |> assign(:crm_lists, crm_lists)
+    |> assign(:templates, templates)
+    |> assign(:page_title, gettext("Edit"))
+    |> assign(:page_crumbs, [
+      %{
+        label: broadcast.subject,
+        path: Routes.path("/admin/newsletters/broadcasts/#{broadcast.uuid}")
+      }
+    ])
+    |> assign(:broadcast, broadcast)
+    |> assign(:subject, broadcast.subject || "")
+    |> assign(:source_type, broadcast.source_type)
+    |> assign(:crm_list_uuid, broadcast.crm_list_uuid || "")
+    |> assign(:available_roles, UserGroupSource.list_roles())
+    |> assign(:role_uuids, Broadcast.role_uuids(broadcast))
+    |> assign(:template_uuid, broadcast.template_uuid || "")
+    |> assign(:markdown_content, broadcast.markdown_body || "")
+    |> assign(
+      :preview_html,
+      render_preview(
+        broadcast.markdown_body,
+        broadcast.template_uuid,
+        templates,
+        socket.assigns.preview_locale,
+        broadcast.subject
+      )
+    )
+    |> assign(
+      :scheduled_at,
+      DateUtils.format_datetime_local(broadcast.scheduled_at, socket.assigns.tz)
+    )
+    |> assign(:attachments, broadcast.attachments || [])
+    |> load_attachment_files()
+    |> assign_preflight()
+  end
+
+  defp leave_for_details(socket, uuid) do
+    socket
+    |> put_flash(:error, gettext("Only a draft can be edited"))
+    |> push_navigate(to: Routes.path("/admin/newsletters/broadcasts/#{uuid}"))
+  end
+
+  defp leave_for_list(socket) do
+    socket
+    |> put_flash(:error, gettext("Broadcast not found"))
+    |> push_navigate(to: Routes.path("/admin/newsletters/broadcasts"))
+  end
+
+  # A refused save: the row changed under this form, so there is nothing to fix
+  # here and the operator goes to the broadcast as it is now.
+  defp save_refused(socket, %Ecto.Changeset{} = changeset) do
+    socket |> assign(:saving, false) |> put_flash(:error, validation_error(changeset))
+  end
+
+  defp save_refused(socket, {:invalid_status, _status}) do
+    leave_for_details(socket, socket.assigns.broadcast.uuid)
+  end
+
+  defp save_refused(socket, :not_found), do: leave_for_list(socket)
 
   # Sending, scheduling and retrying need `newsletters.send`; the buttons are
   # hidden without it, and a crafted submit is refused here.
@@ -429,8 +467,14 @@ defmodule PhoenixKit.Newsletters.Web.BroadcastEditor do
   # authoritative here, defaulting to [] rather than merging with the old
   # value. Not the selected source at all (fieldset unrendered) means no
   # roles, same "drop the stale field" reasoning as resolve_crm_list_uuid/3.
+  #
+  # Only well-formed uuids: a crafted value would be saved, then raise in every
+  # query that reads it, on every page that shows this broadcast.
   defp resolve_role_uuids("user_group", params) do
-    params |> Map.get("role_uuids", []) |> List.wrap()
+    params
+    |> Map.get("role_uuids", [])
+    |> List.wrap()
+    |> Enum.filter(&match?({:ok, _}, Ecto.UUID.cast(&1)))
   end
 
   defp resolve_role_uuids(_source_type, _params), do: []
@@ -532,29 +576,7 @@ defmodule PhoenixKit.Newsletters.Web.BroadcastEditor do
   defp save_broadcast(socket, status, extra_attrs \\ %{}) do
     socket = assign(socket, :saving, true)
 
-    attrs =
-      Map.merge(
-        %{
-          subject: socket.assigns.subject,
-          source_type: socket.assigns.source_type,
-          crm_list_uuid: socket.assigns.crm_list_uuid,
-          source_params: role_group_source_params(socket.assigns),
-          template_uuid:
-            if(socket.assigns.template_uuid == "", do: nil, else: socket.assigns.template_uuid),
-          markdown_body: socket.assigns.markdown_content,
-          attachments: socket.assigns.attachments,
-          status: status
-        },
-        extra_attrs
-      )
-
-    result =
-      case socket.assigns.broadcast do
-        nil -> Newsletters.create_broadcast(attrs)
-        broadcast -> Newsletters.update_broadcast(broadcast, attrs)
-      end
-
-    case result do
+    case persist(socket, Map.merge(broadcast_attrs(socket, status), extra_attrs)) do
       {:ok, broadcast} ->
         {:noreply,
          socket
@@ -566,21 +588,36 @@ defmodule PhoenixKit.Newsletters.Web.BroadcastEditor do
          )
          |> push_navigate(to: Routes.path("/admin/newsletters/broadcasts"))}
 
-      {:error, changeset} ->
-        {:noreply,
-         socket
-         |> assign(:saving, false)
-         |> put_flash(:error, validation_error(changeset))}
+      {:error, reason} ->
+        {:noreply, save_refused(socket, reason)}
+    end
+  end
+
+  defp broadcast_attrs(socket, status) do
+    %{
+      subject: socket.assigns.subject,
+      source_type: socket.assigns.source_type,
+      crm_list_uuid: socket.assigns.crm_list_uuid,
+      source_params: role_group_source_params(socket.assigns),
+      template_uuid:
+        if(socket.assigns.template_uuid == "", do: nil, else: socket.assigns.template_uuid),
+      markdown_body: socket.assigns.markdown_content,
+      attachments: socket.assigns.attachments,
+      status: status
+    }
+  end
+
+  # An existing broadcast is written only while the database still has it as a
+  # draft; this form's copy is as old as the tab.
+  defp persist(socket, attrs) do
+    case socket.assigns.broadcast do
+      nil -> Newsletters.create_broadcast(attrs)
+      broadcast -> Newsletters.update_draft(broadcast, attrs)
     end
   end
 
   defp validation_error(changeset) do
-    errors =
-      changeset
-      |> Ecto.Changeset.traverse_errors(fn {msg, _opts} -> msg end)
-      |> Enum.map_join(", ", fn {field, msgs} -> "#{field}: #{Enum.join(msgs, ", ")}" end)
-
-    gettext("Validation failed: %{errors}", errors: errors)
+    gettext("Validation failed: %{errors}", errors: FormErrors.summary(changeset))
   end
 
   # Snapshots the CURRENTLY-live name of each selected role uuid alongside
@@ -628,38 +665,20 @@ defmodule PhoenixKit.Newsletters.Web.BroadcastEditor do
   # but fails closed rather than crashing if it ever isn't.
   defp recipient_source_missing?(_assigns), do: true
 
-  defp save_broadcast_and_return(socket) do
-    attrs = %{
-      subject: socket.assigns.subject,
-      source_type: socket.assigns.source_type,
-      crm_list_uuid: socket.assigns.crm_list_uuid,
-      source_params: role_group_source_params(socket.assigns),
-      template_uuid:
-        if(socket.assigns.template_uuid == "", do: nil, else: socket.assigns.template_uuid),
-      markdown_body: socket.assigns.markdown_content,
-      attachments: socket.assigns.attachments,
-      status: "draft"
-    }
-
-    case socket.assigns.broadcast do
-      nil -> Newsletters.create_broadcast(attrs)
-      broadcast -> Newsletters.update_broadcast(broadcast, attrs)
-    end
-  end
-
   # The email as a reader of `locale` gets it — the same Render a send
-  # uses — with the recipient's own placeholders ({{name}},
-  # {{unsubscribe_url}}) left visible, since there is no recipient yet.
+  # uses, with the site's variables — and with the recipient's own placeholders
+  # ({{name}}, {{unsubscribe_url}}) left visible, since there is no recipient yet.
   # Empty until there is a body, so the "appears as you type" hint shows.
   @doc false
   def render_preview(markdown, template_uuid, templates, locale, subject) do
     if is_binary(markdown) and String.trim(markdown) != "" do
       layout = Enum.find(templates, &(&1.uuid == template_uuid))
-      subject = Render.subject(subject || "", layout, locale)
+      site = Render.site_variables()
+      subject = Render.subject(subject || "", layout, locale, site)
 
       markdown
       |> Content.render_markdown()
-      |> Render.html(layout, %{}, locale: locale, subject: subject)
+      |> Render.html(layout, site, locale: locale, subject: subject)
     else
       ""
     end

@@ -29,9 +29,12 @@ defmodule PhoenixKit.Newsletters.Workers.DeliveryWorkerTest do
   alias PhoenixKit.Newsletters.Broadcast
   alias PhoenixKit.Newsletters.Delivery
   alias PhoenixKit.Newsletters.Layouts
+  alias PhoenixKit.Newsletters.UserGroupSource
   alias PhoenixKit.Newsletters.Workers.DeliveryWorker
   alias PhoenixKit.Settings
   alias PhoenixKit.Users.Auth.User
+  alias PhoenixKit.Users.Role
+  alias PhoenixKit.Users.Roles
   alias PhoenixKitCRM.Contacts, as: CRMContacts
   alias PhoenixKitCRM.Lists, as: CRMLists
   alias PhoenixKitNewsletters.Test.Repo
@@ -62,18 +65,23 @@ defmodule PhoenixKit.Newsletters.Workers.DeliveryWorkerTest do
     user
   end
 
-  # Defaults to "sending", not the schema default "draft". Broadcaster's
-  # do_send/1 flips a broadcast to "sending" BEFORE it enqueues a single job,
-  # so "sending" is the only status a DeliveryWorker job has ever run under —
+  # Defaults to "sending", not the schema default "draft". Broadcaster commits
+  # the flip to "sending" together with the jobs, so "sending" is the only
+  # status a DeliveryWorker job has ever run under —
   # a "draft" broadcast with queued deliveries is not a state the system can
   # reach. Fixtures that built one were a fixture smell, and the worker's
   # allow-list guard now (correctly) refuses to send from it.
+  #
+  # A real role, held by every user create_delivery/2 is given: the worker asks
+  # the audience again just before sending, so a fixture recipient has to be one.
   defp create_broadcast(attrs) do
+    {:ok, role} = Roles.create_role(%{name: "Role #{System.unique_integer([:positive])}"})
+
     base = %{
       subject: "Hello",
       status: "sending",
       source_type: "user_group",
-      source_params: %{"role_uuids" => [Ecto.UUID.generate()], "role_names_snapshot" => []},
+      source_params: %{"role_uuids" => [role.uuid], "role_names_snapshot" => [role.name]},
       html_body: "<p>Body</p>",
       text_body: "Body"
     }
@@ -83,12 +91,53 @@ defmodule PhoenixKit.Newsletters.Workers.DeliveryWorkerTest do
   end
 
   defp create_delivery(broadcast, user) do
+    for role_uuid <- Broadcast.role_uuids(broadcast) do
+      {:ok, _assignment} = Roles.assign_role(user, Repo.get!(Role, role_uuid).name)
+    end
+
     {:ok, delivery} =
       %Delivery{}
       |> Delivery.changeset(%{broadcast_uuid: broadcast.uuid, user_uuid: user.uuid})
       |> Repo.insert()
 
     delivery
+  end
+
+  # A subscribed member of a real list, and a delivery to them: what the
+  # broadcaster inserts for a crm_list audience.
+  defp create_crm_delivery(broadcast_attrs \\ %{}) do
+    unique = System.unique_integer([:positive])
+    {:ok, crm_list} = CRMLists.create_list(%{name: "Audience #{unique}"})
+
+    {:ok, contact} =
+      CRMContacts.create_contact(%{name: "Member", email: "m#{unique}@example.com"})
+
+    {:ok, _member} = CRMLists.add_contact_to_list(contact, crm_list, source: "manual")
+
+    broadcast =
+      create_broadcast(
+        Map.merge(%{source_type: "crm_list", crm_list_uuid: crm_list.uuid}, broadcast_attrs)
+      )
+
+    {:ok, delivery} =
+      %Delivery{}
+      |> Delivery.changeset(%{
+        broadcast_uuid: broadcast.uuid,
+        crm_contact_uuid: contact.uuid,
+        recipient_email: contact.email
+      })
+      |> Repo.insert()
+
+    %{list: crm_list, contact: contact, broadcast: broadcast, delivery: delivery}
+  end
+
+  defp job_for(delivery, attrs \\ %{}) do
+    struct(
+      %Oban.Job{
+        args: %{"delivery_uuid" => delivery.uuid, "broadcast_uuid" => delivery.broadcast_uuid}
+      },
+      attrs
+    )
   end
 
   # A real, readable file: a local-provider bucket backed by a temp dir,
@@ -531,24 +580,12 @@ defmodule PhoenixKit.Newsletters.Workers.DeliveryWorkerTest do
       PhoenixKit.Settings.update_setting("from_name", "My Newsletter")
       PhoenixKit.Settings.update_setting("from_email", "news@example.com")
 
-      broadcast =
-        create_broadcast(%{subject: "CRM send", html_body: "<p>Hi</p>", text_body: "Hi"})
-
-      {:ok, delivery} =
-        %Delivery{}
-        |> Delivery.changeset(%{
-          broadcast_uuid: broadcast.uuid,
-          recipient_email: "crm-recipient@example.com"
-        })
-        |> Repo.insert()
+      %{broadcast: broadcast, contact: contact, delivery: delivery} =
+        create_crm_delivery(%{subject: "CRM send", html_body: "<p>Hi</p>", text_body: "Hi"})
 
       assert delivery.user_uuid == nil
 
-      job = %Oban.Job{
-        args: %{"delivery_uuid" => delivery.uuid, "broadcast_uuid" => broadcast.uuid}
-      }
-
-      assert :ok = DeliveryWorker.perform(job)
+      assert :ok = DeliveryWorker.perform(job_for(delivery))
 
       updated_delivery = Repo.get(Delivery, delivery.uuid)
       assert updated_delivery.status == "sent"
@@ -558,7 +595,7 @@ defmodule PhoenixKit.Newsletters.Workers.DeliveryWorkerTest do
 
       assert_email_sent(
         from: {"My Newsletter", "news@example.com"},
-        to: "crm-recipient@example.com",
+        to: contact.email,
         subject: "CRM send"
       )
     end
@@ -608,42 +645,6 @@ defmodule PhoenixKit.Newsletters.Workers.DeliveryWorkerTest do
   describe "{{preferences_url}} — unresolved cases leave the placeholder unsubstituted" do
     @describetag :requires_v158
     setup :set_swoosh_global
-
-    test "no matching CRM member: the literal placeholder survives, not an empty-string link" do
-      PhoenixKit.Settings.update_setting("from_name", "My Newsletter")
-      PhoenixKit.Settings.update_setting("from_email", "news@example.com")
-
-      broadcast =
-        create_broadcast(%{
-          subject: "CRM send, no matching member",
-          source_type: "crm_list",
-          crm_list_uuid: Ecto.UUID.generate(),
-          html_body: ~s(<p>Manage: <a href="{{preferences_url}}">preferences</a></p>),
-          text_body: "Manage: {{preferences_url}}"
-        })
-
-      {:ok, delivery} =
-        %Delivery{}
-        |> Delivery.changeset(%{
-          broadcast_uuid: broadcast.uuid,
-          recipient_email: "no-match@example.com"
-        })
-        |> Repo.insert()
-
-      job = %Oban.Job{
-        args: %{"delivery_uuid" => delivery.uuid, "broadcast_uuid" => broadcast.uuid}
-      }
-
-      assert :ok = DeliveryWorker.perform(job)
-
-      # NOTE: the last expression in this lambda must be an `assert` —
-      # assert_email_sent/1 asserts on the lambda's return value, and a
-      # bare `refute` does not reliably return a truthy value.
-      assert_email_sent(fn email ->
-        refute email.html_body =~ ~s(href="")
-        assert email.html_body =~ "{{preferences_url}}"
-      end)
-    end
 
     test "user_group recipient: same catch-all, same unsubstituted placeholder" do
       PhoenixKit.Settings.update_setting("from_name", "My Newsletter")
@@ -705,49 +706,23 @@ defmodule PhoenixKit.Newsletters.Workers.DeliveryWorkerTest do
     @describetag :requires_v158
     setup :set_swoosh_global
 
-    test "a crm_list send with no resolvable link adds no headers and doesn't crash; a user_group send is unaffected" do
+    test "a crm_list and a user_group send both carry the one-click headers" do
       PhoenixKit.Settings.update_setting("from_name", "My Newsletter")
       PhoenixKit.Settings.update_setting("from_email", "news@example.com")
 
-      # crm_list broadcast — recipient_email path. CRM isn't installed in
-      # this suite (see CRMSourceTest's moduledoc), so the personalized
-      # link can never resolve here; this proves that degrades safely
-      # (no crash, no header with an empty url) rather than the
-      # header-adding logic itself — that's maybe_put_list_unsubscribe_headers/3
-      # above, tested directly with a synthetic resolved url.
-      crm_broadcast =
-        create_broadcast(%{
-          subject: "CRM send",
-          source_type: "crm_list",
-          crm_list_uuid: Ecto.UUID.generate(),
-          html_body: "<p>Hi</p>",
-          text_body: "Hi"
-        })
+      %{contact: contact, delivery: crm_delivery} =
+        create_crm_delivery(%{subject: "CRM send", html_body: "<p>Hi</p>", text_body: "Hi"})
 
-      {:ok, crm_delivery} =
-        %Delivery{}
-        |> Delivery.changeset(%{
-          broadcast_uuid: crm_broadcast.uuid,
-          recipient_email: "crm-recipient@example.com"
-        })
-        |> Repo.insert()
-
-      assert :ok =
-               DeliveryWorker.perform(%Oban.Job{
-                 args: %{
-                   "delivery_uuid" => crm_delivery.uuid,
-                   "broadcast_uuid" => crm_broadcast.uuid
-                 }
-               })
+      assert :ok = DeliveryWorker.perform(job_for(crm_delivery))
 
       assert_email_sent(fn email ->
-        assert email.to == [{"", "crm-recipient@example.com"}]
-        assert Map.has_key?(email.headers, "List-Unsubscribe") == false
+        assert email.to == [{"", contact.email}]
+        assert email.headers["List-Unsubscribe"] =~ "/newsletters/unsubscribe/one-click?token="
       end)
 
       # user_group broadcast — a core User recipient always resolves a
       # personalized link, so this gets the same headers as the crm_list
-      # flavor above (once it actually has a resolvable link).
+      # flavor above.
       user = create_user()
       role_broadcast = create_broadcast(%{subject: "Role send", html_body: "<p>Hi</p>"})
       role_delivery = create_delivery(role_broadcast, user)
@@ -768,11 +743,451 @@ defmodule PhoenixKit.Newsletters.Workers.DeliveryWorkerTest do
     end
   end
 
+  describe "perform/1 — a recipient who stopped being sendable after enqueue" do
+    @describetag :requires_v158
+    setup :set_swoosh_global
+
+    # Nothing left, nothing counted, and the broadcast still finishes.
+    defp assert_blocked(delivery) do
+      assert {:cancel, _reason} = DeliveryWorker.perform(job_for(delivery))
+
+      assert_no_email_sent()
+      assert %Delivery{status: "blocked", message_id: nil} = Repo.get(Delivery, delivery.uuid)
+
+      assert %Broadcast{status: "sent", sent_count: 0, bounced_count: 0} =
+               Repo.get(Broadcast, delivery.broadcast_uuid)
+    end
+
+    defp role_delivery do
+      user = create_user()
+      broadcast = create_broadcast(%{})
+      {user, create_delivery(broadcast, user)}
+    end
+
+    test "a contact who opted out" do
+      %{contact: contact, delivery: delivery} = create_crm_delivery()
+      {:ok, _contact} = CRMLists.opt_out(contact)
+
+      assert_blocked(delivery)
+    end
+
+    test "a member removed from the list" do
+      %{contact: contact, list: list, delivery: delivery} = create_crm_delivery()
+      {:ok, _member} = CRMLists.remove_from_list(contact, list, [])
+
+      assert_blocked(delivery)
+    end
+
+    test "a contact trashed in the CRM" do
+      %{contact: contact, delivery: delivery} = create_crm_delivery()
+      {:ok, _contact} = CRMContacts.trash_contact(contact)
+
+      assert_blocked(delivery)
+    end
+
+    test "a contact deleted from the CRM" do
+      %{contact: contact, delivery: delivery} = create_crm_delivery()
+      {:ok, _contact} = CRMContacts.delete_contact(contact)
+
+      assert_blocked(delivery)
+    end
+
+    test "a list archived mid-send" do
+      %{list: list, delivery: delivery} = create_crm_delivery()
+      {:ok, _list} = CRMLists.archive_list(list)
+
+      assert_blocked(delivery)
+    end
+
+    test "an address the list has no member for" do
+      broadcast =
+        create_broadcast(%{source_type: "crm_list", crm_list_uuid: Ecto.UUID.generate()})
+
+      {:ok, delivery} =
+        %Delivery{}
+        |> Delivery.changeset(%{
+          broadcast_uuid: broadcast.uuid,
+          recipient_email: "no-match@example.com"
+        })
+        |> Repo.insert()
+
+      assert_blocked(delivery)
+    end
+
+    test "a user deactivated" do
+      {user, delivery} = role_delivery()
+      user |> Ecto.Changeset.change(is_active: false) |> Repo.update!()
+
+      assert_blocked(delivery)
+    end
+
+    test "a user who opted out" do
+      {user, delivery} = role_delivery()
+      {:ok, _user} = UserGroupSource.record_opt_out(user)
+
+      assert_blocked(delivery)
+    end
+
+    test "a user taken out of the audience's role" do
+      {user, delivery} = role_delivery()
+
+      [role_uuid] =
+        delivery.broadcast_uuid |> Newsletters.get_broadcast!() |> Broadcast.role_uuids()
+
+      {:ok, _removed} = Roles.remove_role(user, Repo.get!(Role, role_uuid).name)
+
+      assert_blocked(delivery)
+    end
+
+    test "only that recipient: the rest of the audience still goes out" do
+      user = create_user()
+      other = create_user()
+      broadcast = create_broadcast(%{})
+      stopped = create_delivery(broadcast, user)
+      kept = create_delivery(broadcast, other)
+      {:ok, _user} = UserGroupSource.record_opt_out(user)
+
+      assert {:cancel, _reason} = DeliveryWorker.perform(job_for(stopped))
+      assert :ok = DeliveryWorker.perform(job_for(kept))
+
+      assert_email_sent(to: other.email)
+      assert Repo.get(Delivery, stopped.uuid).status == "blocked"
+      assert %Broadcast{status: "sent", sent_count: 1} = Repo.get(Broadcast, broadcast.uuid)
+    end
+  end
+
+  describe "perform/1 — a delivery that has already concluded is never sent again" do
+    @describetag :requires_v158
+    setup :set_swoosh_global
+
+    for status <- ~w(sent delivered opened bounced failed blocked) do
+      test "#{status} stays #{status}, with no second mail" do
+        user = create_user()
+        broadcast = create_broadcast(%{})
+        delivery = create_delivery(broadcast, user)
+
+        {:ok, _delivery} = Newsletters.update_delivery_status(delivery, unquote(status))
+
+        assert :ok = DeliveryWorker.perform(job_for(delivery))
+
+        assert_no_email_sent()
+        assert Repo.get(Delivery, delivery.uuid).status == unquote(status)
+      end
+    end
+  end
+
+  describe "record_accepted/3 — what core answers once it has the message" do
+    @describetag :requires_v158
+
+    defp pending_pair do
+      broadcast = create_broadcast(%{})
+
+      {broadcast, create_delivery(broadcast, create_user()),
+       create_delivery(broadcast, create_user())}
+    end
+
+    test "suppressed mail reached nobody: blocked, uncounted, and the id is not stored" do
+      {broadcast, first, second} = pending_pair()
+      suppressed = %{id: "no-deliverable-recipients", suppressed: true}
+
+      assert :ok = DeliveryWorker.record_accepted(first, suppressed, broadcast.uuid)
+      assert :ok = DeliveryWorker.record_accepted(second, suppressed, broadcast.uuid)
+
+      for delivery <- [first, second] do
+        assert %Delivery{status: "blocked", message_id: nil, error: error} =
+                 Repo.get(Delivery, delivery.uuid)
+
+        assert error =~ "no-deliverable-recipients"
+      end
+
+      # Core's id is the same every time: this is what used to strand a broadcast.
+      assert %Broadcast{status: "sent", sent_count: 0} = Repo.get(Broadcast, broadcast.uuid)
+    end
+
+    test "an id another delivery holds costs the id, not the delivery" do
+      {broadcast, first, second} = pending_pair()
+
+      assert :ok = DeliveryWorker.record_accepted(first, %{id: "same-id"}, broadcast.uuid)
+      assert :ok = DeliveryWorker.record_accepted(second, %{id: "same-id"}, broadcast.uuid)
+
+      assert %Delivery{status: "sent", message_id: "same-id"} = Repo.get(Delivery, first.uuid)
+      assert %Delivery{status: "sent", message_id: nil} = Repo.get(Delivery, second.uuid)
+      assert %Broadcast{status: "sent", sent_count: 2} = Repo.get(Broadcast, broadcast.uuid)
+    end
+
+    test "a write that raises does not fail the job, because a retry would send again" do
+      {broadcast, first, _second} = pending_pair()
+      Repo.delete!(first)
+
+      assert :ok = DeliveryWorker.record_accepted(first, %{id: "gone"}, broadcast.uuid)
+    end
+  end
+
+  describe "perform/1 — a job that raises" do
+    @describetag :requires_v158
+    setup :set_swoosh_global
+
+    # A role uuid that cannot be cast raises in the recipient check, a real path
+    # for a crafted row, and it runs after everything else has been read.
+    defp doomed_delivery do
+      broadcast = create_broadcast(%{source_params: %{"role_uuids" => ["not-a-uuid"]}})
+
+      {:ok, delivery} =
+        %Delivery{}
+        |> Delivery.changeset(%{broadcast_uuid: broadcast.uuid, user_uuid: create_user().uuid})
+        |> Repo.insert()
+
+      delivery
+    end
+
+    test "on the last attempt the delivery ends failed and the broadcast finishes" do
+      delivery = doomed_delivery()
+
+      assert_raise Ecto.Query.CastError, fn ->
+        DeliveryWorker.perform(job_for(delivery, attempt: 3, max_attempts: 3))
+      end
+
+      assert %Delivery{status: "failed", error: error} = Repo.get(Delivery, delivery.uuid)
+      assert error =~ "CastError"
+
+      # A crash in this code is not the provider refusing the address.
+      assert %Broadcast{status: "sent", bounced_count: 0} =
+               Repo.get(Broadcast, delivery.broadcast_uuid)
+    end
+
+    test "before the last attempt the retry still owns the delivery" do
+      delivery = doomed_delivery()
+
+      assert_raise Ecto.Query.CastError, fn ->
+        DeliveryWorker.perform(job_for(delivery, attempt: 1, max_attempts: 3))
+      end
+
+      assert Repo.get(Delivery, delivery.uuid).status == "pending"
+      assert Repo.get(Broadcast, delivery.broadcast_uuid).status == "sending"
+    end
+  end
+
+  describe "backoff/1" do
+    test "gives a provider outage about half an hour to clear" do
+      assert DeliveryWorker.backoff(%Oban.Job{attempt: 1}) == 300
+      assert DeliveryWorker.backoff(%Oban.Job{attempt: 2}) == 1_800
+    end
+
+    test "never runs out of delays" do
+      assert DeliveryWorker.backoff(%Oban.Job{attempt: 9}) == 1_800
+    end
+  end
+
+  describe "error text" do
+    @describetag :requires_v158
+
+    test "an address quoted by the relay does not reach the delivery row" do
+      broadcast = create_broadcast(%{})
+      delivery = create_delivery(broadcast, create_user())
+
+      DeliveryWorker.handle_failure(
+        delivery.uuid,
+        broadcast.uuid,
+        {:smtp, "550 rejected <jane.doe@example.com>"},
+        true
+      )
+
+      error = Repo.get(Delivery, delivery.uuid).error
+      refute error =~ "jane.doe"
+      assert error =~ "j***@example.com"
+    end
+  end
+
+  describe "perform/1 — a managed organization" do
+    @describetag :requires_v158
+    setup :set_swoosh_global
+
+    test "gets its mail at its contact address, not its login" do
+      user =
+        create_user()
+        |> Ecto.Changeset.change(
+          email: "org-#{System.unique_integer([:positive])}@organization.invalid",
+          account_type: "organization",
+          managed_by_members: true,
+          contact_email: "office@example.com"
+        )
+        |> Repo.update!()
+
+      broadcast = create_broadcast(%{html_body: "<p>Hi {{email}}</p>"})
+      delivery = create_delivery(broadcast, user)
+
+      assert :ok = DeliveryWorker.perform(job_for(delivery))
+
+      assert_email_sent(fn email ->
+        assert email.to == [{"", "office@example.com"}]
+        assert email.html_body =~ "office@example.com"
+      end)
+    end
+
+    test "with no contact address it gets nothing, and the broadcast finishes" do
+      user =
+        create_user()
+        |> Ecto.Changeset.change(
+          email: "org-#{System.unique_integer([:positive])}@organization.invalid",
+          account_type: "organization",
+          managed_by_members: true
+        )
+        |> Repo.update!()
+
+      broadcast = create_broadcast(%{})
+      delivery = create_delivery(broadcast, user)
+
+      assert {:cancel, _reason} = DeliveryWorker.perform(job_for(delivery))
+      assert_no_email_sent()
+      assert Repo.get(Delivery, delivery.uuid).status == "blocked"
+      assert Repo.get(Broadcast, broadcast.uuid).status == "sent"
+    end
+  end
+
+  describe "perform/1 — the emails package's queue" do
+    @describetag :requires_v158
+    setup :set_swoosh_global
+
+    defmodule QueueingProvider do
+      @moduledoc false
+      alias PhoenixKit.Email.DefaultProvider
+
+      def maybe_enqueue(_email, _opts), do: {:queued, "queue-ref"}
+      defdelegate intercept_before_send(email, opts), to: DefaultProvider
+      defdelegate handle_after_send(email, result), to: DefaultProvider
+      defdelegate adapter_to_provider_name(adapter, default), to: DefaultProvider
+      defdelegate get_aws_region(), to: DefaultProvider
+      defdelegate get_aws_access_key(), to: DefaultProvider
+      defdelegate get_aws_secret_key(), to: DefaultProvider
+      defdelegate aws_configured?(), to: DefaultProvider
+    end
+
+    setup do
+      previous = Application.get_env(:phoenix_kit, :email_provider)
+      Application.put_env(:phoenix_kit, :email_provider, QueueingProvider)
+
+      on_exit(fn ->
+        if previous,
+          do: Application.put_env(:phoenix_kit, :email_provider, previous),
+          else: Application.delete_env(:phoenix_kit, :email_provider)
+      end)
+    end
+
+    test "is passed by: the mail leaves here, and no queue reference is stored as its id" do
+      user = create_user()
+      broadcast = create_broadcast(%{})
+      delivery = create_delivery(broadcast, user)
+
+      assert :ok = DeliveryWorker.perform(job_for(delivery))
+
+      assert_email_sent(to: user.email)
+      assert %Delivery{status: "sent", message_id: id} = Repo.get(Delivery, delivery.uuid)
+      refute id == "queue-ref"
+    end
+
+    # The path where queueing does real harm: the queue re-sends through the
+    # default integration, off the profile chosen for this broadcast. No relay
+    # listens here, so a send on this process fails, and only a queued one could
+    # come back as a success.
+    test "is passed by on a send profile too: the profile's own relay is what answers" do
+      integration_uuid = add_integration("smtp", "Dead relay")
+
+      {:ok, _connection} =
+        Integrations.save_setup(integration_uuid, %{
+          "host" => "127.0.0.1",
+          "port" => "1",
+          "username" => "relay-user",
+          "password" => "relay-password"
+        })
+
+      profile = create_send_profile(%{integration_uuid: integration_uuid})
+      broadcast = create_broadcast(%{send_profile_uuid: profile.uuid})
+      delivery = create_delivery(broadcast, create_user())
+
+      assert {:error, _reason} = DeliveryWorker.perform(job_for(delivery, attempt: 1))
+
+      assert %Delivery{status: "pending", message_id: nil} = Repo.get(Delivery, delivery.uuid)
+    end
+  end
+
+  describe "perform/1 — the site's variables" do
+    @describetag :requires_v158
+    setup :set_swoosh_global
+
+    defp delivered_with(broadcast_attrs) do
+      broadcast = create_broadcast(broadcast_attrs)
+      delivery = create_delivery(broadcast, create_user())
+
+      assert :ok = DeliveryWorker.perform(job_for(delivery))
+    end
+
+    test "reach a layout's subject pattern, so no literal tag goes in the Subject header" do
+      {:ok, layout} =
+        Layouts.create_layout(%{
+          "name" => "site_subject_#{System.unique_integer([:positive])}",
+          "html_body" => %{"en" => "<div>{{{content}}}</div>"},
+          "subject" => %{"en" => "{{subject}} | {{site_name}}"}
+        })
+
+      delivered_with(%{subject: "News", template_uuid: layout.uuid})
+
+      assert_email_sent(subject: "News | #{Settings.get_project_title()}")
+    end
+
+    test "reach a body sent without a layout, and the text part" do
+      delivered_with(%{html_body: "<p>From {{site_name}}</p>", text_body: "From {{site_name}}"})
+
+      site = Settings.get_project_title()
+
+      assert_email_sent(fn email ->
+        assert email.html_body =~ "<p>From #{site}</p>"
+        assert email.text_body == "From #{site}"
+      end)
+    end
+  end
+
+  describe "the finish check looks at its own broadcast" do
+    @describetag :requires_v158
+
+    test "another broadcast's pending delivery does not hold this one open" do
+      broadcast = create_broadcast(%{})
+      other = create_broadcast(%{})
+      delivery = create_delivery(broadcast, create_user())
+      _still_pending = create_delivery(other, create_user())
+
+      assert {:ok, _delivery} =
+               DeliveryWorker.update_delivery_result(delivery, "sent", %{}, broadcast.uuid, nil)
+
+      assert Repo.get(Broadcast, broadcast.uuid).status == "sent"
+      assert Repo.get(Broadcast, other.uuid).status == "sending"
+    end
+
+    test "its own pending delivery does" do
+      broadcast = create_broadcast(%{})
+      delivery = create_delivery(broadcast, create_user())
+      _still_pending = create_delivery(broadcast, create_user())
+
+      assert {:ok, _delivery} =
+               DeliveryWorker.update_delivery_result(delivery, "sent", %{}, broadcast.uuid, nil)
+
+      assert Repo.get(Broadcast, broadcast.uuid).status == "sending"
+    end
+  end
+
   describe "permanent_failure?/1 — blocked/unusable sends must not retry nor count as bounces" do
     test "blocklisted recipients and unusable integrations are permanent" do
       assert DeliveryWorker.permanent_failure?({:blocked, :blocklist})
       assert DeliveryWorker.permanent_failure?(:deleted)
       assert DeliveryWorker.permanent_failure?(:not_configured)
+      assert DeliveryWorker.permanent_failure?({:incomplete_credentials, ["host"]})
+      assert DeliveryWorker.permanent_failure?({:invalid_security, "tls9"})
+      assert DeliveryWorker.permanent_failure?({:invalid_verify_cert, "maybe"})
+      assert DeliveryWorker.permanent_failure?({:invalid_auth, "sometimes"})
+      assert DeliveryWorker.permanent_failure?({:invalid_timeout, "soon"})
+      assert DeliveryWorker.permanent_failure?(:invalid_ca_cert)
+      assert DeliveryWorker.permanent_failure?(:no_ca_store)
+      assert DeliveryWorker.permanent_failure?({:smtp_endpoint_refused, :blocked_port})
+      assert DeliveryWorker.permanent_failure?(:delivery_not_found)
       assert DeliveryWorker.permanent_failure?(:unsupported_provider)
       assert DeliveryWorker.permanent_failure?({:unsupported_provider, "nope"})
       assert DeliveryWorker.permanent_failure?({:invalid_smtp_port, "abc"})
@@ -916,13 +1331,13 @@ defmodule PhoenixKit.Newsletters.Workers.DeliveryWorkerTest do
       broadcast = create_broadcast(%{subject: "Recovers on retry", html_body: "<p>Hi</p>"})
       delivery = create_delivery(broadcast, user)
 
-      # Simulate attempt 1 having failed for an unrelated transient reason —
-      # same terminal-ness bookkeeping as a real Oban retry, just without
-      # actually forcing send_email/6 to fail (there's no seam for that on
-      # the legacy path's real Swoosh call besides no-recipient, which
+      # Simulate attempt 1 having failed for an unrelated transient reason: what
+      # handle_failure/4 leaves behind, a delivery still "pending" with the error
+      # on it, without actually forcing send_email/6 to fail (there's no seam for
+      # that on the legacy path's real Swoosh call besides no-recipient, which
       # would leave the delivery unsendable on the retry too).
       {:ok, delivery} =
-        Newsletters.update_delivery_status(delivery, "failed", %{error: "timeout"})
+        Newsletters.update_delivery_status(delivery, "pending", %{error: "timeout"})
 
       job = %Oban.Job{
         args: %{"delivery_uuid" => delivery.uuid, "broadcast_uuid" => broadcast.uuid},

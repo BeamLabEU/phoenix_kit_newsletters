@@ -196,7 +196,9 @@ defmodule PhoenixKit.Newsletters.EmailVerification do
   # a token character, so a long run of text cannot make the scan quadratic.
   @address ~r/(?<![^\s<>()\[\]"',;=])[^\s<>()\[\]"',;=@]+@[^\s<>()\[\]"',;=@]+/
 
-  defp mask_addresses(message), do: Regex.replace(@address, message, &mask/1)
+  @doc "`message` with every address in it masked, for a log line or a stored error."
+  @spec mask_addresses(String.t()) :: String.t()
+  def mask_addresses(message), do: Regex.replace(@address, message, &mask/1)
 
   defp mask(address) do
     case String.split(address, "@") do

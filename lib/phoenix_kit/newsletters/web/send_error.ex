@@ -10,6 +10,8 @@ defmodule PhoenixKit.Newsletters.Web.SendError do
 
   use Gettext, backend: PhoenixKit.Newsletters.Gettext
 
+  alias PhoenixKit.Newsletters.Web.FormErrors
+
   @doc """
   A localized message for a `Broadcaster.send/1` reason.
 
@@ -23,6 +25,12 @@ defmodule PhoenixKit.Newsletters.Web.SendError do
 
   def message({:invalid_status, status}) do
     gettext("Cannot send a broadcast with status %{status}.", status: status)
+  end
+
+  def message(:not_found), do: gettext("Broadcast not found")
+
+  def message(%Ecto.Changeset{} = changeset) do
+    gettext("Validation failed: %{errors}", errors: FormErrors.summary(changeset))
   end
 
   def message(reason) do

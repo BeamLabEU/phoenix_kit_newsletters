@@ -28,7 +28,10 @@ defmodule PhoenixKit.Newsletters.UserGroupSource do
   dedups by address instead because two distinct CRM contacts can
   legitimately share one mailbox, which two distinct core users cannot.
 
-  A user is sendable when active (`is_active`) and not opted out.
+  A user is sendable when active (`is_active`), reachable and not opted
+  out. Reachable means `delivery_address/1` finds an address: a managed
+  organization's mail goes to its `contact_email`, and an account's
+  reserved `.invalid` login address never receives any.
   Opt-out is checked two ways, since a role-sourced recipient may have
   no CRM contact at all: the user's own
   `custom_fields["newsletters_opted_out_at"]` (always checked — this is
@@ -38,10 +41,8 @@ defmodule PhoenixKit.Newsletters.UserGroupSource do
   (kept in sync with the contact-level opt-out CRM-list recipients
   already use, so opting out once covers both recipient sources for
   someone who happens to be both). `record_opt_out/1` writes both
-  applicable places — see its own doc. `no_email` is realistically
-  always 0 here — core `users.email` is `NOT NULL` — kept in
-  `preflight/1`'s result only for shape parity with
-  `CRMSource.preflight/1`.
+  applicable places — see its own doc. `no_email` counts the users
+  `delivery_address/1` finds nothing for.
   """
 
   import Ecto.Query
@@ -82,9 +83,49 @@ defmodule PhoenixKit.Newsletters.UserGroupSource do
 
     users
     |> Enum.filter(&sendable?(&1, contacts_by_user_uuid))
-    |> Enum.map(&%{user_uuid: &1.uuid, email: &1.email})
+    |> Enum.map(&%{user_uuid: &1.uuid, email: delivery_address(&1)})
     |> Enum.sort_by(& &1.email)
   end
+
+  @doc """
+  Whether the user is, right now, a sendable recipient of these roles — the
+  question `sendable_recipients/1` answers for everyone, asked for one user. The
+  worker asks it just before sending, because a throttled broadcast can run for
+  days after its audience was resolved.
+  """
+  @spec sendable_recipient?([String.t()], String.t()) :: boolean()
+  def sendable_recipient?(role_uuids, user_uuid) when is_list(role_uuids) do
+    role_uuids
+    |> users_query()
+    |> where([u], u.uuid == ^user_uuid)
+    |> RepoHelper.repo().all()
+    |> Enum.any?(fn user -> sendable?(user, batch_contacts_by_user_uuid([user])) end)
+  end
+
+  @doc """
+  The address a user's mail goes to, or `nil` when there is none to reach.
+
+  Core's `User.delivery_email/1` since 3.3, which reads a managed organization's
+  `contact_email`; before that, every account's own address. `.invalid` is
+  reserved (RFC 2606) and core gives such accounts one on purpose, so it counts
+  as no address on any core.
+  """
+  @spec delivery_address(User.t()) :: String.t() | nil
+  def delivery_address(%User{} = user) do
+    address =
+      if Code.ensure_loaded?(User) and function_exported?(User, :delivery_email, 1),
+        do: User.delivery_email(user),
+        else: user.email
+
+    if deliverable?(address), do: address
+  end
+
+  defp deliverable?(address) when is_binary(address) do
+    address = address |> String.trim() |> String.downcase()
+    address != "" and not String.ends_with?(address, ".invalid")
+  end
+
+  defp deliverable?(_address), do: false
 
   @doc """
   Preflight breakdown across one or more roles, for the broadcast
@@ -111,7 +152,7 @@ defmodule PhoenixKit.Newsletters.UserGroupSource do
     contacts_by_user_uuid = batch_contacts_by_user_uuid(users)
     total = length(users)
     sendable = Enum.count(users, &sendable?(&1, contacts_by_user_uuid))
-    no_email = Enum.count(users, &(&1.email in [nil, ""]))
+    no_email = Enum.count(users, &is_nil(delivery_address(&1)))
 
     %{
       total: total,
@@ -223,12 +264,15 @@ defmodule PhoenixKit.Newsletters.UserGroupSource do
   defp users_for_role_uuids([]), do: []
 
   defp users_for_role_uuids(role_uuids) do
+    role_uuids |> users_query() |> RepoHelper.repo().all()
+  end
+
+  defp users_query(role_uuids) do
     from(u in User,
       join: a in assoc(u, :role_assignments),
       where: a.role_uuid in ^role_uuids,
       distinct: u.uuid
     )
-    |> RepoHelper.repo().all()
   end
 
   defp existing_role_count([]), do: 0
@@ -240,10 +284,10 @@ defmodule PhoenixKit.Newsletters.UserGroupSource do
   end
 
   defp sendable?(%User{is_active: false}, _contacts_by_user_uuid), do: false
-  defp sendable?(%User{email: email}, _contacts_by_user_uuid) when email in [nil, ""], do: false
 
   defp sendable?(%User{} = user, contacts_by_user_uuid) do
-    not custom_field_opted_out?(user) and
+    not is_nil(delivery_address(user)) and
+      not custom_field_opted_out?(user) and
       not batch_contact_opted_out?(user, contacts_by_user_uuid)
   end
 

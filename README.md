@@ -48,13 +48,13 @@ PhoenixKit Newsletters auto-registers with PhoenixKit on startup — no addition
 3. Restart your server
 4. Enable the module in **Admin > Modules > Newsletters**
 
-This module owns and versions the future shape of its 2 tables
-(`phoenix_kit_newsletters_broadcasts`, `phoenix_kit_newsletters_deliveries`)
-through its own migration chain, `PhoenixKitNewsletters.Migrations`. Core's
-`V135` baseline still CREATEs both tables on every install — this chain's
-`V1` adopts that current shape (verbatim, including the five later core
-migrations that layered send profiles, CRM-sourced recipients and
-`attachments` on top) and stamps a version marker; it changes nothing else.
+This module owns its 3 tables (`phoenix_kit_newsletters_broadcasts`,
+`phoenix_kit_newsletters_deliveries`, `phoenix_kit_newsletters_layouts`) through
+its own migration chain, `PhoenixKitNewsletters.Migrations`, and builds them on a
+fresh install. On a host where core's older migrations already created the first
+two, `V1` adopts that shape (verbatim, including the later core migrations that
+layered send profiles, CRM-sourced recipients and `attachments` on top) and stamps
+a version marker; it changes nothing else. `V2` adds the layouts table.
 A host that once renamed these tables from their earlier `mailing` name and kept
 the old primary key, foreign key and index names gets them renamed to the current
 ones by `V3` (nothing is created or dropped), so `mix phoenix_kit.repair` finds
@@ -67,7 +67,7 @@ same way it drives core's own.
 | Dependency | Version |
 |---|---|
 | Elixir | `~> 1.18` |
-| PhoenixKit | `~> 2.52` |
+| PhoenixKit | `>= 2.65.0 and < 4.0.0` |
 | Phoenix LiveView | `~> 1.1` |
 | Oban | `~> 2.20` |
 | MDEx | `~> 0.13` |
@@ -94,13 +94,19 @@ from the schema by core's `V156`.
 
 `Broadcaster` orchestrates sending:
 
-1. Validates the source (a `crm_list` broadcast's list must be `active`), renders Markdown to HTML, flips the broadcast to `sending`
-2. Resolves recipients once (deduplicated, opted-out/inactive excluded)
-3. Inserts `Delivery` records in batches of 500 via `insert_all`, inside one transaction
-4. Enqueues one `DeliveryWorker` Oban job per delivery, paced by the send profile's rate limits
+1. Validates the source (a `crm_list` broadcast's list must be `active`)
+2. Resolves recipients once (deduplicated; opted-out, inactive and trashed excluded)
+3. In one transaction, checks the status on the locked row, renders Markdown to HTML, flips the broadcast to `sending`, inserts `Delivery` records in batches of 500 via `insert_all`, and enqueues one `DeliveryWorker` Oban job per delivery, paced by the send profile's rate limits. A failure part way leaves the broadcast as it was.
 
-`DeliveryWorker` sends individual emails and tracks delivery status. Each email is
-rendered in the recipient's language (`RecipientLanguage`: a user's preferred locale; a
+`DeliveryWorker` sends individual emails and tracks delivery status. A throttled send can
+run for days, so just before each email it asks the audience again: a recipient who has
+since opted out, left the list or role, or been deactivated or trashed is recorded as
+`blocked` and gets nothing. A failed attempt is retried after 5, then 30 minutes.
+
+A broadcast can be cancelled while it is `scheduled` or `sending`, and only a draft can be
+edited.
+
+Each email is rendered in the recipient's language (`RecipientLanguage`: a user's preferred locale; a
 CRM contact's `locale`, else the list's; else the site's content language):
 
 - **With a layout**, the layout's HTML in that language (falling back to the base language,
@@ -113,7 +119,10 @@ CRM contact's `locale`, else the list's; else the site's content language):
   `newsletters` group, so a host's `_layout-newsletters` / `_header-newsletters` /
   `_footer-newsletters` template files (or the shared `_layout`/`_header`/`_footer`) apply.
 - A layout's subject, when it contains `{{subject}}`, is a pattern around the broadcast's
-  subject. The text part is never wrapped.
+  subject. The text part is never wrapped, and keeps each link's address after its text.
+- `{{logo_url}}`, `{{accent_color}}`, `{{site_name}}` and `{{site_url}}` also work in a subject
+  pattern, in a body without a layout, and in the text part. Placeholders work in Markdown
+  links too: `[Unsubscribe]({{unsubscribe_url}})`.
 
 Layouts are managed under **Newsletters → Layouts** in the admin. Rows created before
 this table existed (operator-authored email templates, plus any system email a broadcast or
@@ -216,6 +225,11 @@ The `UnsubscribeController` verifies the token and performs the requested
 action; only `POST` handlers ever mutate state — a mail client's automatic
 link-scanning `GET` never unsubscribes anyone.
 
+These pages answer in the language of the email the link came from: the contact's
+language, then the list's, then the site's, or a role recipient's preferred
+language. A token visitor to the preference center sees it in the contact's own
+language when the contact has one.
+
 ## Removing this module
 
 There is deliberately **no automated uninstall**.
@@ -234,11 +248,11 @@ operator step, in FK-safe order (children before parents):
 -- belongs to core, not this module.
 DROP TABLE phoenix_kit_newsletters_deliveries;
 DROP TABLE phoenix_kit_newsletters_broadcasts;
+DROP TABLE phoenix_kit_newsletters_layouts;
 ```
 
-Dropping `phoenix_kit_newsletters_broadcasts` last also removes the
-`pknl_schema:<N>` version marker, which is a `COMMENT` on that table — no
-separate step is needed.
+Dropping `phoenix_kit_newsletters_broadcasts` also removes the `pknl_schema:<N>`
+version marker, which is a `COMMENT` on that table — no separate step is needed.
 
 If you want to keep the tables (e.g. you plan to reinstall the module
 later) but stop this chain from tracking them, clear the version marker

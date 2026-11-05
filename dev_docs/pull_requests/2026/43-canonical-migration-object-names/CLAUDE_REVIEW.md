@@ -36,24 +36,45 @@ anything further.
 
 ## Findings
 
-No defects beyond the ones Codex found.
+One defect beyond the ones Codex found.
 
-### IMPROVEMENT - MEDIUM — V3 and the delivery worker lock in opposite orders — NOT FIXED
+### BUG - MEDIUM — V3 and the delivery worker locked in opposite orders — FIXED
 
-V3 renames the broadcasts primary key first and the deliveries one second, taking
-ACCESS EXCLUSIVE in that order. `update_delivery_result/5` writes the delivery
-first and then bumps the broadcast's counter, in one transaction. On a renamed
-host, during a send, each can hold what the other wants, and Postgres aborts one.
+V3 took ACCESS EXCLUSIVE on broadcasts first and deliveries second.
+`update_delivery_result/5` writes the delivery first and bumps the broadcast's
+counter second, in one transaction. On a renamed host during a send, each could
+hold what the other wanted. When the worker is the one Postgres aborts, the status
+write rolls back after the provider accepted the mail, the delivery stays
+`pending`, and the retry sends it again.
 
-If the migration loses, it fails with nothing changed and can be rerun. If the
-worker loses, the status write rolls back after the provider accepted the mail, so
-the delivery stays `pending` and the retry can send it again.
+First filed as unreproduced and left to the quiet-window note. It has since been
+reproduced with the real emitted V3 SQL against a session running the worker's
+statements, on legacy-named tables:
 
-This comes from reading the two code paths; it has not been reproduced. It needs a
-host that actually has names to rename (otherwise V3 takes no such lock) and a
-broadcast sending at that moment, which the moduledoc and README already say to
-avoid ("update in a quiet window"). So it was left as documented.
+| Order | Runs | Result |
+|---|---|---|
+| Broadcasts first (as merged) | 3 of 3 | `deadlock detected`; the **worker** was aborted, the delivery stayed `pending` |
+| Deliveries first (fixed) | 3 of 3 | Both committed; `sent`, counter 1, all six keys renamed |
 
-If that note is not enough, renaming the deliveries objects first would match the
-worker's order and should remove this cycle (untested). That means changing the
-statement order and its pin, which is cheap only until V3 ships.
+The worker lost every time, because it was the last to start waiting and so the
+one whose deadlock check found the cycle.
+
+V3 now renames every deliveries key before any broadcasts key. Swapping only the
+primary keys would not do: each rename is conditional, so a host with a canonical
+deliveries primary key but legacy foreign keys would still lock broadcasts first.
+`migrations_test.exs` states the invariant as well as pinning the list, and the
+moduledoc and AGENTS.md record the reason. V3 had not shipped, so reordering it
+changes no host.
+
+Remaining, and documented in the moduledoc: a host crossing V2 in the same
+migration has already locked broadcasts, because V2 re-points its foreign key, so
+this order only helps from V2 onwards. The quiet-window advice stays for that
+case. `repair_stuck_sending_broadcasts/0` locks broadcasts first too, but it is a
+single read-mostly statement whose failure costs one retried tick, not a duplicate.
+
+## Validation
+
+- Migration tests with real DDL: 75 tests, 0 failures, nothing excluded.
+- Reversing `@v3_key_order` fails both the pin and the invariant test.
+- `mix precommit`: passed. `mix test`: 741 tests, 0 failures, integration tests
+  included, on a clean scratch database, with this and the unsubscribe work together.
