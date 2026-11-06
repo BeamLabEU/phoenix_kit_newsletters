@@ -16,18 +16,20 @@ defmodule PhoenixKit.Newsletters.PreferenceToken do
   — the two capability classes stay non-interchangeable even though both
   ultimately key off the same `contact_uuid`.
 
-  Same `max_age` as the existing unsubscribe token (7 days) — this link
-  rides in the same broadcast emails.
+  Limited to 30 days, unlike the unsubscribe token, which has no expiry: this
+  one can also resubscribe someone. A layout's only opt-out may be this link, and
+  30 days is how long an opt-out has to keep working after a mail is sent.
   """
 
+  alias PhoenixKit.Newsletters.UnsubscribeToken
+
   @salt "newsletters_preferences"
-  @max_age 604_800
+  @max_age 2_592_000
 
   @doc "Signs a `contact_uuid` into a preference-center access token."
   @spec sign(String.t()) :: String.t()
   def sign(contact_uuid) when is_binary(contact_uuid) do
-    endpoint = PhoenixKit.Config.get(:endpoint, PhoenixKitWeb.Endpoint)
-    Phoenix.Token.sign(endpoint, @salt, %{contact_uuid: contact_uuid})
+    Phoenix.Token.sign(UnsubscribeToken.endpoint(), @salt, %{contact_uuid: contact_uuid})
   end
 
   @doc """
@@ -38,9 +40,7 @@ defmodule PhoenixKit.Newsletters.PreferenceToken do
   """
   @spec verify(String.t()) :: {:ok, String.t()} | {:error, :invalid}
   def verify(token) when is_binary(token) do
-    endpoint = PhoenixKit.Config.get(:endpoint, PhoenixKitWeb.Endpoint)
-
-    case Phoenix.Token.verify(endpoint, @salt, token, max_age: @max_age) do
+    case Phoenix.Token.verify(UnsubscribeToken.endpoint(), @salt, token, max_age: @max_age) do
       {:ok, %{contact_uuid: contact_uuid}} -> {:ok, contact_uuid}
       _ -> {:error, :invalid}
     end

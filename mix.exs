@@ -71,7 +71,7 @@ defmodule PhoenixKitNewsletters.MixProject do
       # `PhoenixKit.Templates.Substitution` is called directly (the one
       # substitution pass a broadcast gets), so it is declared rather than
       # reached through core.
-      {:phoenix_kit_templates, "~> 0.2.2"},
+      {:phoenix_kit_templates, "~> 0.2.4"},
       {:phoenix_live_view, "~> 1.1"},
       {:gettext, "~> 1.0"},
       {:oban, "~> 2.20"},
@@ -96,7 +96,7 @@ defmodule PhoenixKitNewsletters.MixProject do
       # test suite can build real fixtures instead of only covering the
       # "CRM not installed" degrade path. The contact-lists feature
       # (Lists/ContactList/ListMember) shipped upstream in 0.3.0.
-      {:phoenix_kit_crm, "~> 0.18", only: :test}
+      {:phoenix_kit_crm, "~> 0.19", only: :test}
     ]
   end
 

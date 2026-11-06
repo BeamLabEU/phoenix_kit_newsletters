@@ -250,12 +250,12 @@ defmodule PhoenixKit.Newsletters.Web.RoleOptoutUnsubscribeTest do
     end
   end
 
-  describe "cross-flavor rejection — verify_token/1's salt tag is load-bearing" do
+  describe "cross-flavor rejection — UnsubscribeToken's salt tag is load-bearing" do
     test "a flavor-A (newsletters_list) token is rejected by scope=role_optout, not treated as a role opt-out" do
       user = create_user()
       # A real list to reference no longer exists at all (core V156
       # dropped the tables) — the token only needs the CLAIM SHAPE a
-      # genuine pre-removal flavor-A token had; verify_token/1 doesn't
+      # genuine pre-removal flavor-A token had; verify/1 doesn't
       # look the list up to accept the "unsubscribe" salt.
       token = sign_list_flavor_token(user.uuid, Ecto.UUID.generate())
 
@@ -266,7 +266,7 @@ defmodule PhoenixKit.Newsletters.Web.RoleOptoutUnsubscribeTest do
           "scope" => "role_optout"
         })
 
-      assert conn.status == 302
+      assert conn.resp_body =~ "no longer valid"
 
       reloaded = Repo.get(User, user.uuid)
       refute UserGroupSource.opted_out?(reloaded)
@@ -280,7 +280,7 @@ defmodule PhoenixKit.Newsletters.Web.RoleOptoutUnsubscribeTest do
         build_conn(:post, "/newsletters/unsubscribe")
         |> UnsubscribeController.process_unsubscribe(%{"token" => token, "scope" => "all"})
 
-      assert conn.status == 302
+      assert conn.resp_body =~ "no longer valid"
 
       # Not opted out via the role-optout path — scope=all's only
       # remaining clause requires a contact_uuid claim, which this

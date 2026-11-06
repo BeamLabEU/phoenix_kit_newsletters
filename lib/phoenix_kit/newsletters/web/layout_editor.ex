@@ -21,7 +21,6 @@ defmodule PhoenixKit.Newsletters.Web.LayoutEditor do
   use Gettext, backend: PhoenixKit.Newsletters.Gettext
 
   import PhoenixKitWeb.Components.Core.Icon
-  import PhoenixKitWeb.Components.Core.PkLink
 
   alias PhoenixKit.Newsletters
   alias PhoenixKit.Newsletters.Layout
@@ -175,7 +174,12 @@ defmodule PhoenixKit.Newsletters.Web.LayoutEditor do
   # field, by the key a tab stores its language under, not by the tab's own
   # code. A field the tab has no key for is not rendered editable and writes
   # nothing.
+  #
+  # The form says which tab its fields belong to. After a reconnect the page opens
+  # on its first tab and form recovery replays the tab that was open, whose text
+  # would otherwise land on the wrong language and be saved there.
   defp apply_params(socket, params) do
+    socket = select_submitted_tab(socket, params["editor_language"])
     keys = socket.assigns.editor_keys
     fields = params["fields"] || %{}
 
@@ -193,6 +197,12 @@ defmodule PhoenixKit.Newsletters.Web.LayoutEditor do
     |> assign(:name, params["name"] || socket.assigns.name)
     |> assign(:translations, translations)
     |> assign_suggested_name()
+  end
+
+  defp select_submitted_tab(socket, language) do
+    if language in socket.assigns.languages and language != socket.assigns.editor_locale,
+      do: select_tab(socket, language),
+      else: socket
   end
 
   defp assign_tabs(socket, tabs, translations) do
@@ -321,7 +331,7 @@ defmodule PhoenixKit.Newsletters.Web.LayoutEditor do
     <table role="presentation" width="600" cellpadding="0" cellspacing="0" border="0" style="width:100%;max-width:600px;background-color:#ffffff;border-top:3px solid {{accent_color}};">
     <tr><td style="padding:20px 32px;font-family:Helvetica,Arial,sans-serif;font-size:18px;font-weight:bold;">{{{header}}}</td></tr>
     <tr><td style="padding:24px 32px;font-family:Helvetica,Arial,sans-serif;font-size:15px;line-height:1.6;">{{{content}}}</td></tr>
-    <tr><td style="padding:16px 32px;font-family:Helvetica,Arial,sans-serif;font-size:12px;color:#71717a;">{{{footer}}}<br><a href="{{unsubscribe_url}}" style="color:#71717a;">Unsubscribe</a></td></tr>
+    <tr><td style="padding:16px 32px;font-family:Helvetica,Arial,sans-serif;font-size:12px;color:#71717a;">{{{footer}}}<br><a href="{{unsubscribe_url}}" style="color:#71717a;">#{gettext("Unsubscribe")}</a></td></tr>
     </table>
     </td></tr>
     </table>

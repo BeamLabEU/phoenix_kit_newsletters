@@ -9,7 +9,6 @@ defmodule PhoenixKit.Newsletters.Web.LayoutsIndex do
 
   import PhoenixKitWeb.Components.Core.EmptyState
   import PhoenixKitWeb.Components.Core.Icon
-  import PhoenixKitWeb.Components.Core.PkLink
 
   alias PhoenixKit.Newsletters
   alias PhoenixKit.Newsletters.Layout

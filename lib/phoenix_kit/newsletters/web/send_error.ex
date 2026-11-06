@@ -12,6 +12,7 @@ defmodule PhoenixKit.Newsletters.Web.SendError do
   use Gettext, backend: PhoenixKit.Newsletters.Gettext
 
   alias PhoenixKit.Newsletters.Web.FormErrors
+  alias PhoenixKit.Newsletters.Web.StatusLabel
 
   @doc """
   A localized message for a `Broadcaster.send/1` or `resend_failed/1` reason.
@@ -21,12 +22,20 @@ defmodule PhoenixKit.Newsletters.Web.SendError do
   """
   @spec message(term()) :: String.t()
   def message({:crm_list_not_active, status}) do
-    gettext("Cannot send: the CRM list is %{status}, not active.", status: status)
+    gettext("Cannot send: the CRM list is %{status}, not active.", status: list_status(status))
   end
 
   def message({:invalid_status, status}) do
-    gettext("Cannot send a broadcast with status %{status}.", status: status)
+    gettext("Cannot send a broadcast with status %{status}.",
+      status: StatusLabel.broadcast(status)
+    )
   end
+
+  def message(:no_recipients) do
+    gettext("Nobody in this audience can receive it right now, so nothing was sent.")
+  end
+
+  def message(:blank_body), do: gettext("Write the email body before sending.")
 
   def message(:not_found), do: gettext("Broadcast not found")
 
@@ -39,4 +48,7 @@ defmodule PhoenixKit.Newsletters.Web.SendError do
   def message(reason) do
     gettext("Failed to send: %{reason}", reason: inspect(reason))
   end
+
+  defp list_status("archived"), do: gettext("archived")
+  defp list_status(other), do: other
 end

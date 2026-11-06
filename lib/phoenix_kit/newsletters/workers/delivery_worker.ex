@@ -45,13 +45,14 @@ defmodule PhoenixKit.Newsletters.Workers.DeliveryWorker do
   alias PhoenixKit.Newsletters.Delivery
   alias PhoenixKit.Newsletters.EmailVerification
   alias PhoenixKit.Newsletters.Layout
+  alias PhoenixKit.Newsletters.Paths
   alias PhoenixKit.Newsletters.PreferenceToken
   alias PhoenixKit.Newsletters.RecipientLanguage
   alias PhoenixKit.Newsletters.Render
+  alias PhoenixKit.Newsletters.UnsubscribeToken
   alias PhoenixKit.Newsletters.UserGroupSource
   alias PhoenixKit.Users.Auth.User
   alias PhoenixKit.Utils.Date, as: UtilsDate
-  alias PhoenixKit.Utils.Routes
 
   # Seconds before the second and third attempts. Oban's default backoff puts
   # about 36 seconds between the first attempt and the last, so a short provider
@@ -110,7 +111,7 @@ defmodule PhoenixKit.Newsletters.Workers.DeliveryWorker do
          # can stop the sends it was meant to stop.
          {:ok, broadcast} <- get_broadcast(broadcast_uuid),
          {:ok, broadcast} <- guard_broadcast_sendable(broadcast),
-         {:ok, recipient} <- get_recipient(delivery),
+         {:ok, recipient} <- get_recipient(delivery, broadcast),
          {unsubscribe_url, list_unsubscribe_url} = build_unsubscribe_url(recipient, broadcast),
          preferences_url = build_preferences_url(recipient, broadcast),
          {:ok, subject, html_body, text_body} <-
@@ -293,8 +294,11 @@ defmodule PhoenixKit.Newsletters.Workers.DeliveryWorker do
   # which nothing in a database can retract. Same error shape as the first
   # guard, so the skip clause in perform/1 handles both.
   defp recheck_broadcast_sendable(broadcast_uuid) do
-    with {:ok, broadcast} <- get_broadcast(broadcast_uuid) do
-      guard_broadcast_sendable(broadcast)
+    query = from(b in Broadcast, where: b.uuid == ^broadcast_uuid, select: [:uuid, :status])
+
+    case repo().one(query) do
+      nil -> {:error, :broadcast_not_found}
+      broadcast -> guard_broadcast_sendable(broadcast)
     end
   end
 
@@ -406,16 +410,36 @@ defmodule PhoenixKit.Newsletters.Workers.DeliveryWorker do
   # most CRM contacts). Both shapes answer `.email`/`.username`/`.uuid`,
   # so render_email/2 and send_email/4 below don't need to know which
   # kind they got.
-  defp get_recipient(%Delivery{user_uuid: user_uuid})
+  defp get_recipient(%Delivery{user_uuid: user_uuid}, _broadcast)
        when is_binary(user_uuid) and user_uuid != "" do
     get_user(user_uuid)
   end
 
-  defp get_recipient(%Delivery{recipient_email: email}) when is_binary(email) and email != "" do
-    {:ok, %{uuid: nil, username: nil, email: email}}
+  defp get_recipient(%Delivery{recipient_email: email}, broadcast)
+       when is_binary(email) and email != "" do
+    {:ok, crm_recipient(email, broadcast)}
   end
 
-  defp get_recipient(%Delivery{}), do: {:error, {:blocked, :recipient_gone}}
+  defp get_recipient(%Delivery{}, _broadcast), do: {:error, {:blocked, :recipient_gone}}
+
+  # One lookup of the membership, for the links, the language and `{{name}}`, which
+  # this job needs once each and a large list needs per recipient. Resolved by the
+  # delivery's snapshotted email, so `contact_uuid` is the real member of THIS list
+  # receiving THIS email, not a directory-wide match on a same-email contact under
+  # the "always create new contact" import policy (§4.3). No membership any more
+  # means no links, and guard_recipient_sendable/2 stops the send anyway.
+  defp crm_recipient(email, broadcast) do
+    details = CRMSource.recipient_details(broadcast.crm_list_uuid, email)
+
+    %{
+      uuid: nil,
+      username: nil,
+      email: email,
+      contact_uuid: details[:contact_uuid],
+      name: details[:name],
+      language: details[:language]
+    }
+  end
 
   # Everything in the reader's language: the layout's translation, its
   # subject pattern and core's chrome (see Render's moduledoc). The text
@@ -430,7 +454,7 @@ defmodule PhoenixKit.Newsletters.Workers.DeliveryWorker do
     html =
       compose_html(broadcast.html_body || "", layout, variables, locale: locale, subject: subject)
 
-    text = Render.text(broadcast.text_body, variables)
+    text = Render.text(broadcast.text_body, Map.put(variables, "subject", subject))
 
     {:ok, subject, html, text}
   end
@@ -449,12 +473,15 @@ defmodule PhoenixKit.Newsletters.Workers.DeliveryWorker do
   defp build_variables(recipient, unsubscribe_url, preferences_url) do
     Render.site_variables()
     |> Map.merge(%{
-      "name" => recipient.username || recipient.email,
+      "name" => recipient_name(recipient),
       "email" => recipient.email,
       "unsubscribe_url" => unsubscribe_url
     })
     |> maybe_put_preferences_url(preferences_url)
   end
+
+  defp recipient_name(%User{} = user), do: User.display_name(user)
+  defp recipient_name(%{name: name, email: email}), do: name || email
 
   # An unresolved preferences_url ("" — legacy recipient, or no CRM match
   # left by send time) must NOT substitute to an empty string: dropped
@@ -466,86 +493,42 @@ defmodule PhoenixKit.Newsletters.Workers.DeliveryWorker do
   defp maybe_put_preferences_url(variables, ""), do: variables
   defp maybe_put_preferences_url(variables, url), do: Map.put(variables, "preferences_url", url)
 
-  # user_group recipient: a real core User, no CRM contact required. The
-  # token carries only `user_uuid`, signed under its own salt (not
-  # "unsubscribe" — deliberate: UnsubscribeController.verify_token/1
-  # tags a match under this salt distinctly from the "unsubscribe" salt's
-  # matches, so this claim shape can never be mistaken for the crm_list
-  # flavor's `%{contact_uuid:, crm_list_uuid:}` token regardless of
-  # clause order). UserGroupSource.record_opt_out/1 is what actually
-  # reads this token's claim on the receiving end.
+  # user_group recipient: a real core User, no CRM contact required. Its token
+  # carries only `user_uuid`, under a salt of its own (see UnsubscribeToken), so
+  # this claim can never be mistaken for the crm_list flavor's.
   defp build_unsubscribe_url(%{uuid: uuid}, %Broadcast{source_type: "user_group"})
        when is_binary(uuid) do
-    token = sign_user_optout_token(%{user_uuid: uuid})
-    {unsubscribe_page_url(token), one_click_unsubscribe_url(token)}
+    unsubscribe_urls(UnsubscribeToken.sign_role(uuid))
   end
 
   # crm_list recipient: no core User exists, so the token carries
-  # contact_uuid/crm_list_uuid instead — resolved by looking the
-  # delivery's snapshotted email back up in the CRM list (the same
-  # lookup Broadcaster's resolver already relies on being unique per
-  # list). No match (contact/list gone since send time) means no
-  # personalized link rather than a broken one. Two URLs share the same
-  # signed token: the interactive landing page (email body link, behind
-  # the host's normal CSRF-protected :browser pipeline) and the
-  # dedicated one-click endpoint (List-Unsubscribe headers, CSRF-exempt
-  # by design — see Web.Routes) — they must differ because a mail
-  # client's cold POST can never carry a CSRF token.
-  defp build_unsubscribe_url(%{uuid: nil, email: email}, %{crm_list_uuid: crm_list_uuid})
-       when is_binary(crm_list_uuid) do
-    case CRMSource.get_member_by_email(crm_list_uuid, email) do
-      %{contact_uuid: contact_uuid} ->
-        token =
-          sign_unsubscribe_token(%{contact_uuid: contact_uuid, crm_list_uuid: crm_list_uuid})
-
-        {unsubscribe_page_url(token), one_click_unsubscribe_url(token)}
-
-      nil ->
-        {"", nil}
-    end
+  # contact_uuid/crm_list_uuid instead. No member (contact/list gone since send
+  # time) means no personalized link rather than a broken one.
+  defp build_unsubscribe_url(%{contact_uuid: contact_uuid}, %{crm_list_uuid: crm_list_uuid})
+       when is_binary(contact_uuid) and is_binary(crm_list_uuid) do
+    unsubscribe_urls(UnsubscribeToken.sign_list(contact_uuid, crm_list_uuid))
   end
 
   defp build_unsubscribe_url(_recipient, _broadcast), do: {"", nil}
 
-  defp sign_unsubscribe_token(token_data) do
-    endpoint = PhoenixKit.Config.get(:endpoint, PhoenixKitWeb.Endpoint)
-    Phoenix.Token.sign(endpoint, "unsubscribe", token_data)
+  # Two URLs share one signed token: the interactive landing page (email body link,
+  # behind the host's normal CSRF-protected :browser pipeline) and the dedicated
+  # one-click endpoint (List-Unsubscribe headers, CSRF-exempt by design — see
+  # Web.Routes). They must differ because a mail client's cold POST can never carry
+  # a CSRF token.
+  defp unsubscribe_urls(token) do
+    {Paths.unsubscribe_url(token), Paths.one_click_unsubscribe_url(token)}
   end
-
-  # Separate salt (not "unsubscribe") — see the user_group clause of
-  # build_unsubscribe_url/2 for why claim shape alone doesn't suffice.
-  # UnsubscribeController.verify_token/1 tries this salt too.
-  defp sign_user_optout_token(token_data) do
-    endpoint = PhoenixKit.Config.get(:endpoint, PhoenixKitWeb.Endpoint)
-    Phoenix.Token.sign(endpoint, "newsletters_user_optout", token_data)
-  end
-
-  defp unsubscribe_page_url(token), do: Routes.url("/newsletters/unsubscribe?token=#{token}")
-
-  defp one_click_unsubscribe_url(token),
-    do: Routes.url("/newsletters/unsubscribe/one-click?token=#{token}")
 
   # Preference-center link (spec §7) — only for crm_list recipients today
   # (a user_group recipient has no CRM contact by default, so nothing to
-  # link a preferences page to; see build_preferences_url/2's catch-all).
-  # Reuses the exact membership lookup build_unsubscribe_url/2's crm_list
-  # clause already does, so the contact_uuid is the real, unambiguous
-  # member of THIS list receiving THIS email (not a fresh directory-wide
-  # email search, which could land on a different same-email contact under
-  # the "always create new contact" import policy, §4.3).
-  defp build_preferences_url(%{uuid: nil, email: email}, %{crm_list_uuid: crm_list_uuid})
-       when is_binary(email) and is_binary(crm_list_uuid) do
-    case CRMSource.get_member_by_email(crm_list_uuid, email) do
-      %{contact_uuid: contact_uuid} -> preferences_page_url(sign_preferences_token(contact_uuid))
-      nil -> ""
-    end
+  # link a preferences page to).
+  defp build_preferences_url(%{contact_uuid: contact_uuid}, _broadcast)
+       when is_binary(contact_uuid) do
+    contact_uuid |> PreferenceToken.sign() |> Paths.preferences_url()
   end
 
   defp build_preferences_url(_recipient, _broadcast), do: ""
-
-  defp sign_preferences_token(contact_uuid), do: PreferenceToken.sign(contact_uuid)
-
-  defp preferences_page_url(token), do: Routes.url("/newsletters/preferences?token=#{token}")
 
   # The broadcast's layout, or nil when it has none or the row is gone.
   # Status is not checked: archiving a layout takes it out of the editor's

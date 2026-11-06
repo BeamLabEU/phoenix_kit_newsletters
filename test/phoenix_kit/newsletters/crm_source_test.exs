@@ -273,7 +273,11 @@ defmodule PhoenixKit.Newsletters.CRMSourceTest do
       user_uuid = create_core_user(email).uuid
 
       assert {:ok, contact} =
-               CRMSource.find_or_link_contact_for_user(%{uuid: user_uuid, email: email})
+               CRMSource.find_or_link_contact_for_user(%{
+                 uuid: user_uuid,
+                 email: email,
+                 confirmed_at: DateTime.utc_now()
+               })
 
       assert contact.email == email
       assert contact.user_uuid == user_uuid
@@ -282,7 +286,7 @@ defmodule PhoenixKit.Newsletters.CRMSourceTest do
     test "is called twice for the same user and creates exactly one contact" do
       email = "repeat-user-#{System.unique_integer([:positive])}@example.com"
       user_uuid = create_core_user(email).uuid
-      user = %{uuid: user_uuid, email: email}
+      user = %{uuid: user_uuid, email: email, confirmed_at: DateTime.utc_now()}
 
       assert {:ok, first} = CRMSource.find_or_link_contact_for_user(user)
       assert {:ok, second} = CRMSource.find_or_link_contact_for_user(user)
@@ -297,7 +301,11 @@ defmodule PhoenixKit.Newsletters.CRMSourceTest do
       user_uuid = create_core_user(email).uuid
 
       assert {:ok, linked} =
-               CRMSource.find_or_link_contact_for_user(%{uuid: user_uuid, email: email})
+               CRMSource.find_or_link_contact_for_user(%{
+                 uuid: user_uuid,
+                 email: email,
+                 confirmed_at: DateTime.utc_now()
+               })
 
       assert linked.uuid == existing.uuid
       assert linked.user_uuid == user_uuid
@@ -311,7 +319,11 @@ defmodule PhoenixKit.Newsletters.CRMSourceTest do
       user_uuid = create_core_user(email).uuid
 
       assert {:ok, linked} =
-               CRMSource.find_or_link_contact_for_user(%{uuid: user_uuid, email: email})
+               CRMSource.find_or_link_contact_for_user(%{
+                 uuid: user_uuid,
+                 email: email,
+                 confirmed_at: DateTime.utc_now()
+               })
 
       # Neither pre-existing contact was touched — both are still
       # unlinked, and the returned contact is a brand-new third row.
@@ -337,13 +349,18 @@ defmodule PhoenixKit.Newsletters.CRMSourceTest do
       {:ok, already_linked} =
         CRMSource.find_or_link_contact_for_user(%{
           uuid: other_user_uuid,
-          email: already_linked.email
+          email: already_linked.email,
+          confirmed_at: DateTime.utc_now()
         })
 
       user_uuid = create_core_user(email).uuid
 
       assert {:ok, linked} =
-               CRMSource.find_or_link_contact_for_user(%{uuid: user_uuid, email: email})
+               CRMSource.find_or_link_contact_for_user(%{
+                 uuid: user_uuid,
+                 email: email,
+                 confirmed_at: DateTime.utc_now()
+               })
 
       # Not the contact already claimed by the other user — a fresh one.
       assert linked.uuid != already_linked.uuid
@@ -355,7 +372,11 @@ defmodule PhoenixKit.Newsletters.CRMSourceTest do
       user_uuid = create_core_user(email).uuid
 
       assert {:ok, _contact} =
-               CRMSource.find_or_link_contact_for_user(%{uuid: user_uuid, email: email})
+               CRMSource.find_or_link_contact_for_user(%{
+                 uuid: user_uuid,
+                 email: email,
+                 confirmed_at: DateTime.utc_now()
+               })
 
       # connect_user/2's placeholder path registers a core user tagged
       # custom_fields["source"] == "crm_contact". This flow must link to
@@ -371,6 +392,114 @@ defmodule PhoenixKit.Newsletters.CRMSourceTest do
                from(u in User, where: u.email == ^email),
                :count
              ) == 1
+    end
+  end
+
+  describe "find_or_link_contact_for_user/1 and an address nobody has proved" do
+    # Registration logs someone in before they confirm, so anyone could otherwise
+    # register with an address they do not own and take that person's contact.
+    test "links nothing, and creates nothing" do
+      email = "unproved-#{System.unique_integer([:positive])}@example.com"
+      existing = add_contact(%{email: email})
+      user_uuid = create_core_user(email).uuid
+
+      assert {:error, :unconfirmed} =
+               CRMSource.find_or_link_contact_for_user(%{uuid: user_uuid, email: email})
+
+      assert [%{user_uuid: nil, uuid: uuid}] = Contacts.list_by_email(email)
+      assert uuid == existing.uuid
+    end
+
+    test "a contact already linked to the account still answers" do
+      email = "linked-#{System.unique_integer([:positive])}@example.com"
+      user_uuid = create_core_user(email).uuid
+
+      {:ok, linked} =
+        CRMSource.find_or_link_contact_for_user(%{
+          uuid: user_uuid,
+          email: email,
+          confirmed_at: DateTime.utc_now()
+        })
+
+      assert {:ok, %{uuid: uuid}} =
+               CRMSource.find_or_link_contact_for_user(%{uuid: user_uuid, email: email})
+
+      assert uuid == linked.uuid
+    end
+  end
+
+  describe "opting out is by address" do
+    # An import always creates a new contact, so one person can be several rows,
+    # and each row is what its own list's send reads.
+    defp twins do
+      email = "twin-#{System.unique_integer([:positive])}@example.com"
+      {add_contact(%{email: email}), add_contact(%{email: String.upcase(email)})}
+    end
+
+    test "opt_out/2 reaches every contact at the address" do
+      {first, second} = twins()
+
+      assert {:ok, %{opted_out_at: %DateTime{}}} = CRMSource.opt_out(first)
+
+      assert CRMSource.get_contact(second.uuid).opted_out_at
+    end
+
+    test "and leaves someone else's alone" do
+      contact = add_contact()
+      stranger = add_contact()
+
+      assert {:ok, _contact} = CRMSource.opt_out(contact)
+
+      refute CRMSource.get_contact(stranger.uuid).opted_out_at
+    end
+
+    test "a list the other row belongs to stops sending to them" do
+      {first, second} = twins()
+      {:ok, list} = Lists.create_list(%{name: "Other #{System.unique_integer([:positive])}"})
+      add_member(list, second)
+
+      assert [_recipient] = CRMSource.sendable_recipients(list.uuid)
+      assert {:ok, _contact} = CRMSource.opt_out(first)
+      assert CRMSource.sendable_recipients(list.uuid) == []
+    end
+
+    test "opt_in/2 undoes it on every row, or resubscribing would do nothing there" do
+      {first, second} = twins()
+      {:ok, opted_out} = CRMSource.opt_out(first)
+
+      assert {:ok, %{opted_out_at: nil}} = CRMSource.opt_in(opted_out)
+
+      refute CRMSource.get_contact(second.uuid).opted_out_at
+    end
+
+    test "a contact with no address opts out alone" do
+      {:ok, contact} = Contacts.create_contact(%{name: "No address"})
+
+      assert {:ok, %{opted_out_at: %DateTime{}}} = CRMSource.opt_out(contact)
+    end
+  end
+
+  describe "recipient_details/2" do
+    test "gives the links, the name and the language from one membership" do
+      {:ok, list} = Lists.create_list(%{name: "Fr #{System.unique_integer([:positive])}"})
+      contact = add_contact(%{name: "Jane Doe", locale: "fr"})
+      add_member(list, contact)
+
+      assert %{contact_uuid: uuid, name: "Jane Doe", language: "fr"} =
+               CRMSource.recipient_details(list.uuid, contact.email)
+
+      assert uuid == contact.uuid
+    end
+
+    test "says nothing about an address that is not on the list" do
+      {:ok, list} = Lists.create_list(%{name: "Empty #{System.unique_integer([:positive])}"})
+
+      assert %{contact_uuid: nil, name: nil} =
+               CRMSource.recipient_details(list.uuid, "nobody@example.com")
+    end
+
+    test "says nothing for a list that is gone" do
+      assert CRMSource.recipient_details(Ecto.UUID.generate(), "a@example.com") == %{}
     end
   end
 

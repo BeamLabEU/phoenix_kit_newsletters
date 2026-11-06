@@ -51,7 +51,13 @@ defmodule PhoenixKit.Newsletters.Web.PermissionsTest do
 
   defp role_params do
     {:ok, role} = Roles.create_role(%{name: "NRole#{System.unique_integer([:positive])}"})
-    %{"subject" => "Hello", "source_type" => "user_group", "role_uuids" => [role.uuid]}
+
+    %{
+      "subject" => "Hello",
+      "source_type" => "user_group",
+      "role_uuids" => [role.uuid],
+      "editor_content" => "Body"
+    }
   end
 
   describe "BroadcastEditor: newsletters.send" do

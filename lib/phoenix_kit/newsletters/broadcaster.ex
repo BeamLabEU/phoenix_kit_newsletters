@@ -72,7 +72,10 @@ defmodule PhoenixKit.Newsletters.Broadcaster do
 
   Returns `{:error, {:invalid_status, status}}` when the row, as it is now, cannot
   start, whatever the struct passed in says, `{:error, :not_found}` when it is
-  gone, and `{:error, changeset}` when it no longer validates.
+  gone, and `{:error, changeset}` when it no longer validates. A broadcast with
+  nothing to say or nobody to say it to is refused too, with `{:error, :blank_body}`
+  and `{:error, :no_recipients}`: either would otherwise end `sent`, with no retry
+  offered, on nobody's inbox or an empty mail in everyone's.
 
   Accepts `"failed"` alongside `"draft"`/`"scheduled"` — a broadcast that
   failed terminally (see `Newsletters.process_scheduled_broadcasts/0`,
@@ -125,13 +128,12 @@ defmodule PhoenixKit.Newsletters.Broadcaster do
 
     interval = throttle_interval(broadcast)
 
-    result =
-      repo.transaction(
-        fn -> start_sending(broadcast.uuid, recipients, repo, interval) end,
-        timeout: @send_timeout
-      )
-
-    with {:ok, {broadcast, %{inserted: inserted, duplicate: duplicate}}} <- result do
+    with :ok <- require_recipients(recipients),
+         {:ok, {broadcast, %{inserted: inserted, duplicate: duplicate}}} <-
+           repo.transaction(
+             fn -> start_sending(broadcast.uuid, recipients, repo, interval) end,
+             timeout: @send_timeout
+           ) do
       Logger.info(
         "Broadcaster: Enqueued #{inserted} deliveries for broadcast #{broadcast.uuid}" <>
           duplicate_log(duplicate) <> throttle_log(interval, inserted)
@@ -141,9 +143,13 @@ defmodule PhoenixKit.Newsletters.Broadcaster do
     end
   end
 
+  defp require_recipients([]), do: {:error, :no_recipients}
+  defp require_recipients(_recipients), do: :ok
+
   defp start_sending(broadcast_uuid, recipients, repo, interval) do
     with %Broadcast{status: status} = locked when status in @startable_statuses <-
            Newsletters.lock_broadcast(broadcast_uuid),
+         :ok <- require_body(locked),
          # Render markdown to HTML and plain text before sending
          html = Content.render_markdown(locked.markdown_body),
          {:ok, sending} <-
@@ -165,8 +171,14 @@ defmodule PhoenixKit.Newsletters.Broadcaster do
     else
       %Broadcast{status: status} -> repo.rollback({:invalid_status, status})
       nil -> repo.rollback(:not_found)
-      {:error, changeset} -> repo.rollback(changeset)
+      {:error, reason} -> repo.rollback(reason)
     end
+  end
+
+  defp require_body(%Broadcast{markdown_body: body}) do
+    if is_binary(body) and String.trim(body) != "",
+      do: :ok,
+      else: {:error, :blank_body}
   end
 
   # Resolves the very profile the worker will send with, so the throttle applied
@@ -295,8 +307,12 @@ defmodule PhoenixKit.Newsletters.Broadcaster do
   keeps the original "enqueue everything at once" behavior. `0` is treated
   as "unset" rather than "never send", matching how an empty form field
   round-trips — and it keeps this from dividing by zero.
+
+  A rate above one per second gives a fraction, and several sends share a second:
+  rounded up to a whole second it would cap the profile at 3,600 an hour, whatever
+  it allows.
   """
-  @spec send_interval_seconds(SendProfile.t() | nil) :: non_neg_integer()
+  @spec send_interval_seconds(SendProfile.t() | nil) :: number()
   def send_interval_seconds(nil), do: 0
 
   def send_interval_seconds(%SendProfile{} = profile) do
@@ -309,12 +325,13 @@ defmodule PhoenixKit.Newsletters.Broadcaster do
   end
 
   defp rate_interval(rate, _window) when is_nil(rate) or rate <= 0, do: 0
+  defp rate_interval(rate, window) when rate > window, do: window / rate
   defp rate_interval(rate, window), do: ceil(window / rate)
 
   defp throttle_log(0, _total), do: " (no rate limit)"
 
   defp throttle_log(interval, total) do
-    span = div(max(total - 1, 0) * interval, 60)
+    span = round(max(total - 1, 0) * interval / 60)
     " (throttled to 1 per #{interval}s — the last one goes out in ~#{span} min)"
   end
 
@@ -332,11 +349,10 @@ defmodule PhoenixKit.Newsletters.Broadcaster do
     broadcast |> Broadcast.role_uuids() |> UserGroupSource.sendable_recipients()
   end
 
-  # Totality guard: V156 re-pointed every 'newsletters_list' row and the
-  # changeset only admits crm_list/user_group, so this clause should be
-  # unreachable — but an unexpected stray row should degrade to "sent to
-  # nobody" with a log line, not take the send path down with a
-  # FunctionClauseError.
+  # Totality guard: V156 re-pointed the 'newsletters_list' rows it could, and the
+  # changeset only admits crm_list/user_group, so this is rare but not impossible:
+  # the column's default is still that value. Zero recipients is refused like any
+  # other empty audience, so the row fails visibly rather than raising on every tick.
   defp resolve_recipients(%Broadcast{} = broadcast) do
     Logger.warning(
       "Broadcaster: broadcast #{broadcast.uuid} has unknown source_type " <>
@@ -463,7 +479,7 @@ defmodule PhoenixKit.Newsletters.Broadcaster do
   # No rate limit: insert with no scheduling at all, byte-for-byte the old
   # behavior. Otherwise space recipient N out by N intervals.
   defp schedule_opts(0, _index), do: []
-  defp schedule_opts(interval, index), do: [schedule_in: index * interval]
+  defp schedule_opts(interval, index), do: [schedule_in: round(index * interval)]
 
   @doc false
   # Mirrors Delivery.changeset/2's "at least one" validation, which

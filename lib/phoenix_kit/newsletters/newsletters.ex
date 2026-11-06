@@ -59,9 +59,10 @@ defmodule PhoenixKit.Newsletters do
   def permission_metadata do
     %{
       key: "newsletters",
-      label: "Newsletters",
+      label: gettext_noop("Newsletters"),
       icon: "📨",
-      description: "Email broadcasts and subscription management",
+      description: gettext_noop("Email broadcasts and subscription management"),
+      gettext_backend: PhoenixKit.Newsletters.Gettext,
       # The base key used to let its holder send a broadcast to any audience
       # and read every recipient's address. Those rights are split out here;
       # Admin gets them from core's boot-time auto-grant, Owner through "*",
@@ -70,14 +71,16 @@ defmodule PhoenixKit.Newsletters do
       sub_permissions: [
         %{
           key: "send",
-          label: "Send broadcasts",
-          description: "Send a broadcast now, schedule it, or retry a failed send"
+          label: gettext_noop("Send broadcasts"),
+          description: gettext_noop("Send a broadcast now, schedule it, or retry a failed send")
         },
         %{
           key: "audiences",
-          label: "See recipients",
+          label: gettext_noop("See recipients"),
           description:
-            "See the recipient addresses of a broadcast and use the address verification page"
+            gettext_noop(
+              "See the recipient addresses of a broadcast and use the address verification page"
+            )
         }
       ]
     }
@@ -281,6 +284,18 @@ defmodule PhoenixKit.Newsletters do
   @impl PhoenixKit.Module
   def route_module, do: PhoenixKit.Newsletters.Web.Routes
 
+  @doc """
+  The queue `DeliveryWorker` runs in, so `mix phoenix_kit.install` and `update`
+  write it and `mix phoenix_kit.doctor` reports it missing. A queue nobody runs
+  sends nothing and raises nothing. A limit a host has set is left alone.
+  """
+  @impl PhoenixKit.Module
+  def oban_queues, do: [newsletters_delivery: [limit: 10, kind: :batch]]
+
+  @doc "The public pages live under `/newsletters`, whatever a group is called."
+  @impl PhoenixKit.Module
+  def reserved_route_prefixes, do: ["newsletters"]
+
   # Decentralized-migrations protocol (see PhoenixKitNewsletters.Migrations'
   # moduledoc): this module owns the future shape of its two tables even
   # though core's chain still creates them on every install.
@@ -339,7 +354,7 @@ defmodule PhoenixKit.Newsletters do
   def list_broadcasts(filters \\ %{}) do
     Broadcast
     |> maybe_filter_broadcast_status(filters)
-    |> order_by([b], desc: b.inserted_at)
+    |> order_by([b], desc: b.inserted_at, desc: b.uuid)
     |> apply_pagination(filters)
     |> repo().all()
   end
@@ -439,6 +454,26 @@ defmodule PhoenixKit.Newsletters do
     end
   end
 
+  @doc """
+  Takes a scheduled broadcast back to a draft, so it can be edited, in one
+  conditional statement: a send the tick has already started stays started. It
+  keeps its `scheduled_at`, which the editor offers again.
+  """
+  @spec unschedule_broadcast(Broadcast.t()) ::
+          {:ok, Broadcast.t()} | {:error, {:invalid_status, String.t()} | :not_found}
+  def unschedule_broadcast(%Broadcast{uuid: uuid}) do
+    {_count, drafts} =
+      Broadcast
+      |> where([b], b.uuid == ^uuid and b.status == "scheduled")
+      |> select([b], b)
+      |> repo().update_all(set: [status: "draft", updated_at: UtilsDate.utc_now()])
+
+    case drafts do
+      [broadcast] -> {:ok, broadcast}
+      [] -> cancel_refusal(uuid)
+    end
+  end
+
   @doc "Whether a broadcast in `status` can be cancelled."
   @spec cancellable?(String.t()) :: boolean()
   def cancellable?(status), do: status in @cancellable_statuses
@@ -475,7 +510,9 @@ defmodule PhoenixKit.Newsletters do
     |> where([d], d.broadcast_uuid == ^broadcast_uuid)
     |> maybe_filter_delivery_status(filters)
     |> preload(:user)
-    |> order_by([d], desc: d.inserted_at)
+    # The uuid breaks ties, and there are many: a batch of 500 shares one
+    # timestamp, and without a defined order a page can repeat or skip a row.
+    |> order_by([d], desc: d.inserted_at, desc: d.uuid)
     |> apply_pagination(filters)
     |> repo().all()
   end
@@ -502,7 +539,13 @@ defmodule PhoenixKit.Newsletters do
     |> Map.new()
   end
 
+  @doc """
+  Writes a delivery's status and `attrs`. An event a provider reports out of order
+  still records its timestamp, but cannot walk the status back.
+  """
   def update_delivery_status(%Delivery{} = delivery, status, attrs \\ %{}) do
+    status = Delivery.next_status(delivery.status, status)
+
     delivery
     |> Delivery.changeset(Map.merge(attrs, %{status: status}))
     |> repo().update()
@@ -626,28 +669,28 @@ defmodule PhoenixKit.Newsletters do
     )
   end
 
-  # Non-retryable: the CRM list won't become active again on its own, so
-  # leaving status "scheduled" here would make every future tick re-fetch
-  # this broadcast and log the same failure forever. Terminal "failed"
-  # removes it from process_scheduled_broadcasts/0's `status == "scheduled"`
-  # query. The list's own current status (already surfaced on
-  # broadcast_details whenever it isn't "active") is the visible reason —
-  # no separate reason field needed. Conditional, so an operator's cancel that
+  # Non-retryable by the tick: none of these clears on its own, so leaving status
+  # "scheduled" here would make every future tick re-fetch this broadcast and log
+  # the same failure forever. Terminal "failed" removes it from
+  # process_scheduled_broadcasts/0's `status == "scheduled"` query, and the details
+  # page shows why and offers a retry. Conditional, so an operator's cancel that
   # landed since this tick read the row stands.
-  defp handle_scheduled_send_failure(broadcast, {:crm_list_not_active, _status} = reason, acc) do
-    Logger.error("Scheduled broadcast #{broadcast.uuid} failed permanently: #{inspect(reason)}")
-
-    Broadcast
-    |> where([b], b.uuid == ^broadcast.uuid and b.status == "scheduled")
-    |> repo().update_all(set: [status: "failed", updated_at: UtilsDate.utc_now()])
-
-    acc
-  end
-
   defp handle_scheduled_send_failure(broadcast, reason, acc) do
-    Logger.warning("Failed to send scheduled broadcast #{broadcast.uuid}: #{inspect(reason)}")
+    if permanent_send_failure?(reason) do
+      Logger.error("Scheduled broadcast #{broadcast.uuid} failed permanently: #{inspect(reason)}")
+
+      Broadcast
+      |> where([b], b.uuid == ^broadcast.uuid and b.status == "scheduled")
+      |> repo().update_all(set: [status: "failed", updated_at: UtilsDate.utc_now()])
+    else
+      Logger.warning("Failed to send scheduled broadcast #{broadcast.uuid}: #{inspect(reason)}")
+    end
+
     acc
   end
+
+  defp permanent_send_failure?({:crm_list_not_active, _status}), do: true
+  defp permanent_send_failure?(reason), do: reason in [:no_recipients, :blank_body]
 
   # ============================================================================
   # Private Helpers

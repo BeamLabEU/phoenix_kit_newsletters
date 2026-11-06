@@ -31,8 +31,10 @@ defmodule PhoenixKit.Newsletters.Web.PreferenceCenterLive do
 
   alias PhoenixKit.Newsletters
   alias PhoenixKit.Newsletters.CRMSource
+  alias PhoenixKit.Newsletters.Paths
   alias PhoenixKit.Newsletters.PreferenceToken
   alias PhoenixKit.Newsletters.RecipientLanguage
+  alias PhoenixKit.Newsletters.UserGroupSource
   alias PhoenixKit.Users.Auth.Scope
   alias PhoenixKit.Utils.RecipientLocale
   alias PhoenixKit.Utils.Routes
@@ -41,23 +43,16 @@ defmodule PhoenixKit.Newsletters.Web.PreferenceCenterLive do
   def mount(_params, _session, socket) do
     socket = assign(socket, :page_title, gettext("Email preferences"))
 
-    if Newsletters.enabled?() do
-      {:ok, assign(socket, mode: :loading, contact: nil, lists: [])}
-    else
-      {:ok,
-       socket
-       |> put_flash(:error, gettext("Newsletters module is not enabled"))
-       |> push_navigate(to: Routes.path("/"))}
-    end
+    # A public page, so no redirect: a site's `/` may not exist under its prefix.
+    mode = if Newsletters.enabled?(), do: :loading, else: :unavailable
+
+    {:ok, assign(socket, mode: mode, contact: nil, lists: [])}
   end
 
-  # Token verification, contact resolution, and the account-path's
-  # find-or-create write all belong in handle_params, not mount — mount
-  # runs twice per connection (disconnected HTTP render, then the
-  # connected websocket one), which would double every read here and,
-  # worse, run the account-path's contact-creation INSERT/UPDATE during
-  # the plain disconnected GET. Mirrors BroadcastEditor/BroadcastDetails's
-  # assign_tz/1 pattern in this same package.
+  # Token verification and contact resolution belong in handle_params, not
+  # mount. handle_params also runs twice, once for the plain GET and once
+  # connected, so the account path's write waits for the connected pass: see
+  # resolve_access/2.
   @impl true
   def handle_params(params, _url, %{assigns: %{mode: :loading}} = socket) do
     socket =
@@ -88,24 +83,32 @@ defmodule PhoenixKit.Newsletters.Web.PreferenceCenterLive do
   # Account-nav entry — no token, requires an authenticated scope. Lazily
   # finds/links the contact for this user; never mints a placeholder user
   # (CRMSource.find_or_link_contact_for_user/1 never goes through
-  # PhoenixKitCRM.Contacts.connect_user/2).
+  # PhoenixKitCRM.Contacts.connect_user/2). That can write, and a plain GET must
+  # not, so the page stays on its spinner until the socket connects.
   defp resolve_access(socket, _params) do
     scope = socket.assigns[:phoenix_kit_current_scope]
 
-    if scope && Scope.authenticated?(scope) do
-      user = Scope.user(scope)
-
-      case CRMSource.find_or_link_contact_for_user(%{uuid: user.uuid, email: user.email}) do
-        {:ok, contact} -> load_lists(socket, :account, contact)
-        {:error, _} -> assign(socket, mode: :error, contact: nil, lists: [])
-      end
-    else
-      return_to = URI.encode_www_form(Routes.path("/newsletters/preferences"))
-
-      socket
-      |> put_flash(:error, gettext("Please log in to manage your email subscriptions"))
-      |> push_navigate(to: Routes.path("/phoenix_kit/users/log-in") <> "?return_to=#{return_to}")
+    cond do
+      is_nil(scope) or not Scope.authenticated?(scope) -> send_to_log_in(socket)
+      connected?(socket) -> load_account(socket, Scope.user(scope))
+      true -> socket
     end
+  end
+
+  defp load_account(socket, user) do
+    case CRMSource.find_or_link_contact_for_user(user) do
+      {:ok, contact} -> load_lists(socket, :account, contact)
+      {:error, :unconfirmed} -> assign(socket, mode: :unconfirmed, contact: nil, lists: [])
+      {:error, _} -> assign(socket, mode: :error, contact: nil, lists: [])
+    end
+  end
+
+  defp send_to_log_in(socket) do
+    return_to = URI.encode_www_form(Paths.preferences())
+
+    socket
+    |> put_flash(:error, gettext("Please log in to manage your email subscriptions"))
+    |> push_navigate(to: Routes.path("/users/log-in") <> "?return_to=#{return_to}")
   end
 
   # Set on the process, not wrapped in `in_locale/2`: this process goes on to
@@ -158,19 +161,21 @@ defmodule PhoenixKit.Newsletters.Web.PreferenceCenterLive do
           {:ok, _} ->
             {:noreply, load_lists(socket, socket.assigns.mode, contact)}
 
+          # Reloaded, because the usual reason is that this page is out of date.
           {:error, _reason} ->
             {:noreply,
-             put_flash(
-               socket,
+             socket
+             |> put_flash(
                :error,
                gettext("Could not update that subscription — please try again.")
-             )}
+             )
+             |> load_lists(socket.assigns.mode, contact)}
         end
     end
   end
 
   def handle_event("unsubscribe_all", _params, socket) do
-    case CRMSource.opt_out(socket.assigns.contact, source: "preference_center") do
+    case UserGroupSource.opt_out_contact(socket.assigns.contact, source: "preference_center") do
       {:ok, contact} ->
         {:noreply,
          socket
@@ -184,7 +189,7 @@ defmodule PhoenixKit.Newsletters.Web.PreferenceCenterLive do
   end
 
   def handle_event("resubscribe", _params, socket) do
-    case CRMSource.opt_in(socket.assigns.contact, source: "preference_center") do
+    case UserGroupSource.opt_in_contact(socket.assigns.contact, source: "preference_center") do
       {:ok, contact} ->
         {:noreply,
          socket

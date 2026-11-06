@@ -45,6 +45,43 @@ defmodule PhoenixKit.Newsletters.Web.OneClickUnsubscribeTest do
     |> Phoenix.Controller.fetch_flash(%{})
   end
 
+  describe "a GET a link scanner or a stranger can send" do
+    defp redirect_of(conn) do
+      assert conn.status == 302
+      conn |> Plug.Conn.get_resp_header("location") |> hd()
+    end
+
+    test "carries the token on to the page, encoded" do
+      location =
+        build_conn(:get)
+        |> UnsubscribeController.one_click_unsubscribe(%{"token" => "a.b-c_d"})
+        |> redirect_of()
+
+      assert location =~ "/newsletters/unsubscribe?token=a.b-c_d"
+    end
+
+    # Phoenix refuses a redirect holding these, which was a public 500.
+    for value <- ["\\", "\n", "\r\n", "a b", "/../x"] do
+      test "survives the value #{inspect(value)}" do
+        location =
+          build_conn(:get)
+          |> UnsubscribeController.one_click_unsubscribe(%{"token" => unquote(value)})
+          |> redirect_of()
+
+        assert location =~ "/newsletters/unsubscribe?token="
+      end
+    end
+
+    test "survives a token that is not a string" do
+      location =
+        build_conn(:get)
+        |> UnsubscribeController.one_click_unsubscribe(%{"token" => %{"a" => "b"}})
+        |> redirect_of()
+
+      refute location =~ "token"
+    end
+  end
+
   defp create_list_and_contact do
     {:ok, list} =
       Lists.create_list(%{name: "One-click test list #{System.unique_integer([:positive])}"})

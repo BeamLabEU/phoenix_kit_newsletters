@@ -52,7 +52,16 @@
           </button>
         <% end %>
 
-        <%= if @broadcast.status == "failed" and @can_send do %>
+        <button
+          :if={@broadcast.status == "scheduled" and @can_send}
+          type="button"
+          phx-click="back_to_draft"
+          class="btn btn-outline btn-sm"
+        >
+          <.icon name="hero-pencil" class="w-4 h-4" /> {gettext("Back to draft")}
+        </button>
+
+        <%= if @broadcast.status == "failed" and @can_start do %>
           <button
             type="button"
             phx-click="show_confirm"
@@ -63,7 +72,7 @@
           </button>
         <% end %>
 
-        <%= if @resendable_count > 0 and @can_send do %>
+        <%= if @resendable_count > 0 and @can_start do %>
           <button
             type="button"
             phx-click="show_confirm"
@@ -167,22 +176,20 @@
         <.icon name="hero-exclamation-triangle" class="w-3 h-3 inline" />
         {gettext("This list is archived and cannot be sent to.")}
       </p>
-      <p
-        :if={@user_group_preflight && @user_group_preflight.stale_roles > 0}
-        class="text-sm text-warning mb-2"
-      >
+      <p :if={@stale_roles > 0} class="text-sm text-warning mb-2">
         <.icon name="hero-exclamation-triangle" class="w-3 h-3 inline" />
         {ngettext(
           "%{count} selected role no longer exists",
           "%{count} selected roles no longer exist",
-          @user_group_preflight.stale_roles,
-          count: @user_group_preflight.stale_roles
+          @stale_roles,
+          count: @stale_roles
         )}
       </p>
       <p :if={@crm_preflight} class="text-sm text-base-content/70 mb-6">
-        {gettext(
-          "%{total} members: %{sendable} sendable, %{no_email} no email, %{unsendable} unsubscribed/opted-out",
-          total: @crm_preflight.total,
+        {ngettext(
+          "%{count} member: %{sendable} sendable, %{no_email} no email, %{unsendable} unsubscribed/opted-out",
+          "%{count} members: %{sendable} sendable, %{no_email} no email, %{unsendable} unsubscribed/opted-out",
+          @crm_preflight.total,
           sendable: @crm_preflight.sendable,
           no_email: @crm_preflight.no_email,
           unsendable: @crm_preflight.unsendable
@@ -197,13 +204,11 @@
         </div>
         <div class="stat">
           <div class="stat-title">{gettext("Sent")}</div>
-          <div class="stat-value text-2xl text-info">{stat_value(@delivery_stats, "sent")}</div>
+          <div class="stat-value text-2xl text-info">{sent_total(@delivery_stats)}</div>
         </div>
         <div class="stat">
           <div class="stat-title">{gettext("Delivered")}</div>
-          <div class="stat-value text-2xl text-success">
-            {stat_value(@delivery_stats, "delivered")}
-          </div>
+          <div class="stat-value text-2xl text-success">{delivered_total(@delivery_stats)}</div>
         </div>
         <div class="stat">
           <div class="stat-title">{gettext("Opened")}</div>
@@ -229,7 +234,19 @@
             {stat_value(@delivery_stats, "blocked")}
           </div>
         </div>
+        <div :if={stat_value(@delivery_stats, "pending") > 0} class="stat">
+          <div class="stat-title">{gettext("Pending")}</div>
+          <div class="stat-value text-2xl">{stat_value(@delivery_stats, "pending")}</div>
+        </div>
       </div>
+
+      <%!-- The message itself. A cancelled broadcast has no other way to it. --%>
+      <details :if={@broadcast.markdown_body} class="collapse collapse-arrow bg-base-200 mb-6">
+        <summary class="collapse-title text-sm font-medium">{gettext("Message")}</summary>
+        <div class="collapse-content">
+          <pre class="text-sm whitespace-pre-wrap break-words">{@broadcast.markdown_body}</pre>
+        </div>
+      </details>
 
       <p :if={@unresendable_count > 0} class="text-sm text-warning mb-6">
         <.icon name="hero-exclamation-triangle" class="w-3 h-3 inline" />

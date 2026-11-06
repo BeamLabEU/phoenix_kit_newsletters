@@ -15,7 +15,9 @@ defmodule PhoenixKit.Newsletters.Web.Broadcasts do
   import PhoenixKit.Newsletters.Web.Timezone, only: [format_datetime: 2]
 
   alias PhoenixKit.Newsletters
+  alias PhoenixKit.Newsletters.Broadcast
   alias PhoenixKit.Newsletters.Web.Paging
+  alias PhoenixKit.Newsletters.Web.StatusLabel
   alias PhoenixKit.Newsletters.Web.Timezone
   alias PhoenixKit.Settings
   alias PhoenixKit.Utils.Routes
@@ -46,7 +48,7 @@ defmodule PhoenixKit.Newsletters.Web.Broadcasts do
 
   @impl true
   def handle_params(params, _url, socket) do
-    status = params["status"] || ""
+    status = status_param(params["status"])
     total = Newsletters.count_broadcasts(%{status: status})
     {page, offset} = Paging.resolve(params["page"], total)
 
@@ -61,6 +63,12 @@ defmodule PhoenixKit.Newsletters.Web.Broadcasts do
      |> assign(:page, page)
      |> assign(:total_count, total)
      |> assign(:total_pages, Paging.total_pages(total))}
+  end
+
+  # Only a status that exists: the rest would show nothing, or raise further down
+  # for a value that is not a string at all.
+  defp status_param(status) do
+    if status in Broadcast.valid_statuses(), do: status, else: ""
   end
 
   defp page_url(page, status) do
@@ -143,15 +151,7 @@ defmodule PhoenixKit.Newsletters.Web.Broadcasts do
     end
   end
 
-  def status_label(status), do: gettext_status(status)
-
-  defp gettext_status("draft"), do: gettext("Draft")
-  defp gettext_status("scheduled"), do: gettext("Scheduled")
-  defp gettext_status("sending"), do: gettext("Sending")
-  defp gettext_status("sent"), do: gettext("Sent")
-  defp gettext_status("cancelled"), do: gettext("Cancelled")
-  defp gettext_status("failed"), do: gettext("Failed")
-  defp gettext_status(other), do: other
+  def status_label(status), do: StatusLabel.broadcast(status)
 
   # Cheap per-row label — no per-broadcast CRM list name lookup (that
   # would mean an N+1 across this whole listing); the details page

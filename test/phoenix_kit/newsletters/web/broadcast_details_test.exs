@@ -81,7 +81,7 @@ defmodule PhoenixKit.Newsletters.Web.BroadcastDetailsTest do
         delivery_stats: %{},
         crm_list: nil,
         crm_preflight: nil,
-        user_group_preflight: nil,
+        stale_roles: 0,
         page_title: "",
         phoenix_kit_current_scope: full_scope(),
         __changed__: %{}
@@ -120,14 +120,14 @@ defmodule PhoenixKit.Newsletters.Web.BroadcastDetailsTest do
     end
   end
 
-  describe "handle_params/3 — user_group_preflight" do
+  describe "handle_params/3 — stale roles" do
     test "is computed for a user_group broadcast, reflecting live role membership" do
       role = create_role("Marketing")
       broadcast = create_user_group_broadcast([role.uuid], ["Marketing"])
 
       updated = load(broadcast.uuid)
 
-      assert %{stale_roles: 0} = updated.assigns.user_group_preflight
+      assert updated.assigns.stale_roles == 0
     end
 
     test "flags a stale_roles count > 0 when a targeted role was deleted after the broadcast was saved" do
@@ -138,7 +138,7 @@ defmodule PhoenixKit.Newsletters.Web.BroadcastDetailsTest do
 
       updated = load(broadcast.uuid)
 
-      assert %{stale_roles: 1} = updated.assigns.user_group_preflight
+      assert updated.assigns.stale_roles == 1
     end
 
     test "is nil for a crm_list broadcast" do
@@ -152,7 +152,7 @@ defmodule PhoenixKit.Newsletters.Web.BroadcastDetailsTest do
 
       updated = load(broadcast.uuid)
 
-      assert updated.assigns.user_group_preflight == nil
+      assert updated.assigns.stale_roles == 0
     end
 
     # The "nil for a newsletters_list broadcast" variant was removed with
@@ -186,8 +186,22 @@ defmodule PhoenixKit.Newsletters.Web.BroadcastDetailsTest do
     end
 
     test "a failed broadcast is sent again" do
-      broadcast = create_user_group_broadcast([Ecto.UUID.generate()], ["Marketing"])
-      {:ok, broadcast} = Newsletters.update_broadcast(broadcast, %{status: "failed"})
+      start_supervised!({Oban, repo: Repo, testing: :manual, queues: [], plugins: false})
+      role = create_role("Readers #{System.unique_integer([:positive])}")
+
+      {:ok, user} =
+        %User{}
+        |> User.guest_user_changeset(%{
+          email: "retry-#{System.unique_integer([:positive])}@example.com"
+        })
+        |> Repo.insert()
+
+      {:ok, _assignment} = Roles.assign_role(user, role.name)
+
+      broadcast = create_user_group_broadcast([role.uuid], [role.name])
+
+      {:ok, broadcast} =
+        Newsletters.update_broadcast(broadcast, %{status: "failed", markdown_body: "Hello"})
 
       {:noreply, updated} =
         BroadcastDetails.handle_event("confirm_action", %{}, confirm_socket(broadcast))
@@ -209,7 +223,7 @@ defmodule PhoenixKit.Newsletters.Web.BroadcastDetailsTest do
       {:noreply, updated} =
         BroadcastDetails.handle_event("confirm_action", %{}, confirm_socket(stale))
 
-      assert updated.assigns.flash["error"] == "Cannot send a broadcast with status sent."
+      assert updated.assigns.flash["error"] == "Cannot send a broadcast with status Sent."
       assert Newsletters.get_broadcast!(broadcast.uuid).status == "sent"
       # The refusal also refreshes the page off its stale copy.
       assert updated.assigns.broadcast.status == "sent"
@@ -391,7 +405,7 @@ defmodule PhoenixKit.Newsletters.Web.BroadcastDetailsTest do
 
       updated = broadcast |> resend_socket() |> confirm_resend()
 
-      assert updated.assigns.flash["error"] == "Cannot send a broadcast with status cancelled."
+      assert updated.assigns.flash["error"] == "Cannot send a broadcast with status Cancelled."
       assert updated.assigns.broadcast.status == "cancelled"
       assert Repo.get(Delivery, row.uuid).status == "failed"
     end
@@ -415,6 +429,93 @@ defmodule PhoenixKit.Newsletters.Web.BroadcastDetailsTest do
       {:ok, sending} = Newsletters.update_broadcast(broadcast, %{status: "sending"})
 
       assert %{resendable_count: 0, unresendable_count: 0} = loaded(sending).assigns
+    end
+  end
+
+  describe "back to draft" do
+    test "goes to the editor, where it can be fixed" do
+      broadcast = create_user_group_broadcast([Ecto.UUID.generate()], ["Marketing"])
+      {:ok, scheduled} = Newsletters.update_broadcast(broadcast, %{status: "scheduled"})
+
+      {:noreply, updated} =
+        BroadcastDetails.handle_event(
+          "back_to_draft",
+          %{},
+          Map.update!(socket(), :assigns, &Map.merge(&1, %{broadcast: scheduled, flash: %{}}))
+        )
+
+      assert {:live, :redirect, %{to: to}} = updated.redirected
+      assert to =~ "/#{broadcast.uuid}/edit"
+      assert Newsletters.get_broadcast!(broadcast.uuid).status == "draft"
+    end
+
+    test "a tick that got there first stands" do
+      broadcast = create_user_group_broadcast([Ecto.UUID.generate()], ["Marketing"])
+      {:ok, _sending} = Newsletters.update_broadcast(broadcast, %{status: "sending"})
+      stale = %{broadcast | status: "scheduled"}
+
+      {:noreply, updated} =
+        BroadcastDetails.handle_event(
+          "back_to_draft",
+          %{},
+          Map.update!(
+            socket(),
+            :assigns,
+            &Map.merge(&1, %{
+              broadcast: stale,
+              broadcast_id: broadcast.uuid,
+              page_param: nil,
+              flash: %{}
+            })
+          )
+        )
+
+      assert updated.assigns.flash["error"] =~ "cannot go back to draft"
+      assert updated.assigns.broadcast.status == "sending"
+    end
+
+    test "needs newsletters.send" do
+      broadcast = create_user_group_broadcast([Ecto.UUID.generate()], ["Marketing"])
+      {:ok, scheduled} = Newsletters.update_broadcast(broadcast, %{status: "scheduled"})
+
+      {:noreply, updated} =
+        BroadcastDetails.handle_event(
+          "back_to_draft",
+          %{},
+          Map.update!(
+            socket(),
+            :assigns,
+            &Map.merge(&1, %{
+              broadcast: scheduled,
+              flash: %{},
+              phoenix_kit_current_scope: scope_with(["newsletters"])
+            })
+          )
+        )
+
+      assert updated.assigns.flash["error"] =~ "permission"
+      assert Newsletters.get_broadcast!(broadcast.uuid).status == "scheduled"
+    end
+  end
+
+  describe "the cancel dialog" do
+    defp cancel_message(status) do
+      {:noreply, updated} =
+        BroadcastDetails.handle_event(
+          "show_confirm",
+          %{"action" => "cancel_broadcast"},
+          Map.update!(socket(), :assigns, &Map.put(&1, :broadcast, %{status: status}))
+        )
+
+      updated.assigns.confirm_message
+    end
+
+    test "says a scheduled broadcast will never go out" do
+      assert cancel_message("scheduled") =~ "never go out"
+    end
+
+    test "says a running one cannot be resumed" do
+      assert cancel_message("sending") =~ "cannot be resumed"
     end
   end
 

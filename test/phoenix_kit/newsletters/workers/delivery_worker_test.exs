@@ -978,6 +978,70 @@ defmodule PhoenixKit.Newsletters.Workers.DeliveryWorkerTest do
     end
   end
 
+  describe "what the mail says to its reader" do
+    @describetag :requires_v158
+    setup :set_swoosh_global
+
+    defp sent_for(delivery) do
+      assert :ok = DeliveryWorker.perform(job_for(delivery))
+      assert_received {:email, email}
+      email
+    end
+
+    test "{{name}} is a CRM contact's name, not its address" do
+      %{delivery: delivery} =
+        create_crm_delivery(%{html_body: "<p>Hello {{name}}</p>", text_body: "Hello {{name}}"})
+
+      email = sent_for(delivery)
+
+      assert email.html_body =~ "Hello Member"
+      assert email.text_body =~ "Hello Member"
+    end
+
+    test "a contact with no name is greeted by address, as before" do
+      %{delivery: delivery, contact: contact} =
+        create_crm_delivery(%{text_body: "Hello {{name}}"})
+
+      {:ok, _contact} =
+        contact |> Ecto.Changeset.change(name: "  ") |> Repo.update()
+
+      assert sent_for(delivery).text_body =~ "Hello #{delivery.recipient_email}"
+    end
+
+    test "{{name}} is a user's full name when they have one" do
+      broadcast = create_broadcast(%{text_body: "Hello {{name}}"})
+
+      user =
+        create_user()
+        |> Ecto.Changeset.change(first_name: "Jane", last_name: "Doe")
+        |> Repo.update!()
+
+      assert sent_for(create_delivery(broadcast, user)).text_body =~ "Hello Jane Doe"
+    end
+
+    test "{{subject}} works in the text part as it does in the HTML" do
+      broadcast =
+        create_broadcast(%{
+          subject: "Spring sale",
+          html_body: "<p>Re: {{subject}}</p>",
+          text_body: "Re: {{subject}}"
+        })
+
+      email = sent_for(create_delivery(broadcast, create_user()))
+
+      assert email.html_body =~ "Re: Spring sale"
+      assert email.text_body =~ "Re: Spring sale"
+    end
+
+    test "one lookup still gives a CRM recipient their language" do
+      %{delivery: delivery, contact: contact} = create_crm_delivery(%{html_body: "<p>Hi</p>"})
+      {:ok, _contact} = contact |> Ecto.Changeset.change(locale: "ru") |> Repo.update()
+
+      assert :ok = DeliveryWorker.perform(job_for(delivery))
+      assert_received {:email, _email}
+    end
+  end
+
   describe "error text" do
     @describetag :requires_v158
 

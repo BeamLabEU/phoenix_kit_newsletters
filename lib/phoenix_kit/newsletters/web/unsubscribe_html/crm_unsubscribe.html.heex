@@ -3,11 +3,20 @@
     <div class="card-body">
       <h2 class="card-title text-lg">{gettext("Manage email subscriptions")}</h2>
 
-      <%= if @crm_state == :invalid do %>
+      <%= case @crm_state do %>
+        <% :invalid -> %>
         <div class="alert alert-warning text-sm">
           <span>{gettext("This unsubscribe link is no longer valid.")}</span>
         </div>
-      <% else %>
+        <% :failed -> %>
+        <div class="alert alert-warning text-sm">
+          <span>{gettext("We could not unsubscribe you right now. Please try again.")}</span>
+        </div>
+        <% :unsubscribed_all -> %>
+        <div class="alert alert-success text-sm">
+          <span>{gettext("You've been unsubscribed from all newsletters.")}</span>
+        </div>
+        <% _list_state -> %>
         <p class="text-sm text-base-content/70">
           <%= case @crm_state do %>
             <% :confirm -> %>
@@ -20,7 +29,7 @@
         </p>
 
         <%= if @crm_state == :confirm do %>
-          <form method="post" action={PhoenixKit.Utils.Routes.path("/newsletters/unsubscribe")}>
+          <form method="post" action={PhoenixKit.Newsletters.Paths.unsubscribe()}>
             <input type="hidden" name="_csrf_token" value={Plug.CSRFProtection.get_csrf_token()} />
             <input type="hidden" name="token" value={@token} />
             <input type="hidden" name="scope" value="list" />
@@ -32,7 +41,7 @@
 
         <div class="divider text-xs text-base-content/50">{gettext("OR")}</div>
 
-        <form method="post" action={PhoenixKit.Utils.Routes.path("/newsletters/unsubscribe")}>
+        <form method="post" action={PhoenixKit.Newsletters.Paths.unsubscribe()}>
           <input type="hidden" name="_csrf_token" value={Plug.CSRFProtection.get_csrf_token()} />
           <input type="hidden" name="token" value={@token} />
           <input type="hidden" name="scope" value="all" />

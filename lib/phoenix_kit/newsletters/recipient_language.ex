@@ -22,6 +22,11 @@ defmodule PhoenixKit.Newsletters.RecipientLanguage do
   @spec for_recipient(map(), map()) :: String.t()
   def for_recipient(%User{} = user, _broadcast), do: RecipientLocale.for_rendering(user)
 
+  # The worker has already read this recipient's membership, for its links.
+  def for_recipient(%{language: language}, _broadcast) do
+    language || RecipientLocale.for_rendering(nil)
+  end
+
   def for_recipient(%{email: email}, %{crm_list_uuid: list_uuid})
       when is_binary(email) and is_binary(list_uuid) do
     CRMSource.recipient_locale(list_uuid, email) || RecipientLocale.for_rendering(nil)

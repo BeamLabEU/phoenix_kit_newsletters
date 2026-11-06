@@ -38,13 +38,11 @@ defmodule PhoenixKit.Newsletters.BroadcasterCRMTest do
     broadcast
   end
 
-  test "runs the full send path without crashing and resolves to zero recipients for an unknown list" do
+  test "refuses an unknown list, which resolves to nobody, and leaves the broadcast as it was" do
     broadcast = create_crm_sourced_broadcast(Ecto.UUID.generate())
 
-    assert {:ok, sent} = Broadcaster.send(broadcast)
-    assert sent.status == "sending"
-    assert sent.total_recipients == 0
-    assert sent.crm_list_uuid == broadcast.crm_list_uuid
+    assert {:error, :no_recipients} = Broadcaster.send(broadcast)
+    assert Newsletters.get_broadcast!(broadcast.uuid).status == broadcast.status
   end
 
   describe "with real CRM fixtures" do

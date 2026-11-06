@@ -21,6 +21,7 @@ defmodule PhoenixKit.Newsletters.Web.DeadRenderTest do
   alias PhoenixKit.Newsletters
   alias PhoenixKit.Newsletters.Delivery
   alias PhoenixKit.Newsletters.Layouts
+  alias PhoenixKit.Newsletters.Paths
   alias PhoenixKitNewsletters.Test.Repo
 
   @endpoint PhoenixKitNewsletters.Test.DeadRenderEndpoint
@@ -128,7 +129,10 @@ defmodule PhoenixKit.Newsletters.Web.DeadRenderTest do
     end
 
     test "without a token or a login it sends the visitor to log in", %{conn: conn} do
-      assert redirected_to(get(conn, "/newsletters/preferences")) =~ "log-in"
+      location = redirected_to(get(conn, "/newsletters/preferences"))
+
+      assert location =~ "/users/log-in"
+      refute location =~ "/phoenix_kit/phoenix_kit"
     end
   end
 
@@ -221,6 +225,96 @@ defmodule PhoenixKit.Newsletters.Web.DeadRenderTest do
 
       assert html =~ "1 failed delivery may have gone out"
       refute html =~ "Resend failed deliveries"
+    end
+
+    test "a layout link is applied once, not twice", %{conn: conn} do
+      html = html_response(get(conn, "/layouts"), 200)
+
+      assert html =~ ~s(href="#{Paths.layout_new()}")
+      refute html =~ "/phoenix_kit/phoenix_kit"
+    end
+
+    test "a scheduled broadcast can go back to being a draft", %{conn: conn} do
+      scheduled = broadcast(%{status: "scheduled"})
+
+      assert html_response(get(conn, "/broadcasts/#{scheduled.uuid}"), 200) =~ "Back to draft"
+    end
+
+    test "a sent one cannot", %{conn: conn} do
+      sent = broadcast(%{status: "sent"})
+
+      refute html_response(get(conn, "/broadcasts/#{sent.uuid}"), 200) =~ "Back to draft"
+    end
+
+    test "someone who cannot send cannot move it back either", %{conn: conn} do
+      scheduled = broadcast(%{status: "scheduled"})
+      conn = init_test_session(conn, %{"test_permissions" => ["newsletters"]})
+
+      refute html_response(get(conn, "/broadcasts/#{scheduled.uuid}"), 200) =~ "Back to draft"
+    end
+
+    test "the message can be read on the page, whatever became of the broadcast", %{conn: conn} do
+      cancelled = broadcast(%{status: "cancelled", markdown_body: "The words themselves"})
+
+      assert html_response(get(conn, "/broadcasts/#{cancelled.uuid}"), 200) =~
+               "The words themselves"
+    end
+
+    test "Retry is not offered for an archived list, where it could only be refused",
+         %{conn: conn} do
+      {:ok, list} =
+        PhoenixKitCRM.Lists.create_list(%{name: "Old #{System.unique_integer([:positive])}"})
+
+      {:ok, _archived} = PhoenixKitCRM.Lists.archive_list(list)
+      failed = broadcast(%{status: "failed", crm_list_uuid: list.uuid})
+
+      refute html_response(get(conn, "/broadcasts/#{failed.uuid}"), 200) =~ "Retry send"
+    end
+
+    test "nor Resend, for the same reason", %{conn: conn} do
+      {:ok, list} =
+        PhoenixKitCRM.Lists.create_list(%{name: "Old #{System.unique_integer([:positive])}"})
+
+      {:ok, _archived} = PhoenixKitCRM.Lists.archive_list(list)
+      sent = broadcast(%{status: "sent", crm_list_uuid: list.uuid})
+      delivery(sent, %{status: "failed", error: ":not_configured"})
+
+      refute html_response(get(conn, "/broadcasts/#{sent.uuid}"), 200) =~
+               "Resend failed deliveries"
+    end
+
+    test "Retry is offered where it can work", %{conn: conn} do
+      {:ok, list} =
+        PhoenixKitCRM.Lists.create_list(%{name: "Live #{System.unique_integer([:positive])}"})
+
+      failed = broadcast(%{status: "failed", crm_list_uuid: list.uuid})
+
+      assert html_response(get(conn, "/broadcasts/#{failed.uuid}"), 200) =~ "Retry send"
+    end
+
+    test "a status that is not one reads as no filter", %{conn: conn} do
+      for _ <- 1..51, do: broadcast(%{})
+
+      # Given as params: this endpoint has no parser to read them from a query
+      # string. A map raises when the page links are built.
+      for status <- [%{"a" => "b"}, ["x"], "bogus"] do
+        html = html_response(get(conn, "/broadcasts", %{"status" => status}), 200)
+
+        assert html =~ "page=2"
+        refute html =~ "status="
+      end
+    end
+
+    test "the numbers are cumulative, as on the list", %{conn: conn} do
+      sent = broadcast(%{status: "sent"})
+      for status <- ~w(sent delivered delivered opened), do: delivery(sent, %{status: status})
+
+      html = html_response(get(conn, "/broadcasts/#{sent.uuid}"), 200)
+
+      # Four went out, three of them arrived, and one of those was opened.
+      assert html =~ ~r{Sent</div>\s*<div[^>]*>\s*4\s*</div>}
+      assert html =~ ~r{Delivered</div>\s*<div[^>]*>\s*3\s*</div>}
+      assert html =~ ~r{Opened</div>\s*<div[^>]*>\s*1\s*</div>}
     end
 
     test "the list offers the next page", %{conn: conn} do

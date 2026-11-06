@@ -9,7 +9,7 @@ Add to your `mix.exs`:
 ```elixir
 def deps do
   [
-    {:phoenix_kit_newsletters, "~> 0.2"}
+    {:phoenix_kit_newsletters, "~> 0.6"}
     # During development (before Hex publish):
     # {:phoenix_kit_newsletters, github: "BeamLabEU/phoenix_kit_newsletters"}
   ]
@@ -18,8 +18,10 @@ end
 
 ## Oban Setup
 
-PhoenixKit Newsletters uses Oban for background email delivery. Add the
-`newsletters_delivery` queue to your Oban configuration:
+PhoenixKit Newsletters uses Oban for background email delivery, in the
+`newsletters_delivery` queue. `mix phoenix_kit.install` and `mix phoenix_kit.update`
+add it to your Oban configuration, and `mix phoenix_kit.doctor` reports it missing.
+By hand, it looks like this:
 
 ```elixir
 # In config/config.exs:
@@ -31,7 +33,7 @@ config :my_app, Oban,
 The queue name must be exactly `newsletters_delivery` — that is the queue
 `PhoenixKit.Newsletters.Workers.DeliveryWorker` enqueues into. A host that
 names it anything else enqueues jobs nothing drains and never sends a single
-email. `mix phoenix_kit.install` adds this queue for you.
+email.
 
 Queue concurrency is the delivery-rate ceiling. Per-broadcast pacing is
 configured separately, on the send profile (`rate_per_hour`, `rate_per_day`,
@@ -41,12 +43,16 @@ See the [Oban documentation](https://oban.hexdocs.pm) for full configuration opt
 
 ## How It Works
 
-PhoenixKit Newsletters auto-registers with PhoenixKit on startup — no additional configuration needed.
+PhoenixKit Newsletters auto-registers with PhoenixKit on startup.
 
 1. Run `mix deps.get`
-2. Recompile PhoenixKit routes: `mix deps.compile phoenix_kit --force`
-3. Restart your server
-4. Enable the module in **Admin > Modules > Newsletters**
+2. Create the tables: `mix phoenix_kit.update`, then `mix ecto.migrate`
+3. Recompile PhoenixKit routes: `mix deps.compile phoenix_kit --force`
+4. Restart your server
+5. Enable the module in **Admin > Modules > Newsletters**
+
+The module asks for PhoenixKit's Emails module (`phoenix_kit_emails`), for delivery
+tracking. Sending works without it, but the module list then shows it as missing.
 
 This module owns its 3 tables (`phoenix_kit_newsletters_broadcasts`,
 `phoenix_kit_newsletters_deliveries`, `phoenix_kit_newsletters_layouts`) through
@@ -207,8 +213,16 @@ degrades instead of crashing the page, and a failure inside the engine is logged
 
 ## Unsubscribe Flow
 
-Tokens are `Phoenix.Token`, `max_age` 7 days, with three distinct salts —
-never merge them, a per-list link must never open the full preference page:
+Tokens are `Phoenix.Token`, signed with the host's endpoint (or `config :phoenix_kit,
+endpoint: ...` if you set one), with three distinct salts — never merge them, a
+per-list link must never open the full preference page. An unsubscribe link never
+expires, because an opt-out has to keep working however old the mail is. A
+preference link lasts 30 days, because it can also resubscribe someone.
+
+Unsubscribing from everything covers the person, not one row: every CRM contact
+holding the address, and the account holding it. Resubscribing undoes all of that.
+An account has to confirm its address before the preference page links it to a
+contact.
 
 | Salt | Payload | Used by |
 |---|---|---|

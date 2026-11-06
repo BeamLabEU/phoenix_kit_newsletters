@@ -56,6 +56,15 @@ defmodule PhoenixKit.Newsletters.Web.Routes do
         live_session :phoenix_kit_newsletters_preferences,
           on_mount: [{unquote(Auth), :phoenix_kit_mount_current_scope}] do
           live("/newsletters/preferences", unquote(PreferenceCenterLive), :index)
+
+          # Core's sidebar puts a locale in a dashboard tab's path on a
+          # multilingual site. Emailed links never carry one (see `Paths`).
+          live(
+            "/:locale/newsletters/preferences",
+            unquote(PreferenceCenterLive),
+            :index,
+            as: :newsletters_preferences_locale
+          )
         end
       end
     end

@@ -25,6 +25,22 @@ defmodule PhoenixKit.Newsletters.Paths do
     end
   end
 
-  # Public
-  def unsubscribe, do: Routes.path("/newsletters/unsubscribe")
+  # Public. The unsubscribe routes exist at the root only, in every language, so
+  # a locale segment would point at nothing: on a multilingual site that is every
+  # link in every mail. The link's token says which language to answer in.
+  def unsubscribe, do: public("/newsletters/unsubscribe")
+  def preferences, do: public("/newsletters/preferences")
+
+  def unsubscribe_url(token), do: public_url("/newsletters/unsubscribe", token)
+
+  def one_click_unsubscribe_url(token),
+    do: public_url("/newsletters/unsubscribe/one-click", token)
+
+  def preferences_url(token), do: public_url("/newsletters/preferences", token)
+
+  defp public(path), do: Routes.path(path, locale: :none)
+
+  defp public_url(path, token) do
+    Routes.base_url() <> public(path) <> "?" <> URI.encode_query(token: token)
+  end
 end

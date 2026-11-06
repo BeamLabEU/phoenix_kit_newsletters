@@ -78,6 +78,11 @@ and revert **both** `mix.exs` and `mix.lock` before committing.
   `PhoenixKit.Utils.Routes.path/1` for cross-module links/string paths and
   `Routes.url/1` for absolute email links. No relative email URLs or hardcoded
   hosts; route new code through `Paths`, even where old templates use literals.
+  `pk_link` calls `Routes.path/1` itself, so a `Paths` value goes to plain
+  `<.link>`: through `pk_link` it gets the prefix twice. The public routes exist
+  at the root only, so `Paths` builds them with `locale: :none`; `Routes.url/1`
+  would add a segment that 404s on a multilingual site. Preferences also has a
+  `/:locale/` route, because core's sidebar localizes a tab's path.
 - Register admin routes only through tabs' `live_view:` in `admin_tabs/0`;
   public routes only through `route_module/0` (`Web.Routes.generate/1`). Never
   hand-register them in a host router; see core's `guides/custom-admin-pages.md`.
@@ -108,8 +113,11 @@ and revert **both** `mix.exs` and `mix.lock` before committing.
   media picker re-render on every keystroke. Never `assign(:layout, _)`:
   dead rendering reserves `:layout` for the page layout.
 - Put token verification, timezone resolution and account contact find/link
-  in `handle_params/3`, not `mount/3` (mount runs twice).
-- Every LiveView mount checks `enabled?/0` and flashes/redirects if disabled.
+  in `handle_params/3`, not `mount/3` (mount runs twice). `handle_params/3` runs
+  on the plain GET too, so a write there waits for `connected?/1`.
+- Every LiveView mount checks `enabled?/0` and flashes/redirects if disabled;
+  preferences shows its unavailable state instead, as a public page never
+  redirects to `/` (a site may have no route there under its prefix).
   `enabled?/0` reads `newsletters_enabled` (default `false`), rescuing exceptions
   to `false` without catching `:exit`.
 - Gettext backend: `PhoenixKit.Newsletters.Gettext`, locales `en`, `et`, `ru`.
@@ -162,8 +170,11 @@ Tables are `phoenix_kit_newsletters_{broadcasts,deliveries,layouts}`:
   A page's copy of a broadcast is as old as its tab, so every status decision
   is made on the row: `update_draft/2` locks it and writes only a draft,
   `cancel_broadcast/1` is one conditional UPDATE (`scheduled`/`sending` only),
-  and the editor redirects from `/edit` unless the row is a draft. Never write
-  an editor save or a cancel through `update_broadcast/2`. `file_references/0`
+  `unschedule_broadcast/1` likewise (`scheduled` back to `draft`, the way to edit
+  one), and the editor redirects from `/edit` unless the row is a draft. Never
+  write an editor save or a cancel through `update_broadcast/2`. The editor reads
+  the body from the form's `editor_content`: key events miss a mouse paste and a
+  reconnect. Scheduling refuses a past time. `file_references/0`
   protects `attachments` from core's orphan check; list any new file column
   there, because supplying a list takes over this module's tables.
 - `Delivery`: `pending` is the **only non-terminal status**; terminal statuses
@@ -201,7 +212,9 @@ substitution pass. `strip_html/1` keeps link addresses and decodes entities, onc
 
 `Render.site_variables/0` binds `logo_url`, `accent_color`, `site_name` and
 `site_url` for subject patterns, bodies without a layout and the text part;
-`header`/`footer` stay layout-only. A test holds it equal to core's values.
+`header`/`footer` stay layout-only. A test holds it equal to core's values. Core's
+header and footer get every variable through `:branding`, so a host's
+`_footer-newsletters` can place `{{unsubscribe_url}}`.
 
 `RecipientLanguage.for_recipient/2` resolves user `preferred_locale` via core's
 `RecipientLocale`, or CRM contact locale → list locale → site content language.
@@ -220,7 +233,10 @@ footer), with Branding logo/accent. Never rebuild core chrome here or read/write
   list not `active` with `{:crm_list_not_active, status}` **before** status
   changes. Resolve recipients once, outside the transaction: CRM subscribed/not
   opted out/not trashed/with email, deduplicated by downcased email; role users
-  active/not opted out/with a `delivery_address/1`, deduplicated by user.
+  active/not opted out/with a `delivery_address/1`, deduplicated by user, then by
+  address (`contact_email` is not unique). An audience of nobody or a blank body
+  is refused (`:no_recipients`, `:blank_body`): either would end `sent` with no
+  retry. A scheduled tick marks those `failed`, as it does an inactive list.
 - **One transaction** locks the row, judges its status, flips to `sending` and
   inserts every delivery and job, with an explicit `timeout:`. The sweep finishes
   any `sending` broadcast with nothing pending, so a `sending` row must never be
@@ -235,14 +251,15 @@ footer), with Branding logo/accent. Never rebuild core chrome here or read/write
   `idx_newsletters_deliveries_uniq_broadcast_{user,contact,email}` with
   `on_conflict: :nothing`, **no `conflict_target`**. New recipient sources
   require corresponding DB uniqueness before use.
-- Queue is **`newsletters_delivery`**, never `newsletters`; keep README host
-  config consistent. Worker: `max_attempts: 3`, retried after 5 then 30 minutes
+- Queue is **`newsletters_delivery`**, never `newsletters`, declared by
+  `oban_queues/0`; keep README host config consistent. Worker: `max_attempts: 3`, retried after 5 then 30 minutes
   (`backoff/1`), unique on `delivery_uuid` while incomplete. Always pass
   `skip_queue: true`: the emails package's queue re-sends through the default
   integration, off the send profile, and hands back a reference where the
   message id belongs. Profile `rate_per_hour`, `rate_per_day`, `pause_seconds`
-  determine the tightest interval (`send_interval_seconds/1`); schedule job N
-  at N × interval continuously across batches, 0 = all at once. Throttling is
+  determine the tightest interval (`send_interval_seconds/1`, a fraction above
+  one per second); schedule job N at N × interval continuously across batches,
+  0 = all at once. Throttling is
   per broadcast; concurrent broadcasts may exceed a profile's combined caps.
   No `newsletters_rate_limit` setting exists; do not re-add it.
 - Worker sends only `pending` deliveries (`guard_unsent/1`). It re-reads the
@@ -303,12 +320,19 @@ footer), with Branding logo/accent. Never rebuild core chrome here or read/write
   a log, `delivery.error` or Oban's job errors: SMTP errors quote the recipient.
 - `increment_broadcast_counter/2` is called by `phoenix_kit_emails` after
   `update_delivery_status/3`; its name and arity are that package's contract.
+  Provider events come late and repeatedly: `update_delivery_status/3` keeps their
+  timestamps but never walks a status back (`Delivery.next_status/2`). That package
+  increments regardless, so counters can overstate; the details page counts rows.
 
 ## Public unsubscribe & preferences
 
-Never mutate on GET: link scanners fetch email URLs. Tokens use `Phoenix.Token`,
-endpoint `PhoenixKit.Config.get(:endpoint, PhoenixKitWeb.Endpoint)`, 7-day max
-age. Keep salts and claim scopes separate:
+Never mutate on GET: link scanners fetch email URLs. Tokens use `Phoenix.Token`
+with `UnsubscribeToken.endpoint/0`: explicit `:endpoint`, then the host's
+(`Config.get_parent_endpoint/0`). Never default to `PhoenixKitWeb.Endpoint` alone:
+nothing starts it in a host, so every send and unsubscribe would raise, and
+`config/test.exs` sets a raw secret that hides it. Unsubscribe tokens never expire,
+because an opt-out must outlive the mail; preference tokens last 30 days, because
+they can resubscribe. Keep salts and claim scopes separate:
 
 | Purpose | Salt | Claims |
 |---|---|---|
@@ -320,13 +344,20 @@ A per-list token must never grant full preference access.
 
 - `GET /newsletters/unsubscribe?token=` only confirms (`:confirm`,
   `:already_unsubscribed`, `:invalid`). POST `scope=list` removes CRM list
-  membership idempotently; `scope=all` opts the contact out globally;
+  membership idempotently; `scope=all` opts the person out globally;
   `scope=role_optout` calls `UserGroupSource.record_opt_out/1`, writing
   `custom_fields["newsletters_opted_out_at"]` and linked CRM `opted_out_at`.
+  Results render on the page: no flash reaches these visitors.
+- An opt-out is by address: imports make one person several contacts, so
+  `CRMSource.opt_out/2` and `opt_in/2` act on every contact holding it, and
+  `UserGroupSource.opt_out_contact/2` / `opt_in_contact/2` add the account. Write
+  custom fields through `merge_user_custom_fields/3`, never a whole-map update.
 - `GET /newsletters/unsubscribe/one-click` redirects to confirmation;
   POST performs RFC 8058 unsubscribe and always answers 200.
 - `/newsletters/preferences[?token=]` grants access to the token's contact.
-  Without a token, find or lazily create/link an authenticated user's contact.
+  Without a token, find or lazily create/link an authenticated user's contact,
+  only for a confirmed address: registration logs in before confirmation, so
+  linking by email would hand over someone else's contact (`{:error, :unconfirmed}`).
   Never use `Contacts.connect_user/2`; multiple unlinked contacts sharing an
   email count as no match. Degrade gracefully when CRM is unavailable.
 - Answer in the language of the email the link came from: contact → list → site
@@ -434,7 +465,8 @@ installs (core 3.0 no longer creates module tables).
   use cookie sessions and `fetch_flash`. These miss initial browser-render
   failures. Add every new LiveView to `test/support/dead_render_router.ex`
   and cover it in `web/dead_render_test.exs`; never use a content `:layout`
-  assign (see Web conventions).
+  assign (see Web conventions). Its endpoint has no parser, so pass params to
+  `get/3`: a query string in the path is ignored.
 - Verification tests use `test/support/fake_verification_engine.ex` via
   application config, scripted answers and call messages. Keep it aligned
   with the behaviour. Drive async starts via `start_via_event/1`; the fake

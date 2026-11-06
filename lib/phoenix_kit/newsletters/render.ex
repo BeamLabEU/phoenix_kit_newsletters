@@ -64,6 +64,7 @@ defmodule PhoenixKit.Newsletters.Render do
   alias PhoenixKit.Email.Content, as: EmailContent
   alias PhoenixKit.Email.Layout, as: CoreLayout
   alias PhoenixKit.Newsletters.Layout
+  alias PhoenixKit.Newsletters.Paths
   alias PhoenixKit.Settings
   alias PhoenixKit.Templates.Substitution
   alias PhoenixKit.Utils.Routes
@@ -99,7 +100,7 @@ defmodule PhoenixKit.Newsletters.Render do
 
     case wrapper(layout, locale) do
       {:ok, wrapper} ->
-        chrome = chrome(Keyword.get(opts, :subject), opts)
+        chrome = chrome(Keyword.get(opts, :subject), with_branding(opts, variables))
 
         bound =
           chrome.variables
@@ -120,7 +121,8 @@ defmodule PhoenixKit.Newsletters.Render do
           CoreLayout.wrap(body, Keyword.get(opts, :subject),
             locale: locale,
             group: @group,
-            paths: paths(opts)
+            paths: paths(opts),
+            branding: branding(variables)
           )
         end
     end
@@ -191,7 +193,7 @@ defmodule PhoenixKit.Newsletters.Render do
     %{
       "name" => "Jane Doe",
       "email" => "jane.doe@example.com",
-      "unsubscribe_url" => Routes.url("/newsletters/unsubscribe?token=sample")
+      "unsubscribe_url" => Paths.unsubscribe_url("sample")
     }
   end
 
@@ -221,14 +223,25 @@ defmodule PhoenixKit.Newsletters.Render do
           variables: variables()
         }
   def chrome(subject, opts \\ []) do
+    parts_opts = [locale: Keyword.get(opts, :locale), group: @group, paths: paths(opts)]
+
+    parts_opts =
+      case Keyword.fetch(opts, :branding) do
+        {:ok, branding} -> Keyword.put(parts_opts, :branding, branding)
+        :error -> parts_opts
+      end
+
     subject
-    |> CoreLayout.render_parts(
-      locale: Keyword.get(opts, :locale),
-      group: @group,
-      paths: paths(opts)
-    )
+    |> CoreLayout.render_parts(parts_opts)
     |> Map.take([:header, :footer, :variables])
   end
+
+  # What a host's own header and footer files can place. Core carries a caller's
+  # extra keys through to them, so `{{unsubscribe_url}}` in `_footer-newsletters`
+  # works; the site's logo and colour stay, as giving branding replaces reading them.
+  defp branding(variables), do: Map.merge(Branding.variables(), stringify(variables))
+
+  defp with_branding(opts, variables), do: Keyword.put(opts, :branding, branding(variables))
 
   # ── internals ──────────────────────────────────────────────────────────
 

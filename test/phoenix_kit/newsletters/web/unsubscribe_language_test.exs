@@ -31,8 +31,6 @@ defmodule PhoenixKit.Newsletters.Web.UnsubscribeLanguageTest do
     "You've already unsubscribed from these newsletters.",
     "You've been unsubscribed from these newsletters.",
     "Unsubscribe",
-    "Invalid or expired unsubscribe link.",
-    "Invalid link.",
     "We could not unsubscribe you right now. Please try again."
   ]
 
@@ -135,13 +133,11 @@ defmodule PhoenixKit.Newsletters.Web.UnsubscribeLanguageTest do
       assert get(token).resp_body =~ "Вы уже были отписаны от «Weekly»."
     end
 
-    test "unsubscribing from everything flashes in that language" do
+    test "unsubscribing from everything answers in that language" do
       {contact, list} = member("ru", %{})
 
-      conn = post(crm_token(contact, list), "all")
-
-      assert conn.status == 302
-      assert conn.assigns[:flash]["info"] == "Вы были отписаны от всех рассылок."
+      assert post(crm_token(contact, list), "all").resp_body =~
+               "Вы были отписаны от всех рассылок."
     end
 
     test "escapes a list's name, translated sentence or not" do

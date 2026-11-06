@@ -21,12 +21,10 @@ defmodule PhoenixKit.Newsletters.UserGroupSource do
   and does not raise; the direct `role_uuid in ^role_uuids` query below
   has no dependency on the role even still existing.
 
-  Deduplication is by **user** (`distinct: u.uuid` in
-  `users_for_role_uuids/1`), not by address the way `CRMSource` dedups
-  its CRM-contact recipients — `phoenix_kit_users.email` carries a
-  `UNIQUE` index, so for core users the two are equivalent; `CRMSource`
-  dedups by address instead because two distinct CRM contacts can
-  legitimately share one mailbox, which two distinct core users cannot.
+  Deduplication is by user (`distinct: u.uuid` in `users_query/1`), then by
+  address, as `CRMSource` does: a login is unique, but the address mail goes to is
+  not. A managed organization's `contact_email` can be shared with another
+  organization or with a member's own login, and one inbox gets one copy.
 
   A user is sendable when active (`is_active`), reachable and not opted
   out. Reachable means `delivery_address/1` finds an address: a managed
@@ -68,10 +66,8 @@ defmodule PhoenixKit.Newsletters.UserGroupSource do
 
   @doc """
   Sendable recipients across one or more roles — active, not-opted-out
-  users, deduplicated by user (a user assigned more than one of the
-  given roles is only sent to once — see the moduledoc on why this
-  dedups by user rather than by address). A role uuid that no longer
-  matches any role contributes nothing — doesn't raise.
+  users, deduplicated by user and then by address (see the moduledoc). A role
+  uuid that no longer matches any role contributes nothing — doesn't raise.
 
   Returns `[%{user_uuid: uuid, email: string}]`, sorted by email for a
   stable, deterministic order.
@@ -84,7 +80,15 @@ defmodule PhoenixKit.Newsletters.UserGroupSource do
     users
     |> Enum.filter(&sendable?(&1, contacts_by_user_uuid))
     |> Enum.map(&%{user_uuid: &1.uuid, email: delivery_address(&1)})
-    |> Enum.sort_by(& &1.email)
+    |> Enum.sort_by(&{String.downcase(&1.email), &1.user_uuid})
+    |> Enum.uniq_by(&String.downcase(&1.email))
+  end
+
+  @doc "How many of these role uuids no longer match a role. Reads the roles only."
+  @spec stale_role_count([String.t()]) :: non_neg_integer()
+  def stale_role_count(role_uuids) when is_list(role_uuids) do
+    role_uuids = Enum.uniq(role_uuids)
+    length(role_uuids) - existing_role_count(role_uuids)
   end
 
   @doc """
@@ -159,7 +163,7 @@ defmodule PhoenixKit.Newsletters.UserGroupSource do
       sendable: sendable,
       no_email: no_email,
       unsendable: total - sendable - no_email,
-      stale_roles: length(role_uuids) - existing_role_count(role_uuids)
+      stale_roles: stale_role_count(role_uuids)
     }
   end
 
@@ -218,15 +222,65 @@ defmodule PhoenixKit.Newsletters.UserGroupSource do
     end
   end
 
-  defp set_custom_field_opted_out(user) do
-    current_fields = user.custom_fields || %{}
-    timestamp = UtilsDate.utc_now() |> DateTime.to_iso8601()
-    updated_fields = Map.put(current_fields, @opted_out_custom_field, timestamp)
+  @doc """
+  The opt-out behind "unsubscribed from all newsletters", which promises more
+  than a contact row can hold: `CRMSource.opt_out/2` covers every contact at the
+  address, and this adds the account, so role mail stops too. That account may
+  have no linked contact for the role check to find.
 
-    Auth.update_user_custom_fields(user, updated_fields,
+  The contact side is what the result reports. An account that cannot be written
+  is logged, as in `record_opt_out/1`.
+  """
+  @spec opt_out_contact(struct(), keyword()) :: {:ok, struct()} | {:error, term()}
+  def opt_out_contact(contact, opts \\ []) do
+    with {:ok, updated} <- CRMSource.opt_out(contact, opts) do
+      with_account(contact, &set_custom_field_opted_out/1)
+      {:ok, updated}
+    end
+  end
+
+  @doc """
+  The way back from `opt_out_contact/2` and `record_opt_out/1`, which set more
+  than a contact's `opted_out_at`: left in place, the account's own flag would keep
+  role mail blocked after the page says "Welcome back".
+  """
+  @spec opt_in_contact(struct(), keyword()) :: {:ok, struct()} | {:error, term()}
+  def opt_in_contact(contact, opts \\ []) do
+    with {:ok, updated} <- CRMSource.opt_in(contact, opts) do
+      with_account(contact, &clear_custom_field_opted_out/1)
+      {:ok, updated}
+    end
+  end
+
+  defp with_account(contact, write) do
+    with %User{} = user <- account_of(contact),
+         {:error, reason} <- write.(user) do
+      Logger.warning(
+        "UserGroupSource: could not update the opt-out of user #{user.uuid}: #{inspect(reason)}"
+      )
+    end
+  end
+
+  defp account_of(%{user_uuid: user_uuid}) when is_binary(user_uuid) do
+    Auth.get_user(user_uuid)
+  end
+
+  defp account_of(%{email: email}) when is_binary(email), do: Auth.get_user_by_email(email)
+  defp account_of(_contact), do: nil
+
+  # The merge and delete writers, not update_user_custom_fields/3: this column is
+  # shared with core's own keys, and a whole-map write can lose a concurrent one.
+  defp set_custom_field_opted_out(user) do
+    timestamp = UtilsDate.utc_now() |> DateTime.to_iso8601()
+
+    Auth.merge_user_custom_fields(user, %{@opted_out_custom_field => timestamp},
       ensure_definitions: false,
       broadcast: false
     )
+  end
+
+  defp clear_custom_field_opted_out(user) do
+    Auth.delete_user_custom_field(user, @opted_out_custom_field, broadcast: false)
   end
 
   defp maybe_opt_out_linked_contact(user) do

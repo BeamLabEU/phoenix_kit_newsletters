@@ -355,6 +355,87 @@ defmodule PhoenixKit.Newsletters.UserGroupSourceTest do
     end
   end
 
+  describe "one inbox, one copy" do
+    # A login is unique; the address mail goes to is not, on a core with
+    # `contact_email`.
+    test "two accounts that deliver to one address appear once" do
+      role = create_role()
+      shared = "office-#{System.unique_integer([:positive])}@example.com"
+
+      for _ <- 1..2, do: organization(contact_email: shared) |> assign(role)
+
+      assert [%{email: ^shared}] = UserGroupSource.sendable_recipients([role.uuid])
+    end
+  end
+
+  describe "opt_out_contact/2 and opt_in_contact/2" do
+    defp contact_at(email) do
+      {:ok, contact} = Contacts.create_contact(%{name: "Contact", email: email})
+      contact
+    end
+
+    test "an account at the address stops getting role mail, linked or not" do
+      user = create_user()
+      contact = contact_at(user.email)
+
+      assert {:ok, %Contact{opted_out_at: %DateTime{}}} =
+               UserGroupSource.opt_out_contact(contact)
+
+      assert UserGroupSource.opted_out?(Repo.get(User, user.uuid))
+    end
+
+    test "and resubscribing brings it back, which clearing the contact alone would not" do
+      user = create_user()
+      contact = contact_at(user.email)
+      {:ok, opted_out} = UserGroupSource.opt_out_contact(contact)
+
+      assert {:ok, %Contact{opted_out_at: nil}} = UserGroupSource.opt_in_contact(opted_out)
+
+      refute UserGroupSource.opted_out?(Repo.get(User, user.uuid))
+    end
+
+    test "a role opt-out can be undone from the preference page too" do
+      user = create_user()
+      contact = contact_at(user.email)
+      {:ok, _linked} = contact |> Contact.link_user_changeset(user.uuid) |> Repo.update()
+
+      {:ok, _user} = UserGroupSource.record_opt_out(Repo.get(User, user.uuid))
+      assert UserGroupSource.opted_out?(Repo.get(User, user.uuid))
+
+      {:ok, _contact} =
+        contact.__struct__ |> Repo.get(contact.uuid) |> UserGroupSource.opt_in_contact()
+
+      refute UserGroupSource.opted_out?(Repo.get(User, user.uuid))
+    end
+
+    test "a contact with no account opts out all the same" do
+      contact = contact_at("no-account-#{System.unique_integer([:positive])}@example.com")
+
+      assert {:ok, %Contact{opted_out_at: %DateTime{}}} =
+               UserGroupSource.opt_out_contact(contact)
+    end
+
+    test "an opt-out leaves the account's other custom fields alone" do
+      user = create_user()
+      {:ok, _user} = Auth.merge_user_custom_fields(user, %{"mine" => "kept"}, broadcast: false)
+
+      # The struct is older than the row, as a concurrent writer leaves it.
+      {:ok, _user} = UserGroupSource.record_opt_out(user)
+
+      assert %{"mine" => "kept"} = Repo.get(User, user.uuid).custom_fields
+    end
+  end
+
+  describe "stale_role_count/1" do
+    test "counts what no longer exists, reading no users" do
+      role = create_role()
+      gone = Ecto.UUID.generate()
+
+      assert UserGroupSource.stale_role_count([role.uuid, gone, gone]) == 1
+      assert UserGroupSource.stale_role_count([]) == 0
+    end
+  end
+
   describe "sendable_recipient?/2" do
     test "is true for an active user holding the role" do
       role = create_role()

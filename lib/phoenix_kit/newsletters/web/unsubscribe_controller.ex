@@ -9,11 +9,12 @@ defmodule PhoenixKit.Newsletters.Web.UnsubscribeController do
   require Logger
 
   alias PhoenixKit.Newsletters.CRMSource
+  alias PhoenixKit.Newsletters.Paths
   alias PhoenixKit.Newsletters.RecipientLanguage
+  alias PhoenixKit.Newsletters.UnsubscribeToken
   alias PhoenixKit.Newsletters.UserGroupSource
   alias PhoenixKit.Users.Auth
   alias PhoenixKit.Utils.RecipientLocale
-  alias PhoenixKit.Utils.Routes
 
   plug(:put_view, html: PhoenixKit.Newsletters.Web.UnsubscribeHTML)
 
@@ -29,26 +30,15 @@ defmodule PhoenixKit.Newsletters.Web.UnsubscribeController do
   #     happens on POST (process_unsubscribe/2 below). RFC 8058's
   #     one-click automation is unaffected — it lives entirely at the
   #     separate /newsletters/unsubscribe/one-click endpoint.
-  #   - %{user_uuid:} — user_group broadcast, signed under the separate
-  #     "newsletters_user_optout" salt. verify_token/1 tags a match
-  #     under that salt as `{:role_optout, claims}` rather than `{:ok,
-  #     claims}`. Renders a confirm page (render_role_optout_confirm/3)
-  #     — same never-mutates-on-GET rule.
+  #   - %{user_uuid:} — user_group broadcast, signed under its own salt, which
+  #     UnsubscribeToken.verify/1 answers as `{:role_optout, claims}`. Renders a
+  #     confirm page (render_role_optout_confirm/3) — same never-mutates-on-GET
+  #     rule.
   #
-  # A THIRD shape can still show up here even though nothing signs it
-  # anymore: %{user_uuid:, list_uuid:}, the retired newsletters_list
-  # flavor's token, under the "unsubscribe" salt these two current
-  # shapes also use. Phoenix.Token has no expiry shorter than
-  # `max_age` (604_800s / 7 days) and no way to invalidate one flavor
-  # of a salt without invalidating all of them, so a link sent before
-  # this removal keeps verifying successfully — just with claims that
-  # don't match either `{:ok, ...}` clause below. The catch-all
-  # degrades it to the same friendly "link no longer valid" redirect
-  # every other invalid/expired token already gets, instead of a
-  # CaseClauseError (no matching branch — a 500) if it fell through
-  # every clause unhandled.
+  # Anything else, including a retired token's claims (see UnsubscribeToken),
+  # gets the same page as an invalid link rather than a CaseClauseError.
   def unsubscribe(conn, %{"token" => token}) do
-    case verify_token(token) do
+    case UnsubscribeToken.verify(token) do
       {:ok, %{contact_uuid: contact_uuid, crm_list_uuid: crm_list_uuid}} ->
         render_crm_confirm(conn, token, contact_uuid, crm_list_uuid)
 
@@ -56,11 +46,11 @@ defmodule PhoenixKit.Newsletters.Web.UnsubscribeController do
         render_role_optout_confirm(conn, token, user_uuid)
 
       _ ->
-        expired_link(conn)
+        invalid_link(conn)
     end
   end
 
-  def unsubscribe(conn, _params), do: expired_link(conn)
+  def unsubscribe(conn, _params), do: invalid_link(conn)
 
   # POST /newsletters/unsubscribe (scope=list) — crm_unsubscribe.html.heex's
   # "unsubscribe from this list" button; re-renders the same confirm page
@@ -70,10 +60,10 @@ defmodule PhoenixKit.Newsletters.Web.UnsubscribeController do
   # crm_list flavor's %{contact_uuid:, crm_list_uuid:}) — gone along with
   # that flavor; a stray old link with that claim shape doesn't match
   # this clause's pattern and falls through to process_unsubscribe/2's
-  # catch-all below, same graceful "invalid link" redirect every other
-  # unrecognized POST already gets.
+  # catch-all below, same "invalid link" page every other unrecognized POST
+  # already gets.
   def process_unsubscribe(conn, %{"token" => token, "scope" => "list"}) do
-    case verify_token(token) do
+    case UnsubscribeToken.verify(token) do
       {:ok, %{contact_uuid: contact_uuid, crm_list_uuid: crm_list_uuid}} ->
         handle_crm_list_unsubscribe(conn, token, contact_uuid, crm_list_uuid)
 
@@ -85,7 +75,7 @@ defmodule PhoenixKit.Newsletters.Web.UnsubscribeController do
   # "Unsubscribe from all" (scope=all) — crm_unsubscribe.html.heex's
   # secondary button.
   def process_unsubscribe(conn, %{"token" => token, "scope" => "all"}) do
-    case verify_token(token) do
+    case UnsubscribeToken.verify(token) do
       {:ok, %{contact_uuid: contact_uuid} = claims} ->
         handle_unsubscribe_all(conn, contact_uuid, claims[:crm_list_uuid])
 
@@ -96,9 +86,9 @@ defmodule PhoenixKit.Newsletters.Web.UnsubscribeController do
 
   # user_group flavor — a single unconditional action. Its own scope
   # value, deliberately not "all" — and this clause only accepts a
-  # `{:role_optout, ...}` verify_token/1 result, not `{:ok, ...}`.
+  # `{:role_optout, ...}` result, not `{:ok, ...}`.
   def process_unsubscribe(conn, %{"token" => token, "scope" => "role_optout"}) do
-    case verify_token(token) do
+    case UnsubscribeToken.verify(token) do
       {:role_optout, %{user_uuid: user_uuid}} ->
         handle_role_optout(conn, token, user_uuid)
 
@@ -107,8 +97,8 @@ defmodule PhoenixKit.Newsletters.Web.UnsubscribeController do
     end
   end
 
-  # Catch-all for invalid/expired tokens or missing parameters
-  def process_unsubscribe(conn, _params), do: expired_link(conn)
+  # Catch-all for invalid tokens or missing parameters
+  def process_unsubscribe(conn, _params), do: invalid_link(conn)
 
   # POST /newsletters/unsubscribe/one-click — the List-Unsubscribe-Post
   # header target (DeliveryWorker), always CSRF-exempt (see Web.Routes)
@@ -116,11 +106,11 @@ defmodule PhoenixKit.Newsletters.Web.UnsubscribeController do
   # mail client per RFC 8058. Mutation happens ONLY here, only on POST —
   # never on GET (see the GET clause below). Idempotent
   # (CRMSource.remove_from_list/2 no-ops on an already-removed membership)
-  # and defensive against any other claim shape or an invalid/expired
-  # token — always resolves without raising. Mail clients don't parse the
+  # and defensive against any other claim shape or an invalid token — always
+  # resolves without raising. Mail clients don't parse the
   # response — always 200, quickly, regardless of what the token held.
   def one_click_unsubscribe(%{method: "POST"} = conn, %{"token" => token}) do
-    case verify_token(token) do
+    case UnsubscribeToken.verify(token) do
       {:ok, %{contact_uuid: contact_uuid, crm_list_uuid: crm_list_uuid}} ->
         with %{} = list <- CRMSource.get_list(crm_list_uuid),
              %{} = contact <- CRMSource.get_contact(contact_uuid) do
@@ -161,49 +151,15 @@ defmodule PhoenixKit.Newsletters.Web.UnsubscribeController do
   # would otherwise silently unsubscribe people. Redirects to the same
   # interactive confirm landing page the body link uses (same token, so
   # the human still gets a real "are you sure" step and an actual POST
-  # button before anything changes).
-  def one_click_unsubscribe(conn, %{"token" => token}) do
-    redirect(conn, to: Routes.path("/newsletters/unsubscribe?token=#{token}"))
+  # button before anything changes). Encoded: this value comes straight from
+  # the URL, and Phoenix refuses a redirect holding a backslash or a newline.
+  def one_click_unsubscribe(conn, %{"token" => token}) when is_binary(token) do
+    redirect(conn, to: Paths.unsubscribe() <> "?" <> URI.encode_query(token: token))
   end
 
-  def one_click_unsubscribe(conn, _params), do: redirect(conn, to: Routes.path("/"))
+  def one_click_unsubscribe(conn, _params), do: redirect(conn, to: Paths.unsubscribe())
 
   # --- Private ---
-
-  # Two salts: "unsubscribe" (flavor-A/flavor-B, both already carry their
-  # own claim keys) and "newsletters_user_optout" (user_group flavor,
-  # signed by DeliveryWorker.sign_user_optout_token/1). Tried in order;
-  # a token only ever verifies under the salt it was actually signed
-  # with, so trying both is just "accept either flavor," not a security
-  # weakening — Phoenix.Token ties the salt to the signing purpose.
-  #
-  # A "newsletters_user_optout" match is tagged `{:role_optout, claims}`
-  # rather than `{:ok, claims}` — deliberately a different shape, not
-  # just a different salt. This dates back to when the "unsubscribe"
-  # salt also signed a now-retired newsletters_list flavor
-  # (%{user_uuid:, list_uuid:}), whose claims were a proper superset of
-  # user_group's bare %{user_uuid:} — tagging by salt kept the two from
-  # ever colliding regardless of clause order, instead of every call
-  # site re-deriving safety from clause order alone. Still relevant
-  # today for a different reason: an already-sent email can still carry
-  # a valid old-flavor "unsubscribe"-salted token (Phoenix.Token has no
-  # way to invalidate one flavor of a salt without invalidating all of
-  # it), and the tag keeps that stray shape from being silently accepted
-  # by a clause it was never meant for.
-  defp verify_token(token) do
-    endpoint = PhoenixKit.Config.get(:endpoint, PhoenixKitWeb.Endpoint)
-
-    case Phoenix.Token.verify(endpoint, "unsubscribe", token, max_age: 604_800) do
-      {:ok, _claims} = ok ->
-        ok
-
-      {:error, _reason} ->
-        case Phoenix.Token.verify(endpoint, "newsletters_user_optout", token, max_age: 604_800) do
-          {:ok, claims} -> {:role_optout, claims}
-          {:error, _reason} = error -> error
-        end
-    end
-  end
 
   # GET — read-only. Resolves the list/contact and whether the contact is
   # already removed from this list (purely for the message shown; never
@@ -245,6 +201,8 @@ defmodule PhoenixKit.Newsletters.Web.UnsubscribeController do
     render_crm(conn, token, nil, :invalid, site_language())
   end
 
+  defp invalid_link(conn), do: render_crm_invalid(conn, nil)
+
   defp render_crm(conn, token, list, state, language) do
     RecipientLocale.in_locale(language, fn ->
       conn
@@ -260,21 +218,21 @@ defmodule PhoenixKit.Newsletters.Web.UnsubscribeController do
     case CRMSource.get_contact(contact_uuid) do
       %{} = contact ->
         language = RecipientLanguage.for_contact(contact, CRMSource.get_list(crm_list_uuid))
-        finish_unsubscribe_all(conn, CRMSource.opt_out(contact), language)
+        finish_unsubscribe_all(conn, UserGroupSource.opt_out_contact(contact), language)
 
       nil ->
         invalid_link(conn)
     end
   end
 
+  # Answered on this page, not by a redirect: a site's `/` may not exist under its
+  # prefix, and these visitors have no session a flash could reach them through.
   defp finish_unsubscribe_all(conn, {:ok, _contact}, language) do
-    RecipientLocale.in_locale(language, fn ->
-      redirect_home(conn, :info, gettext("You've been unsubscribed from all newsletters."))
-    end)
+    render_crm(conn, nil, nil, :unsubscribed_all, language)
   end
 
   defp finish_unsubscribe_all(conn, {:error, _reason}, language) do
-    unsubscribe_failed(conn, language)
+    render_crm(conn, nil, nil, :failed, language)
   end
 
   # Best-effort "was this already removed" check, purely for the landing
@@ -316,7 +274,7 @@ defmodule PhoenixKit.Newsletters.Web.UnsubscribeController do
 
         case UserGroupSource.record_opt_out(user) do
           {:ok, _updated_user} -> render_role_optout(conn, token, :unsubscribed, language)
-          {:error, _reason} -> unsubscribe_failed(conn, language)
+          {:error, _reason} -> render_role_optout(conn, token, :failed, language)
         end
 
       nil ->
@@ -345,29 +303,4 @@ defmodule PhoenixKit.Newsletters.Web.UnsubscribeController do
   # restores the locale, and a keep-alive connection serves its next request from
   # this same process.
   defp site_language, do: RecipientLocale.for_rendering(nil)
-
-  defp expired_link(conn) do
-    RecipientLocale.in_locale(site_language(), fn ->
-      redirect_home(conn, :error, gettext("Invalid or expired unsubscribe link."))
-    end)
-  end
-
-  defp invalid_link(conn) do
-    RecipientLocale.in_locale(site_language(), fn ->
-      redirect_home(conn, :error, gettext("Invalid link."))
-    end)
-  end
-
-  defp unsubscribe_failed(conn, language) do
-    RecipientLocale.in_locale(language, fn ->
-      message = gettext("We could not unsubscribe you right now. Please try again.")
-      redirect_home(conn, :error, message)
-    end)
-  end
-
-  defp redirect_home(conn, kind, message) do
-    conn
-    |> put_flash(kind, message)
-    |> redirect(to: Routes.path("/"))
-  end
 end

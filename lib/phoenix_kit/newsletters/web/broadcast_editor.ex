@@ -28,6 +28,7 @@ defmodule PhoenixKit.Newsletters.Web.BroadcastEditor do
   alias PhoenixKit.Newsletters.Web.FormErrors
   alias PhoenixKit.Newsletters.Web.LanguageOptions
   alias PhoenixKit.Newsletters.Web.SendError
+  alias PhoenixKit.Newsletters.Web.StatusLabel
   alias PhoenixKit.Newsletters.Web.Timezone
   alias PhoenixKit.Settings
   alias PhoenixKit.Utils.Date, as: DateUtils
@@ -40,6 +41,9 @@ defmodule PhoenixKit.Newsletters.Web.BroadcastEditor do
   # this, but large attachments slow delivery and hit the base64-encoding
   # inflation (~33%) DeliveryWorker applies. Doesn't block send/schedule.
   @attachments_size_warning_bytes 7 * 1024 * 1024
+
+  # What the preflight depends on, and all it depends on.
+  @source_fields [:source_type, :crm_list_uuid, :role_uuids]
 
   @impl true
   def mount(_params, _session, socket) do
@@ -132,8 +136,13 @@ defmodule PhoenixKit.Newsletters.Web.BroadcastEditor do
      |> assign(:template_uuid, default_template_uuid || "")}
   end
 
+  # The body comes from the form like every other field. The editor also reports
+  # key presses, but a mouse paste, a drag and a reconnect's form recovery press no
+  # key, and only this param carries what they did.
   @impl true
   def handle_event("validate", params, socket) do
+    previous_source = Map.take(socket.assigns, @source_fields)
+    markdown_content = params["editor_content"] || socket.assigns.markdown_content
     subject = params["subject"] || socket.assigns.subject
     source_type = params["source_type"] || socket.assigns.source_type
     crm_list_uuid = resolve_crm_list_uuid(socket.assigns, source_type, params)
@@ -149,7 +158,7 @@ defmodule PhoenixKit.Newsletters.Web.BroadcastEditor do
 
     preview_html =
       render_preview(
-        socket.assigns.markdown_content,
+        markdown_content,
         template_uuid,
         socket.assigns.templates,
         preview_locale,
@@ -158,6 +167,7 @@ defmodule PhoenixKit.Newsletters.Web.BroadcastEditor do
 
     {:noreply,
      socket
+     |> assign(:markdown_content, markdown_content)
      |> assign(:subject, subject)
      |> assign(:source_type, source_type)
      |> assign(:crm_list_uuid, crm_list_uuid)
@@ -166,7 +176,7 @@ defmodule PhoenixKit.Newsletters.Web.BroadcastEditor do
      |> assign(:scheduled_at, scheduled_at)
      |> assign(:preview_locale, preview_locale)
      |> assign(:preview_html, preview_html)
-     |> assign_preflight()}
+     |> refresh_preflight(previous_source)}
   end
 
   # Single submit entry point, branched on the submitter button's
@@ -192,7 +202,7 @@ defmodule PhoenixKit.Newsletters.Web.BroadcastEditor do
     socket = update_assigns_from_params(socket, params)
 
     with :ok <- authorize_source(socket) do
-      save_broadcast(socket, "draft")
+      save_broadcast(socket, "draft", draft_schedule(socket))
     end
   end
 
@@ -201,7 +211,8 @@ defmodule PhoenixKit.Newsletters.Web.BroadcastEditor do
     socket = update_assigns_from_params(socket, params)
 
     with :ok <- authorize_send(socket),
-         :ok <- authorize_source(socket) do
+         :ok <- authorize_source(socket),
+         :ok <- require_body(socket) do
       send_now(socket)
     end
   end
@@ -211,7 +222,8 @@ defmodule PhoenixKit.Newsletters.Web.BroadcastEditor do
     socket = update_assigns_from_params(socket, params)
 
     with :ok <- authorize_send(socket),
-         :ok <- authorize_source(socket) do
+         :ok <- authorize_source(socket),
+         :ok <- require_body(socket) do
       schedule(socket)
     end
   end
@@ -261,7 +273,7 @@ defmodule PhoenixKit.Newsletters.Web.BroadcastEditor do
       scheduled_at_str ->
         case DateUtils.parse_datetime_local(scheduled_at_str, socket.assigns.tz) do
           {:ok, scheduled_at} ->
-            save_broadcast(socket, "scheduled", %{scheduled_at: scheduled_at})
+            schedule_at(socket, scheduled_at)
 
           {:error, _reason} ->
             {:noreply,
@@ -269,6 +281,35 @@ defmodule PhoenixKit.Newsletters.Web.BroadcastEditor do
         end
     end
   end
+
+  # A time already gone would go out on the next tick, to everyone, under a
+  # message saying it had been scheduled.
+  defp schedule_at(socket, scheduled_at) do
+    if DateTime.after?(scheduled_at, DateUtils.utc_now()) do
+      save_broadcast(socket, "scheduled", %{scheduled_at: scheduled_at})
+    else
+      {:noreply, put_flash(socket, :error, gettext("Please choose a time in the future"))}
+    end
+  end
+
+  # A draft keeps a time typed into it, for whoever opens it next, or nothing
+  # when the field holds nothing usable.
+  defp draft_schedule(socket) do
+    case DateUtils.parse_datetime_local(socket.assigns.scheduled_at, socket.assigns.tz) do
+      {:ok, scheduled_at} -> %{scheduled_at: scheduled_at}
+      {:error, _reason} -> %{scheduled_at: nil}
+    end
+  end
+
+  defp require_body(socket) do
+    if blank?(socket.assigns.markdown_content) do
+      {:noreply, put_flash(socket, :error, SendError.message(:blank_body))}
+    else
+      :ok
+    end
+  end
+
+  defp blank?(text), do: not is_binary(text) or String.trim(text) == ""
 
   @impl true
   def handle_info({:editor_content_changed, %{content: content}}, socket) do
@@ -440,6 +481,7 @@ defmodule PhoenixKit.Newsletters.Web.BroadcastEditor do
     role_uuids = resolve_role_uuids(source_type, params)
 
     socket
+    |> assign(:markdown_content, params["editor_content"] || socket.assigns.markdown_content)
     |> assign(:subject, params["subject"] || socket.assigns.subject)
     |> assign(:source_type, source_type)
     |> assign(:crm_list_uuid, crm_list_uuid)
@@ -452,10 +494,22 @@ defmodule PhoenixKit.Newsletters.Web.BroadcastEditor do
   # "crm_list" — otherwise switching to "Roles" leaves the previous list
   # selection stranded in assigns (and from there, in the saved broadcast
   # row) even though the field is no longer rendered/editable.
+  #
+  # Only a list the picker offers, or the one this draft already has: the rest are
+  # operational segments, which must not become a broadcast's audience through a
+  # crafted value.
   defp resolve_crm_list_uuid(assigns, source_type, params) do
     crm_list_uuid = params["crm_list_uuid"] || assigns.crm_list_uuid
 
-    if source_type == "crm_list", do: crm_list_uuid, else: ""
+    if source_type == "crm_list" and selectable_list?(assigns, crm_list_uuid),
+      do: crm_list_uuid,
+      else: ""
+  end
+
+  defp selectable_list?(%{broadcast: %{crm_list_uuid: uuid}}, uuid), do: true
+
+  defp selectable_list?(assigns, crm_list_uuid) do
+    Enum.any?(assigns.crm_lists, &(&1.uuid == crm_list_uuid))
   end
 
   # role_uuids doesn't fit the params[field] || assigns.field fallback the
@@ -479,6 +533,14 @@ defmodule PhoenixKit.Newsletters.Web.BroadcastEditor do
 
   defp resolve_role_uuids(_source_type, _params), do: []
 
+  # The preflight reads the whole audience, so only a change of audience pays for
+  # it. Every other field in this form reports on phx-change too.
+  defp refresh_preflight(socket, previous_source) do
+    if Map.take(socket.assigns, @source_fields) == previous_source,
+      do: socket,
+      else: assign_preflight(socket)
+  end
+
   # Recomputes the CRM preflight breakdown (and whether the selected list
   # is archived) whenever the crm_list selection changes, or the
   # user_group preflight whenever the role selection changes; nil/false
@@ -488,10 +550,7 @@ defmodule PhoenixKit.Newsletters.Web.BroadcastEditor do
            socket
        )
        when is_binary(crm_list_uuid) and crm_list_uuid != "" do
-    # One fetch feeds both the archived warning and the stranded-option
-    # fallback. This whole function re-runs on every phx-change (i.e. every
-    # keystroke in the subject field), so resolving the list twice — once
-    # per consumer — doubled the round trips for no gain.
+    # One fetch feeds both the archived warning and the stranded-option fallback.
     list = CRMSource.get_list(crm_list_uuid)
 
     socket
@@ -556,9 +615,8 @@ defmodule PhoenixKit.Newsletters.Web.BroadcastEditor do
 
   defp format_file_size(bytes), do: Format.bytes(bytes, decimals: 1, unknown: "0 B")
 
-  # A uuid that no longer resolves to a list at all counts as not archived
-  # — recipient_source_missing?/1 doesn't need to gate on it, since
-  # Broadcaster.send/1 refuses a missing list on its own.
+  # A uuid that no longer resolves to a list at all counts as not archived — it
+  # resolves to nobody, which Broadcaster.send/1 refuses on its own.
   defp archived?(%{status: status}), do: status != "active"
   defp archived?(nil), do: false
 
@@ -573,7 +631,7 @@ defmodule PhoenixKit.Newsletters.Web.BroadcastEditor do
     if Enum.any?(crm_lists, &(&1.uuid == list.uuid)), do: nil, else: list
   end
 
-  defp save_broadcast(socket, status, extra_attrs \\ %{}) do
+  defp save_broadcast(socket, status, extra_attrs) do
     socket = assign(socket, :saving, true)
 
     case persist(socket, Map.merge(broadcast_attrs(socket, status), extra_attrs)) do
@@ -584,7 +642,7 @@ defmodule PhoenixKit.Newsletters.Web.BroadcastEditor do
          |> assign(:broadcast, broadcast)
          |> put_flash(
            :info,
-           gettext("Broadcast saved as %{status}", status: status_label(status))
+           gettext("Broadcast saved as %{status}", status: StatusLabel.broadcast(status))
          )
          |> push_navigate(to: Routes.path("/admin/newsletters/broadcasts"))}
 
@@ -638,13 +696,6 @@ defmodule PhoenixKit.Newsletters.Web.BroadcastEditor do
 
   defp role_group_source_params(_assigns), do: %{}
 
-  defp status_label("draft"), do: gettext("Draft")
-  defp status_label("scheduled"), do: gettext("Scheduled")
-  defp status_label("sending"), do: gettext("Sending")
-  defp status_label("sent"), do: gettext("Sent")
-  defp status_label("cancelled"), do: gettext("Cancelled")
-  defp status_label(other), do: other
-
   # Gates Send now/Schedule — whichever source is selected must have a
   # target picked (a newsletters list, a CRM list, or at least one role),
   # and a picked CRM list must not be archived (an archived list would
@@ -664,6 +715,10 @@ defmodule PhoenixKit.Newsletters.Web.BroadcastEditor do
   # "user_group" — see mount/1's default and the picker's own options),
   # but fails closed rather than crashing if it ever isn't.
   defp recipient_source_missing?(_assigns), do: true
+
+  # Send now only: a scheduled send can gain an audience before its time.
+  defp nobody_to_send_to?(%{preflight: %{sendable: 0}}), do: true
+  defp nobody_to_send_to?(_assigns), do: false
 
   # The email as a reader of `locale` gets it — the same Render a send
   # uses, with the site's variables — and with the recipient's own placeholders
@@ -715,13 +770,14 @@ defmodule PhoenixKit.Newsletters.Web.BroadcastEditor do
   # call it directly.
   def schedule_preview("", _tz, _tz_label), do: nil
 
+  # With the date: a slip of a month or a year is what this line is there to show.
   def schedule_preview(scheduled_at_str, tz, tz_label) do
-    with [_date, local_time] <- String.split(scheduled_at_str, "T", parts: 2),
+    with [date, local_time] <- String.split(scheduled_at_str, "T", parts: 2),
          {:ok, utc_dt} <- DateUtils.parse_datetime_local(scheduled_at_str, tz) do
       gettext("Sends at %{local} (%{tz}) · %{utc} UTC",
-        local: String.slice(local_time, 0, 5),
+        local: date <> " " <> String.slice(local_time, 0, 5),
         tz: tz_label,
-        utc: Calendar.strftime(utc_dt, "%H:%M")
+        utc: Calendar.strftime(utc_dt, "%Y-%m-%d %H:%M")
       )
     else
       _ -> nil

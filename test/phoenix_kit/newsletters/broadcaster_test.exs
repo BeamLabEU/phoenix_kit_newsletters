@@ -69,9 +69,15 @@ defmodule PhoenixKit.Newsletters.BroadcasterTest do
       assert Broadcaster.send_interval_seconds(profile) == 30
     end
 
-    test "a rate finer than one per second still yields a whole second" do
-      # ceil/1, not floor: rounding down to 0 would silently disable the limit.
-      assert Broadcaster.send_interval_seconds(%SendProfile{rate_per_hour: 7200}) == 1
+    test "a rate above one per second is a fraction, so several sends share a second" do
+      # A whole second would cap every profile at 3,600 an hour, whatever it allows.
+      assert Broadcaster.send_interval_seconds(%SendProfile{rate_per_hour: 7200}) == 0.5
+      assert Broadcaster.send_interval_seconds(%SendProfile{rate_per_day: 172_800}) == 0.5
+    end
+
+    test "a rate of about one per second still never rounds down to no limit" do
+      assert Broadcaster.send_interval_seconds(%SendProfile{rate_per_hour: 3600}) == 1
+      assert Broadcaster.send_interval_seconds(%SendProfile{rate_per_hour: 3599}) == 2
     end
 
     test "zero reads as unset, not as 'never send'" do

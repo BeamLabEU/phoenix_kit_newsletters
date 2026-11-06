@@ -323,16 +323,37 @@ defmodule PhoenixKit.Newsletters.CRMSource do
   """
   @spec recipient_locale(String.t() | nil, String.t()) :: String.t() | nil
   def recipient_locale(crm_list_uuid, email) do
+    crm_list_uuid |> recipient_details(email) |> Map.get(:language)
+  end
+
+  @doc """
+  What sending one mail needs to know about a CRM recipient, from one lookup of
+  the same membership: `:contact_uuid` for its links, `:name` for `{{name}}` and
+  `:language` as `recipient_locale/2` resolves it. A key is absent or `nil` when
+  there is nothing to say.
+  """
+  @spec recipient_details(String.t() | nil, String.t()) :: map()
+  def recipient_details(crm_list_uuid, email) do
     with true <- available?(),
          %{} = list <- get_list(crm_list_uuid) do
       member = soft_call(@lists_mod, :get_member_by_email, [list, email])
       contact = if is_map(member), do: Map.get(member, :contact)
 
-      present_locale(contact) || present_locale(list)
+      %{
+        contact_uuid: if(is_map(member), do: Map.get(member, :contact_uuid)),
+        name: present_name(contact),
+        language: present_locale(contact) || present_locale(list)
+      }
     else
-      _ -> nil
+      _ -> %{}
     end
   end
+
+  defp present_name(%{name: name}) when is_binary(name) do
+    if String.trim(name) != "", do: name
+  end
+
+  defp present_name(_contact), do: nil
 
   defp present_locale(%{locale: locale}) when is_binary(locale) and locale != "", do: locale
   defp present_locale(_record), do: nil
@@ -354,19 +375,19 @@ defmodule PhoenixKit.Newsletters.CRMSource do
 
   @doc """
   Opts a contact out entirely — applies across every CRM list the contact
-  belongs to (opt-out lives on the contact, not the membership). Idempotent.
-  `opts` accepts `:source` (default `"unsubscribe_link"`, the original
-  caller) — the preference center passes `source: "preference_center"` so
-  the two entry points stay distinguishable in the contact's consent log.
+  belongs to (opt-out lives on the contact, not the membership) — and every
+  other contact holding the same address. An import always creates a new contact,
+  so one person can be several rows, and "unsubscribed from all" has to mean them,
+  not the row their link happened to name. Idempotent. `opts` accepts `:source`
+  (default `"unsubscribe_link"`, the original caller) — the preference center
+  passes `source: "preference_center"` so the two entry points stay
+  distinguishable in the contact's consent log.
   """
   @spec opt_out(struct(), keyword()) ::
           {:ok, struct()} | {:error, Ecto.Changeset.t() | :unavailable}
   def opt_out(contact, opts \\ []) do
     if available?() do
-      soft_call(@lists_mod, :opt_out, [
-        contact,
-        Keyword.put_new(opts, :source, "unsubscribe_link")
-      ])
+      apply_to_address(contact, :opt_out, Keyword.put_new(opts, :source, "unsubscribe_link"))
     else
       {:error, :unavailable}
     end
@@ -374,23 +395,46 @@ defmodule PhoenixKit.Newsletters.CRMSource do
 
   @doc """
   Opts a contact back in — clears the contact-level opt-out set by
-  `opt_out/2`. Idempotent. This is the re-subscription path the
-  preference center's "resubscribe" action uses (spec §7/§8: allowed,
-  and this view is exactly where the re-consent happens); it does not
-  touch any individual list membership.
+  `opt_out/2`, on every contact holding the address, as `opt_out/2` set it.
+  Idempotent. This is the re-subscription path the preference center's
+  "resubscribe" action uses (spec §7/§8: allowed, and this view is exactly where
+  the re-consent happens); it does not touch any individual list membership.
   """
   @spec opt_in(struct(), keyword()) ::
           {:ok, struct()} | {:error, Ecto.Changeset.t() | :unavailable}
   def opt_in(contact, opts \\ []) do
     if available?() do
-      soft_call(@lists_mod, :opt_in, [
-        contact,
-        Keyword.put_new(opts, :source, "preference_center")
-      ])
+      apply_to_address(contact, :opt_in, Keyword.put_new(opts, :source, "preference_center"))
     else
       {:error, :unavailable}
     end
   end
+
+  defp apply_to_address(contact, fun, opts) do
+    with {:ok, updated} <- soft_call(@lists_mod, fun, [contact, opts]),
+         :ok <- apply_to_others(contact, fun, opts) do
+      {:ok, updated}
+    end
+  end
+
+  defp apply_to_others(contact, fun, opts) do
+    contact
+    |> others_at_address()
+    |> Enum.reduce_while(:ok, fn other, :ok ->
+      case soft_call(@lists_mod, fun, [other, opts]) do
+        {:ok, _other} -> {:cont, :ok}
+        {:error, _reason} = error -> {:halt, error}
+      end
+    end)
+  end
+
+  defp others_at_address(%{uuid: uuid, email: email}) when is_binary(email) do
+    @contacts_mod
+    |> soft_call(:list_by_email, [email])
+    |> Enum.reject(&(&1.uuid == uuid))
+  end
+
+  defp others_at_address(_contact), do: []
 
   @doc """
   Active, subscribable CRM lists — the preference center's toggle list.
@@ -461,21 +505,39 @@ defmodule PhoenixKit.Newsletters.CRMSource do
   from the candidate count — a contact linked to a DIFFERENT user is not
   this person's, ambiguous or not.
 
-  Takes any map/struct with `:uuid` and `:email` (a `%User{}`, or an
-  equivalent plain map) so callers don't need a real `User` struct in
-  hand. Returns `{:error, :unavailable}` if CRM isn't installed.
+  **Only a confirmed address links anything.** Registration logs someone in before
+  they prove they own the address, so linking by it would hand them the real
+  owner's subscriptions, and let them resubscribe that person. Without a
+  `confirmed_at` this answers `{:error, :unconfirmed}`, unless a contact is
+  already linked to the account.
+
+  Takes any map/struct with `:uuid`, `:email` and `:confirmed_at` (a `%User{}`, or
+  an equivalent plain map) so callers don't need a real `User` struct in hand.
+  Returns `{:error, :unavailable}` if CRM isn't installed.
   """
-  @spec find_or_link_contact_for_user(%{uuid: String.t(), email: String.t()}) ::
-          {:ok, struct()} | {:error, Ecto.Changeset.t() | :unavailable}
-  def find_or_link_contact_for_user(%{uuid: user_uuid, email: email})
+  @spec find_or_link_contact_for_user(%{
+          :uuid => String.t(),
+          :email => String.t(),
+          optional(:confirmed_at) => term(),
+          optional(atom()) => term()
+        }) :: {:ok, struct()} | {:error, Ecto.Changeset.t() | :unavailable | :unconfirmed}
+  def find_or_link_contact_for_user(%{uuid: user_uuid, email: email} = user)
       when is_binary(user_uuid) and is_binary(email) do
     if available?() do
       case soft_call(@contacts_mod, :get_by_user_uuid, [user_uuid]) do
-        nil -> find_or_create_contact_and_link(user_uuid, email)
+        nil -> link_confirmed_user(user)
         contact -> {:ok, contact}
       end
     else
       {:error, :unavailable}
+    end
+  end
+
+  defp link_confirmed_user(%{uuid: user_uuid, email: email} = user) do
+    if Map.get(user, :confirmed_at) do
+      find_or_create_contact_and_link(user_uuid, email)
+    else
+      {:error, :unconfirmed}
     end
   end
 

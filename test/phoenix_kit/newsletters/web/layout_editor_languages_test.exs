@@ -247,6 +247,61 @@ defmodule PhoenixKit.Newsletters.Web.LayoutEditorLanguagesTest do
     end
   end
 
+  describe "a reconnect" do
+    # The page reopens on its first tab, and form recovery replays the tab that was
+    # open. Without the form saying which that was, its text lands on the first.
+    setup do
+      site_languages!(["en", "et"])
+
+      layout =
+        layout!("recovered", %{
+          "en" => "<div>{{{content}}} first</div>",
+          "et" => "<div>{{{content}}} second</div>"
+        })
+
+      %{socket: mounted(%{"id" => layout.uuid}), layout: layout}
+    end
+
+    defp recover(socket, language) do
+      {:noreply, socket} =
+        LayoutEditor.handle_event(
+          "validate",
+          %{
+            "editor_language" => language,
+            "fields" => %{"html_body" => "<div>{{{content}}} edited</div>"}
+          },
+          socket
+        )
+
+      socket
+    end
+
+    test "the text stays in the language it was written in", %{socket: socket} do
+      assert socket.assigns.editor_locale == "en"
+
+      socket = recover(socket, "et")
+
+      assert socket.assigns.editor_locale == "et"
+      assert html_in(socket, "et") =~ "edited"
+      assert html_in(socket, "en") =~ "first"
+    end
+
+    test "a language the site does not offer changes nothing", %{socket: socket} do
+      socket = recover(socket, "xx")
+
+      assert socket.assigns.editor_locale == "en"
+      assert html_in(socket, "en") =~ "edited"
+    end
+  end
+
+  describe "the starter HTML" do
+    test "its unsubscribe link is in the editor's language" do
+      Gettext.with_locale(PhoenixKit.Newsletters.Gettext, "ru", fn ->
+        assert LayoutEditor.starter_html() =~ ">Отписаться</a>"
+      end)
+    end
+  end
+
   describe "a layout the old editor saved in part" do
     setup do: site_languages!(["en-US", "fr", "de", "es"])
 

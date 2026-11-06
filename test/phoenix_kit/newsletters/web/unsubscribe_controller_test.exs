@@ -13,22 +13,13 @@ defmodule PhoenixKit.Newsletters.Web.UnsubscribeControllerTest do
   end
 
   describe "process_unsubscribe/2 with missing token" do
-    test "redirects to home when no token param is present" do
+    test "answers on the page, not by a redirect to a `/` that may not exist" do
       conn =
         build_conn(:post, "/newsletters/unsubscribe")
         |> UnsubscribeController.process_unsubscribe(%{})
 
-      assert conn.status == 302
-      [location] = Plug.Conn.get_resp_header(conn, "location")
-      assert location =~ "/"
-    end
-
-    test "sets error flash when no token param is present" do
-      conn =
-        build_conn(:post, "/newsletters/unsubscribe")
-        |> UnsubscribeController.process_unsubscribe(%{})
-
-      assert conn.assigns[:flash]["error"] =~ "Invalid or expired"
+      assert conn.status == 200
+      assert conn.resp_body =~ "no longer valid"
     end
   end
 
@@ -41,25 +32,18 @@ defmodule PhoenixKit.Newsletters.Web.UnsubscribeControllerTest do
     |> Plug.Conn.fetch_session()
     |> Plug.Conn.fetch_query_params()
     |> Phoenix.Controller.fetch_flash(%{})
+    |> Phoenix.Controller.put_view(html: PhoenixKit.Newsletters.Web.UnsubscribeHTML)
+    |> then(&%{&1 | params: Map.put(&1.params, "_format", "html")})
   end
 
   describe "unsubscribe/2 with missing token" do
-    test "redirects to home when no token param is present" do
+    test "answers on the page, not by a redirect to a `/` that may not exist" do
       conn =
         build_conn(:get, "/newsletters/unsubscribe")
         |> UnsubscribeController.unsubscribe(%{})
 
-      assert conn.status == 302
-      [location] = Plug.Conn.get_resp_header(conn, "location")
-      assert location =~ "/"
-    end
-
-    test "sets error flash when no token param is present" do
-      conn =
-        build_conn(:get, "/newsletters/unsubscribe")
-        |> UnsubscribeController.unsubscribe(%{})
-
-      assert conn.assigns[:flash]["error"] =~ "Invalid or expired"
+      assert conn.status == 200
+      assert conn.resp_body =~ "no longer valid"
     end
   end
 

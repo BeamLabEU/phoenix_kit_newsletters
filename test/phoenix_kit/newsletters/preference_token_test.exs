@@ -48,13 +48,25 @@ defmodule PhoenixKit.Newsletters.PreferenceTokenTest do
   test "verify/1 rejects an expired token" do
     contact_uuid = Ecto.UUID.generate()
     endpoint = PhoenixKit.Config.get(:endpoint, PhoenixKitWeb.Endpoint)
-    # Signed "in the past" relative to the 7-day max_age, via Phoenix.Token's
+    # Signed "in the past" relative to the 30-day max_age, via Phoenix.Token's
     # own signed_at option — avoids sleeping in the test.
     token =
       Phoenix.Token.sign(endpoint, "newsletters_preferences", %{contact_uuid: contact_uuid},
-        signed_at: System.system_time(:second) - 604_801
+        signed_at: System.system_time(:second) - 2_592_001
       )
 
     assert {:error, :invalid} = PreferenceToken.verify(token)
+  end
+
+  test "verify/1 still accepts a link from a mail a few weeks old" do
+    contact_uuid = Ecto.UUID.generate()
+    endpoint = PhoenixKit.Config.get(:endpoint, PhoenixKitWeb.Endpoint)
+
+    token =
+      Phoenix.Token.sign(endpoint, "newsletters_preferences", %{contact_uuid: contact_uuid},
+        signed_at: System.system_time(:second) - 3 * 604_800
+      )
+
+    assert {:ok, ^contact_uuid} = PreferenceToken.verify(token)
   end
 end

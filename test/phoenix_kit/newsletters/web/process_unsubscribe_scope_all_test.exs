@@ -5,7 +5,7 @@ defmodule PhoenixKit.Newsletters.Web.ProcessUnsubscribeScopeAllTest do
   unsubscribe_controller_test.exs only covers the token-free branches;
   see its trailing comment). This branch used to discard
   `CRMSource.opt_out/1`'s result entirely, so an `{:error, _}` return
-  silently rendered the same "unsubscribed from all" success flash as a
+  silently rendered the same "unsubscribed from all" success message as a
   real success — code review flagged this.
 
   The `{:error, _reason}` arm added alongside the fix isn't independently
@@ -22,7 +22,9 @@ defmodule PhoenixKit.Newsletters.Web.ProcessUnsubscribeScopeAllTest do
 
   use PhoenixKitNewsletters.DataCase, async: false
 
+  alias PhoenixKit.Newsletters.UserGroupSource
   alias PhoenixKit.Newsletters.Web.UnsubscribeController
+  alias PhoenixKit.Users.Auth.User
   alias PhoenixKitCRM.Contacts
   alias PhoenixKitNewsletters.Test.Repo
 
@@ -40,6 +42,8 @@ defmodule PhoenixKit.Newsletters.Web.ProcessUnsubscribeScopeAllTest do
     |> Plug.Conn.fetch_session()
     |> Plug.Conn.fetch_query_params()
     |> Phoenix.Controller.fetch_flash(%{})
+    |> Phoenix.Controller.put_view(html: PhoenixKit.Newsletters.Web.UnsubscribeHTML)
+    |> then(&%{&1 | params: Map.put(&1.params, "_format", "html")})
   end
 
   defp create_contact do
@@ -52,7 +56,7 @@ defmodule PhoenixKit.Newsletters.Web.ProcessUnsubscribeScopeAllTest do
     contact
   end
 
-  test "opts the contact out and shows the success flash" do
+  test "opts the contact out and says so on the page" do
     contact = create_contact()
     token = sign_token(contact.uuid)
 
@@ -60,23 +64,40 @@ defmodule PhoenixKit.Newsletters.Web.ProcessUnsubscribeScopeAllTest do
       build_conn()
       |> UnsubscribeController.process_unsubscribe(%{"token" => token, "scope" => "all"})
 
-    assert conn.status == 302
-    assert conn.assigns[:flash]["info"] =~ "unsubscribed from all newsletters"
-    refute conn.assigns[:flash]["error"]
+    assert conn.status == 200
+    assert conn.resp_body =~ "unsubscribed from all newsletters"
 
     reloaded = Repo.get_by(contact.__struct__, uuid: contact.uuid)
     assert reloaded.opted_out_at
   end
 
-  test "an unresolvable contact_uuid shows an error flash, not the success text" do
+  test "reaches the account holding the address too, so role mail stops as well" do
+    {:ok, user} =
+      %User{}
+      |> User.guest_user_changeset(%{
+        email: "account-#{System.unique_integer([:positive])}@example.com"
+      })
+      |> Repo.insert()
+
+    {:ok, contact} = Contacts.create_contact(%{name: "Same person", email: user.email})
+
+    build_conn()
+    |> UnsubscribeController.process_unsubscribe(%{
+      "token" => sign_token(contact.uuid),
+      "scope" => "all"
+    })
+
+    assert UserGroupSource.opted_out?(Repo.get(User, user.uuid))
+  end
+
+  test "an unresolvable contact_uuid says the link is invalid, not that it worked" do
     token = sign_token(Ecto.UUID.generate())
 
     conn =
       build_conn()
       |> UnsubscribeController.process_unsubscribe(%{"token" => token, "scope" => "all"})
 
-    assert conn.status == 302
-    assert conn.assigns[:flash]["error"] =~ "Invalid link."
-    refute conn.assigns[:flash]["info"]
+    assert conn.resp_body =~ "no longer valid"
+    refute conn.resp_body =~ "unsubscribed from all newsletters"
   end
 end

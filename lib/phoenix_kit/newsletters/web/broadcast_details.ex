@@ -24,6 +24,7 @@ defmodule PhoenixKit.Newsletters.Web.BroadcastDetails do
   alias PhoenixKit.Newsletters.UserGroupSource
   alias PhoenixKit.Newsletters.Web.Paging
   alias PhoenixKit.Newsletters.Web.SendError
+  alias PhoenixKit.Newsletters.Web.StatusLabel
   alias PhoenixKit.Newsletters.Web.Timezone
   alias PhoenixKit.Settings
   alias PhoenixKit.Users.Auth.User
@@ -57,7 +58,8 @@ defmodule PhoenixKit.Newsletters.Web.BroadcastDetails do
         |> assign(:total_pages, 1)
         |> assign(:crm_list, nil)
         |> assign(:crm_preflight, nil)
-        |> assign(:user_group_preflight, nil)
+        |> assign(:stale_roles, 0)
+        |> assign(:can_start, false)
         |> assign(:attachment_files, [])
         |> assign(:loading, true)
         |> assign(:show_confirm_modal, false)
@@ -107,10 +109,7 @@ defmodule PhoenixKit.Newsletters.Web.BroadcastDetails do
      |> assign(:show_confirm_modal, true)
      |> assign(:confirm_action, :cancel_broadcast)
      |> assign(:confirm_title, gettext("Cancel broadcast"))
-     |> assign(
-       :confirm_message,
-       gettext("This will stop any remaining deliveries for this broadcast.")
-     )}
+     |> assign(:confirm_message, cancel_message(socket.assigns.broadcast))}
   end
 
   @impl true
@@ -173,6 +172,12 @@ defmodule PhoenixKit.Newsletters.Web.BroadcastDetails do
     end
   end
 
+  # Reversible, so no dialog: the broadcast goes back to where it can be fixed.
+  @impl true
+  def handle_event("back_to_draft", _params, socket) do
+    with :ok <- authorize_send(socket), do: back_to_draft(socket)
+  end
+
   @impl true
   def handle_event("refresh", _params, socket) do
     {:noreply,
@@ -182,6 +187,40 @@ defmodule PhoenixKit.Newsletters.Web.BroadcastDetails do
   end
 
   # --- Private ---
+
+  # Cancelling is final, so the dialog says so: there is no way back from it, and
+  # a scheduled broadcast has no deliveries yet for it to stop.
+  defp cancel_message(%{status: "scheduled"}) do
+    gettext("This broadcast will never go out. A cancelled broadcast cannot be edited or sent.")
+  end
+
+  defp cancel_message(_broadcast) do
+    gettext("This will stop any remaining deliveries. A cancelled broadcast cannot be resumed.")
+  end
+
+  defp back_to_draft(socket) do
+    case Newsletters.unschedule_broadcast(socket.assigns.broadcast) do
+      {:ok, broadcast} ->
+        {:noreply,
+         push_navigate(socket,
+           to: Routes.path("/admin/newsletters/broadcasts/#{broadcast.uuid}/edit")
+         )}
+
+      {:error, {:invalid_status, status}} ->
+        {:noreply,
+         socket
+         |> put_flash(
+           :error,
+           gettext("A broadcast with status %{status} cannot go back to draft.",
+             status: status_label(status)
+           )
+         )
+         |> load_broadcast_data()}
+
+      {:error, :not_found} ->
+        {:noreply, load_broadcast_data(socket)}
+    end
+  end
 
   # Decided by the database, not by this page's copy: see
   # `Newsletters.cancel_broadcast/1`. A refusal reloads, because the usual reason
@@ -321,6 +360,7 @@ defmodule PhoenixKit.Newsletters.Web.BroadcastDetails do
       # The CRM list behind a broadcast is resolved only for a viewer who
       # also holds the CRM module's key.
       crm? = Access.crm_lists?(Access.scope(socket))
+      crm_list = if crm?, do: CRMSource.get_list(broadcast.crm_list_uuid)
 
       socket
       |> assign(:broadcast, broadcast)
@@ -331,9 +371,10 @@ defmodule PhoenixKit.Newsletters.Web.BroadcastDetails do
       |> assign(:page, page)
       |> assign(:total_count, total)
       |> assign(:total_pages, Paging.total_pages(total))
-      |> assign(:crm_list, if(crm?, do: CRMSource.get_list(broadcast.crm_list_uuid)))
+      |> assign(:crm_list, crm_list)
       |> assign(:crm_preflight, if(crm?, do: crm_preflight(broadcast)))
-      |> assign(:user_group_preflight, user_group_preflight(broadcast))
+      |> assign(:stale_roles, stale_roles(broadcast))
+      |> assign(:can_start, can_start?(socket, broadcast, crm?, crm_list))
       |> assign(:attachment_files, load_attachment_files(broadcast.attachments || []))
       |> assign(:loading, false)
       |> assign(:page_title, broadcast.subject)
@@ -355,6 +396,9 @@ defmodule PhoenixKit.Newsletters.Web.BroadcastDetails do
 
   defp resend_counts(_broadcast, _stats), do: {0, 0}
 
+  defp list_sendable?(%{status: status}), do: status == "active"
+  defp list_sendable?(_list), do: true
+
   defp page_url(page, broadcast_uuid) do
     query = if page > 1, do: "?page=#{page}", else: ""
     Routes.path("/admin/newsletters/broadcasts/#{broadcast_uuid}#{query}")
@@ -367,28 +411,26 @@ defmodule PhoenixKit.Newsletters.Web.BroadcastDetails do
 
   defp crm_preflight(_broadcast), do: nil
 
-  # Reuses UserGroupSource.preflight/1's stale_roles count — the only
-  # piece of the breakdown this page surfaces (see role_names_snapshot/1
-  # and the stale-roles warning in the template); the full sendable/
-  # no_email/unsendable breakdown stays editor-only, not asked for here.
-  defp user_group_preflight(%{source_type: "user_group"} = broadcast) do
-    broadcast |> Broadcast.role_uuids() |> UserGroupSource.preflight()
+  defp stale_roles(%{source_type: "user_group"} = broadcast) do
+    broadcast |> Broadcast.role_uuids() |> UserGroupSource.stale_role_count()
   end
 
-  defp user_group_preflight(_broadcast), do: nil
+  defp stale_roles(_broadcast), do: 0
+
+  # Whether a send can start from here: the same checks the click would meet, so
+  # Retry and Resend are not offered where they can only be refused.
+  defp can_start?(socket, %{source_type: "crm_list"}, crm?, crm_list) do
+    Access.can_send?(Access.scope(socket)) and crm? and list_sendable?(crm_list)
+  end
+
+  defp can_start?(socket, _broadcast, _crm?, _crm_list) do
+    Access.can_send?(Access.scope(socket))
+  end
 
   @doc "Display-only role names a `user_group` broadcast targeted — see `Broadcast.role_names_snapshot/1`."
   def role_names_snapshot(broadcast), do: Broadcast.role_names_snapshot(broadcast)
 
-  def status_label(status), do: gettext_status(status)
-
-  defp gettext_status("draft"), do: gettext("Draft")
-  defp gettext_status("scheduled"), do: gettext("Scheduled")
-  defp gettext_status("sending"), do: gettext("Sending")
-  defp gettext_status("sent"), do: gettext("Sent")
-  defp gettext_status("cancelled"), do: gettext("Cancelled")
-  defp gettext_status("failed"), do: gettext("Failed")
-  defp gettext_status(other), do: other
+  def status_label(status), do: StatusLabel.broadcast(status)
 
   def delivery_label(status), do: gettext_delivery(status)
 
@@ -454,6 +496,13 @@ defmodule PhoenixKit.Newsletters.Web.BroadcastDetails do
   defp stat_value(stats, key) do
     Map.get(stats, key, 0)
   end
+
+  # Cumulative, as on the list: what was delivered was sent, and what was opened
+  # was delivered. Counted from the rows rather than the broadcast's counters,
+  # because a provider reports an open every time one happens.
+  defp sent_total(stats), do: delivered_total(stats) + stat_value(stats, "sent") + bounced(stats)
+  defp delivered_total(stats), do: stat_value(stats, "delivered") + stat_value(stats, "opened")
+  defp bounced(stats), do: stat_value(stats, "bounced")
 
   defp template_display_name(template, locale), do: Layout.display_name(template, locale)
 end

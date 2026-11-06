@@ -28,6 +28,11 @@ defmodule PhoenixKit.Newsletters.Delivery do
   # "sending") while a recipient's send is still queued to run.
   @non_terminal_statuses ["pending"]
 
+  # How far a provider's events have taken a delivery. They arrive in any order
+  # and more than once, so a later event may not walk a status back: a late
+  # Delivery after an Open, or an Open on mail that has since bounced.
+  @provider_progress %{"sent" => 1, "delivered" => 2, "opened" => 3, "bounced" => 4}
+
   # What the sweep records for a delivery whose job left no result. The mail may
   # have gone out (a node killed after the provider call, a result that could not
   # be written), so this text is also what keeps such a row out of a resend.
@@ -124,6 +129,15 @@ defmodule PhoenixKit.Newsletters.Delivery do
   end
 
   def valid_statuses, do: @valid_statuses
+
+  @doc false
+  # The status a delivery should have after an event reports `status`.
+  def next_status(current, status) do
+    case @provider_progress do
+      %{^current => from, ^status => to} when to < from -> current
+      _progress -> status
+    end
+  end
 
   @doc """
   `character varying` column widths for `phoenix_kit_newsletters_deliveries`,

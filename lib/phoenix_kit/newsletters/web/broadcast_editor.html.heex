@@ -23,6 +23,7 @@
             value={@subject}
             placeholder={gettext("Enter email subject...")}
             class="input w-full"
+            phx-debounce="300"
           />
         </fieldset>
 
@@ -97,9 +98,10 @@
             {gettext("This list is archived and cannot be sent to.")}
           </p>
           <p :if={@preflight} class="text-xs text-base-content/60 mt-1">
-            {gettext(
-              "%{total} members: %{sendable} sendable, %{no_email} no email, %{unsendable} unsubscribed/opted-out",
-              total: @preflight.total,
+            {ngettext(
+              "%{count} member: %{sendable} sendable, %{no_email} no email, %{unsendable} unsubscribed/opted-out",
+              "%{count} members: %{sendable} sendable, %{no_email} no email, %{unsendable} unsubscribed/opted-out",
+              @preflight.total,
               sendable: @preflight.sendable,
               no_email: @preflight.no_email,
               unsendable: @preflight.unsendable
@@ -125,9 +127,10 @@
             </label>
           </div>
           <p :if={@preflight} class="text-xs text-base-content/60 mt-1">
-            {gettext(
-              "%{total} users: %{sendable} sendable, %{no_email} no email, %{unsendable} unsubscribed/opted-out",
-              total: @preflight.total,
+            {ngettext(
+              "%{count} user: %{sendable} sendable, %{no_email} no email, %{unsendable} unsubscribed/opted-out",
+              "%{count} users: %{sendable} sendable, %{no_email} no email, %{unsendable} unsubscribed/opted-out",
+              @preflight.total,
               sendable: @preflight.sendable,
               no_email: @preflight.no_email,
               unsendable: @preflight.unsendable
@@ -160,9 +163,10 @@
             </select>
           </label>
           <p class="label text-xs">
-            <.pk_link navigate={Paths.layouts_index()} class="link">
+            <%!-- A new tab: this form holds work nothing has saved yet. --%>
+            <.link href={Paths.layouts_index()} target="_blank" class="link">
               {gettext("Manage layouts")}
-            </.pk_link>
+            </.link>
           </p>
         </fieldset>
 
@@ -259,7 +263,10 @@
             name="action"
             value="send_now"
             class="btn btn-primary btn-sm"
-            disabled={@saving or @subject == "" or recipient_source_missing?(assigns)}
+            disabled={
+              @saving or @subject == "" or blank?(@markdown_content) or
+                recipient_source_missing?(assigns) or nobody_to_send_to?(assigns)
+            }
           >
             <.icon name="hero-paper-airplane" class="w-4 h-4" /> {gettext("Send now")}
           </button>
@@ -279,7 +286,7 @@
                 class="btn btn-secondary btn-sm"
                 disabled={
                   @saving or @scheduled_at == "" or @subject == "" or
-                    recipient_source_missing?(assigns)
+                    blank?(@markdown_content) or recipient_source_missing?(assigns)
                 }
               >
                 <.icon name="hero-clock" class="w-4 h-4" /> {gettext("Schedule")}

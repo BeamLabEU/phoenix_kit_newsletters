@@ -11,8 +11,12 @@ defmodule PhoenixKit.Newsletters.Content do
   # options. Newsletter HTML goes out to every list member by email (not just
   # a trusted-admin preview), so the output is always run through
   # HtmlSanitizer below rather than relying on comrak's tagfilter.
+  #
+  # No `tasklist`: it renders a checkbox `<input>`, which the sanitizer removes,
+  # and `- [x] Paid` and `- [ ] Due` would end up as the same bullet. Left as text,
+  # the author's brackets survive.
   @mdex_options [
-    extension: [strikethrough: true, table: true, autolink: true, tasklist: true],
+    extension: [strikethrough: true, table: true, autolink: true],
     parse: [smart: true],
     render: [unsafe: true]
   ]

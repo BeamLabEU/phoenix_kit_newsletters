@@ -27,9 +27,9 @@
       <button :if={@default_uuid} type="button" class="btn btn-ghost btn-sm" phx-click="clear_default">
         {gettext("Use the standard layout by default")}
       </button>
-      <.pk_link navigate={Paths.layout_new()} class="btn btn-primary btn-sm">
+      <.link navigate={Paths.layout_new()} class="btn btn-primary btn-sm">
         <.icon name="hero-plus" class="w-4 h-4" /> {gettext("New layout")}
-      </.pk_link>
+      </.link>
     </div>
   </div>
 
@@ -78,9 +78,9 @@
               </span>
             </td>
             <td class="text-right whitespace-nowrap">
-              <.pk_link navigate={Paths.layout_edit(layout.uuid)} class="btn btn-xs btn-outline">
+              <.link navigate={Paths.layout_edit(layout.uuid)} class="btn btn-xs btn-outline">
                 {gettext("Edit")}
-              </.pk_link>
+              </.link>
               <button
                 :if={layout.status == "active" and layout.uuid != @default_uuid}
                 type="button"

@@ -12,6 +12,7 @@ defmodule PhoenixKit.Newsletters.Web.PreferenceCenterLiveTest do
   alias PhoenixKit.Newsletters
   alias PhoenixKit.Newsletters.CRMSource
   alias PhoenixKit.Newsletters.PreferenceToken
+  alias PhoenixKit.Newsletters.UserGroupSource
   alias PhoenixKit.Newsletters.Web.PreferenceCenterLive
   alias PhoenixKit.Users.Auth.Scope
   alias PhoenixKit.Users.Auth.User
@@ -26,7 +27,7 @@ defmodule PhoenixKit.Newsletters.Web.PreferenceCenterLiveTest do
 
   defp socket(assigns \\ %{}) do
     base = %{flash: %{}, __changed__: %{}}
-    %Phoenix.LiveView.Socket{assigns: Map.merge(base, assigns)}
+    %Phoenix.LiveView.Socket{assigns: Map.merge(base, assigns), transport_pid: self()}
   end
 
   # Token verification, contact resolution, and the account-path's
@@ -55,6 +56,12 @@ defmodule PhoenixKit.Newsletters.Web.PreferenceCenterLiveTest do
       |> Repo.insert()
 
     user
+  end
+
+  defp confirmed(user) do
+    user
+    |> Ecto.Changeset.change(confirmed_at: DateTime.utc_now() |> DateTime.truncate(:second))
+    |> Repo.update!()
   end
 
   defp add_contact(attrs \\ %{}) do
@@ -110,7 +117,7 @@ defmodule PhoenixKit.Newsletters.Web.PreferenceCenterLiveTest do
 
   describe "mount + handle_params — logged-in account access" do
     test "lazily creates and links a contact on first visit, then reuses it on a later mount" do
-      user = create_user()
+      user = confirmed(create_user())
       scope = Scope.for_user(user)
 
       {:ok, first} =
@@ -141,6 +148,70 @@ defmodule PhoenixKit.Newsletters.Web.PreferenceCenterLiveTest do
         )
 
       assert updated.redirected != nil
+    end
+  end
+
+  describe "an account's first visit" do
+    test "writes nothing on the plain GET, and waits for the socket" do
+      user = confirmed(create_user())
+      scope = Scope.for_user(user)
+      dead = %{socket(%{phoenix_kit_current_scope: scope}) | transport_pid: nil}
+
+      {:ok, updated} = mount_and_resolve(%{}, %{}, dead)
+
+      assert updated.assigns.mode == :loading
+      assert Contacts.list_by_email(user.email) == []
+    end
+
+    test "an unconfirmed account cannot take the contact holding its address" do
+      user = create_user()
+      existing = add_contact(%{email: user.email})
+      scope = Scope.for_user(user)
+
+      {:ok, updated} = mount_and_resolve(%{}, %{}, socket(%{phoenix_kit_current_scope: scope}))
+
+      assert updated.assigns.mode == :unconfirmed
+      assert updated.assigns.contact == nil
+      assert CRMSource.get_contact(existing.uuid).user_uuid == nil
+    end
+  end
+
+  describe "with the module switched off" do
+    test "says so here, rather than redirecting to a `/` that may not exist" do
+      Newsletters.disable_system()
+
+      {:ok, updated} = mount_and_resolve(%{}, %{}, socket())
+
+      assert updated.assigns.mode == :unavailable
+      assert updated.redirected == nil
+    end
+  end
+
+  describe "unsubscribe from all, and back" do
+    test "reaches every contact at the address and the account" do
+      user = create_user()
+      contact = add_contact(%{email: user.email})
+      twin = add_contact(%{email: user.email})
+      token = PreferenceToken.sign(contact.uuid)
+
+      {:ok, socket} = mount_and_resolve(%{"token" => token}, %{}, socket())
+      {:noreply, _socket} = PreferenceCenterLive.handle_event("unsubscribe_all", %{}, socket)
+
+      assert CRMSource.get_contact(twin.uuid).opted_out_at
+      assert UserGroupSource.opted_out?(Repo.get(User, user.uuid))
+    end
+
+    test "resubscribing brings all of it back" do
+      user = create_user()
+      contact = add_contact(%{email: user.email})
+      token = PreferenceToken.sign(contact.uuid)
+
+      {:ok, socket} = mount_and_resolve(%{"token" => token}, %{}, socket())
+      {:noreply, socket} = PreferenceCenterLive.handle_event("unsubscribe_all", %{}, socket)
+      {:noreply, _socket} = PreferenceCenterLive.handle_event("resubscribe", %{}, socket)
+
+      refute CRMSource.get_contact(contact.uuid).opted_out_at
+      refute UserGroupSource.opted_out?(Repo.get(User, user.uuid))
     end
   end
 

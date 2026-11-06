@@ -42,13 +42,11 @@ defmodule PhoenixKit.Newsletters.BroadcasterUserGroupTest do
     broadcast
   end
 
-  test "runs the full send path without crashing and resolves to zero recipients for an unknown role" do
+  test "refuses an unknown role, which resolves to nobody, and leaves the broadcast as it was" do
     broadcast = create_user_group_broadcast([Ecto.UUID.generate()])
 
-    assert {:ok, sent} = Broadcaster.send(broadcast)
-    assert sent.status == "sending"
-    assert sent.total_recipients == 0
-    assert sent.crm_list_uuid == nil
+    assert {:error, :no_recipients} = Broadcaster.send(broadcast)
+    assert Newsletters.get_broadcast!(broadcast.uuid).status == broadcast.status
   end
 
   describe "with real Roles/User fixtures" do

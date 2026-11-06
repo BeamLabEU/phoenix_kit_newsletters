@@ -12,6 +12,7 @@ defmodule PhoenixKit.Newsletters.BroadcastLifecycleTest do
   alias PhoenixKit.Newsletters
   alias PhoenixKit.Newsletters.Broadcast
   alias PhoenixKit.Newsletters.Delivery
+  alias PhoenixKit.Newsletters.Workers.DeliveryWorker
   alias PhoenixKitNewsletters.Test.Repo
 
   defp create_broadcast(attrs \\ %{}) do
@@ -112,6 +113,135 @@ defmodule PhoenixKit.Newsletters.BroadcastLifecycleTest do
 
     test "a broadcast that is gone is not an error" do
       assert :ok = Newsletters.increment_broadcast_counter(Ecto.UUID.generate(), :opened_count)
+    end
+  end
+
+  describe "unschedule_broadcast/1" do
+    test "takes a scheduled broadcast back to a draft, keeping its time" do
+      at = ~U[2099-01-01 10:00:00Z]
+      broadcast = create_broadcast(%{status: "scheduled", scheduled_at: at})
+
+      assert {:ok, %Broadcast{status: "draft", scheduled_at: ^at}} =
+               Newsletters.unschedule_broadcast(broadcast)
+
+      assert Newsletters.get_broadcast!(broadcast.uuid).status == "draft"
+    end
+
+    for status <- ~w(draft sending sent cancelled failed) do
+      test "leaves a #{status} broadcast as it is, whatever the page thinks" do
+        broadcast = create_broadcast(%{status: unquote(status)})
+        stale = %{broadcast | status: "scheduled"}
+
+        assert {:error, {:invalid_status, unquote(status)}} =
+                 Newsletters.unschedule_broadcast(stale)
+
+        assert Newsletters.get_broadcast!(broadcast.uuid).status == unquote(status)
+      end
+    end
+
+    test "a broadcast that is gone is refused" do
+      assert {:error, :not_found} =
+               Newsletters.unschedule_broadcast(%Broadcast{uuid: Ecto.UUID.generate()})
+    end
+  end
+
+  describe "provider events, which arrive late and out of order" do
+    defp delivery_at(broadcast, status) do
+      {:ok, delivery} =
+        %Delivery{}
+        |> Delivery.changeset(%{
+          broadcast_uuid: broadcast.uuid,
+          recipient_email: "e#{System.unique_integer([:positive])}@example.com",
+          status: status
+        })
+        |> Repo.insert()
+
+      delivery
+    end
+
+    test "move a delivery forward" do
+      delivery = delivery_at(create_broadcast(), "sent")
+
+      {:ok, delivered} = Newsletters.update_delivery_status(delivery, "delivered")
+      {:ok, opened} = Newsletters.update_delivery_status(delivered, "opened")
+      {:ok, bounced} = Newsletters.update_delivery_status(opened, "bounced")
+
+      assert bounced.status == "bounced"
+    end
+
+    test "a late Delivery does not take back an Open, and its time is still kept" do
+      delivery = delivery_at(create_broadcast(), "opened")
+      at = ~U[2026-01-01 10:00:00Z]
+
+      {:ok, updated} =
+        Newsletters.update_delivery_status(delivery, "delivered", %{delivered_at: at})
+
+      assert %Delivery{status: "opened", delivered_at: ^at} = updated
+    end
+
+    test "an Open on mail that bounced leaves it bounced" do
+      delivery = delivery_at(create_broadcast(), "bounced")
+
+      assert {:ok, %Delivery{status: "bounced"}} =
+               Newsletters.update_delivery_status(delivery, "opened")
+    end
+
+    test "the worker's own statuses are not held back" do
+      delivery = delivery_at(create_broadcast(), "pending")
+
+      assert {:ok, %Delivery{status: "failed"}} =
+               Newsletters.update_delivery_status(delivery, "failed")
+    end
+  end
+
+  describe "list order" do
+    # A batch of 500 shares one timestamp, so the timestamp alone leaves the order
+    # of a page undefined, and a recipient can repeat on one page and miss another.
+    test "deliveries sharing a timestamp page without a repeat or a gap" do
+      broadcast = create_broadcast()
+      now = DateTime.utc_now() |> DateTime.truncate(:second)
+
+      rows =
+        for n <- 1..120 do
+          %{
+            uuid: UUIDv7.generate(),
+            broadcast_uuid: broadcast.uuid,
+            recipient_email: "row-#{n}@example.com",
+            status: "pending",
+            inserted_at: now,
+            updated_at: now
+          }
+        end
+
+      Repo.insert_all(Delivery, rows)
+
+      paged =
+        for offset <- [0, 50, 100] do
+          broadcast.uuid
+          |> Newsletters.list_deliveries(%{limit: 50, offset: offset})
+          |> Enum.map(& &1.uuid)
+        end
+
+      assert paged |> List.flatten() |> Enum.sort() == rows |> Enum.map(& &1.uuid) |> Enum.sort()
+      assert List.flatten(paged) == rows |> Enum.map(& &1.uuid) |> Enum.sort(:desc)
+    end
+  end
+
+  describe "the module's declarations" do
+    test "the queue is the worker's, so a host's tools can see it is missing" do
+      assert [{queue, _options}] = Newsletters.oban_queues()
+
+      assert to_string(queue) == DeliveryWorker.new(%{}).changes.queue
+    end
+
+    test "the public pages' segment is reserved" do
+      assert Newsletters.reserved_route_prefixes() == ["newsletters"]
+    end
+
+    test "permission labels can be translated" do
+      metadata = Newsletters.permission_metadata()
+
+      assert metadata.gettext_backend == PhoenixKit.Newsletters.Gettext
     end
   end
 

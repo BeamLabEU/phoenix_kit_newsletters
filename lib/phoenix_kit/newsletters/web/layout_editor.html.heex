@@ -10,6 +10,7 @@
 >
 <div class="container flex-col mx-auto px-4 py-6">
   <form id="layout-form" phx-change="validate" phx-submit="save">
+    <input type="hidden" name="editor_language" value={@editor_locale} />
     <div :if={@errors != []} class="alert alert-error mb-4">
       <.icon name="hero-exclamation-triangle" class="w-5 h-5" />
       <ul class="text-sm">
@@ -156,9 +157,9 @@
 
         <div class="flex gap-2">
           <button type="submit" class="btn btn-primary">{gettext("Save layout")}</button>
-          <.pk_link navigate={Paths.layouts_index()} class="btn btn-ghost">
+          <.link navigate={Paths.layouts_index()} class="btn btn-ghost">
             {gettext("Cancel")}
-          </.pk_link>
+          </.link>
         </div>
       </div>
 

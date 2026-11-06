@@ -4,6 +4,7 @@ defmodule PhoenixKit.Newsletters.RenderTest do
   alias PhoenixKit.Email.Branding
   alias PhoenixKit.Newsletters.Layout
   alias PhoenixKit.Newsletters.Render
+  alias PhoenixKit.Settings
   alias PhoenixKit.Templates.Overrides
 
   import ExUnit.CaptureLog
@@ -98,6 +99,45 @@ defmodule PhoenixKit.Newsletters.RenderTest do
       body = ~S(<p>C:\path\1 costs $1 \0</p>)
 
       assert Render.html(body, layout, %{}, locale: "en", paths: [dir]) == "<div>#{body}</div>"
+    end
+  end
+
+  describe "a host's own header and footer files" do
+    # The obvious home for an unsubscribe link, and core renders those parts first.
+    @variables %{"unsubscribe_url" => "https://site.example/out", "name" => "Jane"}
+
+    test "can place a recipient's variables under a layout", %{tmp_dir: dir} do
+      write(dir, "_footer-newsletters/html.html", ~s(<a href="{{unsubscribe_url}}">Out</a>))
+      layout = layout(%{"en" => "{{{content}}}{{{footer}}}"})
+
+      html = Render.html("Body", layout, @variables, locale: "en", paths: [dir])
+
+      assert html =~ ~s(href="https://site.example/out")
+      refute html =~ "{{unsubscribe_url}}"
+    end
+
+    test "and with no layout at all", %{tmp_dir: dir} do
+      write(dir, "_footer-newsletters/html.html", ~s(<a href="{{unsubscribe_url}}">Out</a>))
+
+      html = Render.html("<p>Body</p>", nil, @variables, locale: "en", paths: [dir])
+
+      assert html =~ ~s(href="https://site.example/out")
+    end
+
+    test "the header reads them too", %{tmp_dir: dir} do
+      write(dir, "_header-newsletters/html.html", "Hello {{name}}")
+      layout = layout(%{"en" => "{{{header}}}{{{content}}}"})
+
+      assert Render.html("B", layout, @variables, locale: "en", paths: [dir]) =~ "Hello Jane"
+    end
+
+    # A colour of its own: the default would pass with the site's setting lost.
+    test "passing them on keeps the site's colour", %{tmp_dir: dir} do
+      {:ok, _setting} = Settings.update_setting(Branding.accent_color_key(), "#123456")
+      write(dir, "_header-newsletters/html.html", "{{accent_color}}")
+      layout = layout(%{"en" => "{{{header}}}{{{content}}}"})
+
+      assert Render.html("B", layout, @variables, locale: "en", paths: [dir]) =~ "#123456"
     end
   end
 

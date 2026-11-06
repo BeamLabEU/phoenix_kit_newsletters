@@ -29,6 +29,17 @@ defmodule PhoenixKit.Newsletters.ContentTest do
     end
   end
 
+  describe "task lists" do
+    # The sanitizer removes a checkbox `<input>`, so as a task list the two would
+    # be the same bullet.
+    test "keep the difference between done and not done" do
+      html = Content.render_markdown("- [x] Paid\n- [ ] Due\n")
+
+      assert html =~ "[x] Paid"
+      assert html =~ "[ ] Due"
+    end
+  end
+
   describe "render_markdown_strict/1" do
     test "returns {:ok, html} on valid markdown" do
       assert {:ok, html} = Content.render_markdown_strict("Hello **world**")

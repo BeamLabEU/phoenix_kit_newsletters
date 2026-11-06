@@ -16,7 +16,19 @@ defmodule PhoenixKit.Newsletters.Web.SendErrorTest do
 
   test "a status the send path refuses is rendered as a sentence" do
     assert SendError.message({:invalid_status, "sent"}) ==
-             "Cannot send a broadcast with status sent."
+             "Cannot send a broadcast with status Sent."
+  end
+
+  test "a translated sentence does not end in a raw status" do
+    Gettext.with_locale(PhoenixKit.Newsletters.Gettext, "ru", fn ->
+      refute SendError.message({:invalid_status, "sending"}) =~ "sending"
+      refute SendError.message({:crm_list_not_active, "archived"}) =~ "archived"
+    end)
+  end
+
+  test "an audience with nobody in it, and a body with nothing in it, are sentences too" do
+    assert SendError.message(:no_recipients) =~ "Nobody in this audience"
+    assert SendError.message(:blank_body) =~ "body"
   end
 
   test "a resend with nothing left to send says so" do

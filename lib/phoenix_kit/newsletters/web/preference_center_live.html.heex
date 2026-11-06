@@ -10,6 +10,15 @@
   </p>
 
   <%= case @mode do %>
+    <% :loading -> %>
+      <div class="flex justify-center py-8">
+        <span class="loading loading-spinner loading-md"></span>
+      </div>
+    <% :unconfirmed -> %>
+      <div class="alert alert-info">
+        <.icon name="hero-information-circle" class="w-5 h-5" />
+        <span>{gettext("Confirm your email address to manage your subscriptions.")}</span>
+      </div>
     <% :unavailable -> %>
       <div class="alert alert-warning">
         <.icon name="hero-exclamation-triangle" class="w-5 h-5" />

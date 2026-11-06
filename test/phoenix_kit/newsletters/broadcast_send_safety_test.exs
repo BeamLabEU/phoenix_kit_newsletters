@@ -14,6 +14,8 @@ defmodule PhoenixKit.Newsletters.BroadcastSendSafetyTest do
 
   import Ecto.Query, only: [from: 2]
 
+  alias PhoenixKit.Email.SendProfiles
+  alias PhoenixKit.Integrations
   alias PhoenixKit.Newsletters
   alias PhoenixKit.Newsletters.Broadcast
   alias PhoenixKit.Newsletters.Broadcaster
@@ -111,6 +113,70 @@ defmodule PhoenixKit.Newsletters.BroadcastSendSafetyTest do
     end
   end
 
+  describe "what a send refuses" do
+    test "a broadcast with no body, before anything changes" do
+      start_oban()
+      broadcast = role_with_users(1) |> create_broadcast(%{markdown_body: "  "})
+
+      assert {:error, :blank_body} = Broadcaster.send(broadcast)
+
+      assert %Broadcast{status: "draft", sent_at: nil} =
+               Newsletters.get_broadcast!(broadcast.uuid)
+
+      assert deliveries_of(broadcast) == 0
+    end
+
+    test "judges the body on the row, not on the struct" do
+      start_oban()
+      broadcast = role_with_users(1) |> create_broadcast()
+
+      Repo.update_all(from(b in Broadcast, where: b.uuid == ^broadcast.uuid),
+        set: [markdown_body: nil]
+      )
+
+      assert {:error, :blank_body} = Broadcaster.send(broadcast)
+    end
+
+    test "an audience with nobody in it, which would otherwise end sent to no one" do
+      broadcast = role_with_users(0) |> create_broadcast()
+
+      assert {:error, :no_recipients} = Broadcaster.send(broadcast)
+      assert Newsletters.get_broadcast!(broadcast.uuid).status == "draft"
+    end
+  end
+
+  describe "the pace of a fast profile" do
+    test "several sends share a second instead of one per second" do
+      start_oban()
+      {:ok, %{uuid: integration}} = Integrations.add_connection("smtp", "fast #{unique()}")
+
+      {:ok, profile} =
+        SendProfiles.create_send_profile(%{
+          name: "Fast #{unique()}",
+          integration_uuid: integration,
+          provider_kind: "smtp",
+          rate_per_hour: 7200
+        })
+
+      broadcast = role_with_users(5) |> create_broadcast(%{send_profile_uuid: profile.uuid})
+
+      assert {:ok, _sending} = Broadcaster.send(broadcast)
+
+      times =
+        Repo.all(
+          from(j in Oban.Job,
+            where: fragment("?->>'broadcast_uuid' = ?", j.args, ^broadcast.uuid),
+            select: j.scheduled_at
+          )
+        )
+        |> Enum.map(&DateTime.to_unix/1)
+
+      assert_in_delta Enum.max(times) - Enum.min(times), 2, 1
+    end
+
+    defp unique, do: System.unique_integer([:positive])
+  end
+
   describe "the status is judged on the row" do
     for status <- ~w(sending sent cancelled) do
       test "a stale struct cannot start a broadcast that is #{status}" do
@@ -157,13 +223,44 @@ defmodule PhoenixKit.Newsletters.BroadcastSendSafetyTest do
 
       # Has recipients, so with no Oban running its enqueue raises.
       raises = role_with_users(1) |> due(%{scheduled_at: earlier})
-      # No recipients, so nothing is enqueued and it starts.
-      fine = role_with_users(0) |> due(%{})
+      # Needs no Oban to be judged, so reaching it shows the tick went on.
+      after_it = role_with_users(0) |> due(%{})
 
-      assert {:ok, 1} = Newsletters.process_scheduled_broadcasts()
+      assert {:ok, 0} = Newsletters.process_scheduled_broadcasts()
 
       assert Newsletters.get_broadcast!(raises.uuid).status == "scheduled"
-      assert Newsletters.get_broadcast!(fine.uuid).status == "sending"
+      assert Newsletters.get_broadcast!(after_it.uuid).status == "failed"
+    end
+
+    test "a broadcast with nobody to send to fails visibly, once, instead of ending sent" do
+      broadcast = role_with_users(0) |> due(%{})
+
+      assert {:ok, 0} = Newsletters.process_scheduled_broadcasts()
+
+      assert %Broadcast{status: "failed", sent_at: nil} =
+               Newsletters.get_broadcast!(broadcast.uuid)
+
+      assert {:ok, 0} = Newsletters.process_scheduled_broadcasts()
+    end
+
+    test "a blank body fails the same way, whatever the audience" do
+      start_oban()
+      broadcast = role_with_users(1) |> due(%{markdown_body: "  "})
+
+      assert {:ok, 0} = Newsletters.process_scheduled_broadcasts()
+      assert Newsletters.get_broadcast!(broadcast.uuid).status == "failed"
+      assert deliveries_of(broadcast) == 0
+    end
+
+    test "a stray source_type fails instead of raising on every tick" do
+      broadcast = role_with_users(0) |> due(%{})
+
+      Repo.update_all(from(b in Broadcast, where: b.uuid == ^broadcast.uuid),
+        set: [source_type: "newsletters_list"]
+      )
+
+      assert {:ok, 0} = Newsletters.process_scheduled_broadcasts()
+      assert Newsletters.get_broadcast!(broadcast.uuid).status == "failed"
     end
 
     test "a cancel landing during the tick stands" do
