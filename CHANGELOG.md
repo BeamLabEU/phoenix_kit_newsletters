@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.7.1 - 2026-11-06
+
+### Added
+
+- **Every email gives its reader a visible way to unsubscribe.** When the finished HTML does not hold the reader's `{{unsubscribe_url}}`, a small Unsubscribe line goes at the end of the body, in the reader's language, and the address goes at the end of the text part. This covers a broadcast with no layout, a whole-document body and a layout without the link, so existing layouts without one start showing it. A link from the author, the layout or a host's `_footer-newsletters` file counts, so nothing is doubled. A link inside an HTML comment does not count, nor does a `{{preferences_url}}` link, as that token expires. The broadcast and layout editor previews show the line.
+
 ## 0.7.0 - 2026-11-06
 
 Run `mix phoenix_kit.update` after upgrading, in a quiet window: chain V3 renames constraints under a 5 s `lock_timeout`. A host using address verification must now configure its engine (see below).
