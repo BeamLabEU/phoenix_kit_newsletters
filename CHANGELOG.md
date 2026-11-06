@@ -1,5 +1,58 @@
 # Changelog
 
+## 0.7.0 - 2026-11-06
+
+Run `mix phoenix_kit.update` after upgrading, in a quiet window: chain V3 renames constraints under a 5 s `lock_timeout`. A host using address verification must now configure its engine (see below).
+
+### Changed
+
+- **The address verification engine is configured by the host:** `config :phoenix_kit_newsletters, :email_verification_engine, MyApp.AddressVerification`. There is no default any more, so without this the page says verification is not available. The contract is `PhoenixKit.Newsletters.VerificationEngine`, described in the README. (#42)
+- **Unsubscribe links no longer expire, and preference links last 30 days instead of 7.** The age is checked when a link is opened, so this also reaches mail already sent. Before, a mail client's one-click unsubscribe after 7 days reported success while the mail kept coming.
+- **An opt-out reaches the person, not one row:** every CRM contact at the address and the account holding it. Resubscribing reverses all of that.
+- **Only a confirmed address links an account to a CRM contact** on the preference page. An unconfirmed account sees a message instead of its subscriptions.
+- **A send to nobody, or with a blank body, is refused.** A scheduled broadcast in that state ends `failed`, where it used to end `sent`.
+- **A schedule time in the past is refused.** It used to send at once.
+- **`{{name}}` is a person's name:** a contact's name or a user's full name, no longer an address or login.
+- **Recipients are checked again right before sending,** so an opt-out, removal or deactivation stops mail still queued in a long throttled send, recorded as `blocked`. Trashed CRM contacts leave audiences.
+- Failed deliveries retry after 5 and then 30 minutes.
+- The details page's Sent, Delivered and Opened are cumulative, matching the list, with a Pending tile added.
+- Unsubscribe results render on the page, in the recipient's language, with no redirect to `/`.
+- A CRM list the picker does not offer can no longer be chosen, except the one a draft already has.
+- `phoenix_kit_templates` is now `~> 0.2.4`. Test-only: `phoenix_kit_crm` is `~> 0.19` and `phoenix_kit_emails` is gone. Core's range is unchanged.
+
+### Added
+
+- **Resend failed deliveries** on a sent broadcast, for a connection that failed every recipient. Only deliveries with no sign a provider took them are resent, and the page says how many cannot be.
+- **Back to draft** for a scheduled broadcast, and scheduled broadcasts can be cancelled. The details page shows the message, and the cancel dialog says that cancelling is final.
+- **Chain V3** renames the primary keys, foreign keys and indexes a pre-rename host kept under old names, so `mix phoenix_kit.repair` finds them. An object is renamed only for exactly one full match with a free target name; otherwise a WARNING names what was found. Nothing is created, dropped or rewritten. (#43)
+- `oban_queues/0` and `reserved_route_prefixes/0`, so core can see what this module needs.
+- Pagination on the broadcast list and deliveries.
+- `{{subject}}` and the site variables now work in subjects, bodies without a layout and the text part, and a host's `_footer-newsletters` file can place recipient variables such as `{{unsubscribe_url}}`.
+- A preferences route under `/:locale/`, as core's sidebar localizes the dashboard tab.
+
+### Fixed
+
+- **Sends and unsubscribe pages crashed on hosts without an `:endpoint` key.** Tokens fell back to an endpoint no host starts. They now use the host's endpoint.
+- **A mouse-pasted body never reached the server,** so Send now could mail an empty message, or the old body on an edit. The editor now reads the body from the form.
+- **Emailed unsubscribe and preference links gave a 404 on multilingual sites.**
+- **A reconnect could save one language's layout text over another's.**
+- **Links such as New layout and each row's Edit had a doubled URL prefix.**
+- **The send start runs in one transaction,** so the sweep cannot finish a broadcast before its deliveries exist, and concurrent sends of one draft cannot all succeed.
+- **A job never fails after the provider accepted the mail,** which would have sent it twice. Core's suppressed answers are recorded as `blocked`, not `sent`.
+- Queued mail stays on its send profile, and pending deliveries whose jobs are gone no longer hold a broadcast in `sending`.
+- Edits and cancels are decided on the row, not on the page's copy of it, and the editor redirects unless the row is a draft.
+- Broadcast attachments are protected from core's orphan check.
+- Late provider events no longer walk a delivery's status backwards.
+- Placeholders in Markdown links survive rendering, the text part keeps link addresses, and task lists keep their state as text.
+- A send rate above one per second is honoured.
+- Two accounts sharing an address get one copy.
+- The editor no longer queries the audience on every keystroke, and Save draft keeps a typed time.
+- Public 500s on malformed `token` and `status` parameters are gone, and page order is stable across equal timestamps.
+- Addresses are masked in logs, delivery errors and job errors.
+- Starting a verification batch no longer blocks the page, double subscriptions are gone, and a batch answering after the audience changed is no longer shown for the new one.
+- V1 no longer fails where the email-templates table does not exist, as with a host file pinned to V1 on core 3.x. (#44)
+- Form errors and send refusals read as sentences, permission labels and statuses are translated, and counts use plural forms.
+
 ## 0.6.0 - 2026-10-27
 
 ### Changed

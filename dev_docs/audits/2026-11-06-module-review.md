@@ -150,6 +150,10 @@ instead of loading users to get one integer.
   checked the unsubscribe page reaching the account, a branding test passed because the
   default colour equals the site's, and a status test sent nothing at all, because the
   dead-render endpoint ignores query strings.
+- **Real browser:** Chromium drove the real editor and layout pages over a websocket with
+  core's JavaScript: 22 checks on pasting, sending, typing and reconnecting after a killed
+  socket and a crashed LiveView, read back from the database. All pass; with the paste and
+  language fixes undone, 11 fail.
 - **Tests caught a bug in these fixes:** a `not` on a nil scope would have been a 500 for
   every logged-out visitor to the preference page.
 - **Real connections:** the race harness from the resend work, rerun on the final code:
