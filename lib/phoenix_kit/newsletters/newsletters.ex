@@ -488,6 +488,11 @@ defmodule PhoenixKit.Newsletters do
     |> repo().aggregate(:count)
   end
 
+  @doc "How many of a broadcast's deliveries `Broadcaster.resend_failed/1` would send again."
+  def count_resendable_deliveries(broadcast_uuid) do
+    broadcast_uuid |> Delivery.resendable_query() |> repo().aggregate(:count)
+  end
+
   def get_delivery_stats(broadcast_uuid) do
     Delivery
     |> where([d], d.broadcast_uuid == ^broadcast_uuid)
@@ -610,7 +615,7 @@ defmodule PhoenixKit.Newsletters do
       |> repo().update_all(
         set: [
           status: "failed",
-          error: "The delivery job ended without a result",
+          error: Delivery.no_result_error(),
           updated_at: UtilsDate.utc_now()
         ]
       )

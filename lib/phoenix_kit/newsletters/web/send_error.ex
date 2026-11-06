@@ -1,11 +1,12 @@
 defmodule PhoenixKit.Newsletters.Web.SendError do
   @moduledoc """
-  Renders `PhoenixKit.Newsletters.Broadcaster.send/1`'s error reasons as
-  operator-facing sentences.
+  Renders the error reasons of `PhoenixKit.Newsletters.Broadcaster.send/1` and
+  `resend_failed/1` as operator-facing sentences.
 
-  Shared by both surfaces that call `send/1` — the editor's "Send now" and
-  the details page's "Retry send" — so the same refusal can't read as a
-  sentence on one page and as a raw Elixir term on the other.
+  Shared by every surface that calls them — the editor's "Send now" and the
+  details page's "Retry send" and "Resend failed deliveries" — so the same
+  refusal can't read as a sentence on one page and as a raw Elixir term on
+  another.
   """
 
   use Gettext, backend: PhoenixKit.Newsletters.Gettext
@@ -13,7 +14,7 @@ defmodule PhoenixKit.Newsletters.Web.SendError do
   alias PhoenixKit.Newsletters.Web.FormErrors
 
   @doc """
-  A localized message for a `Broadcaster.send/1` reason.
+  A localized message for a `Broadcaster.send/1` or `resend_failed/1` reason.
 
   The catch-all keeps `inspect/1` so an unmapped reason stays diagnosable
   rather than silently generic.
@@ -28,6 +29,8 @@ defmodule PhoenixKit.Newsletters.Web.SendError do
   end
 
   def message(:not_found), do: gettext("Broadcast not found")
+
+  def message(:nothing_to_resend), do: gettext("There are no failed deliveries to resend.")
 
   def message(%Ecto.Changeset{} = changeset) do
     gettext("Validation failed: %{errors}", errors: FormErrors.summary(changeset))

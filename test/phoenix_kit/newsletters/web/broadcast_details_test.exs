@@ -266,6 +266,158 @@ defmodule PhoenixKit.Newsletters.Web.BroadcastDetailsTest do
     end
   end
 
+  describe "resending failed deliveries" do
+    setup do
+      start_supervised!({Oban, repo: Repo, testing: :manual, queues: [], plugins: false})
+      broadcast = create_user_group_broadcast([Ecto.UUID.generate()], ["Marketing"])
+      {:ok, broadcast} = Newsletters.update_broadcast(broadcast, %{status: "sent"})
+
+      %{broadcast: broadcast}
+    end
+
+    defp failed_delivery(broadcast, attrs \\ %{}) do
+      {:ok, delivery} =
+        %Delivery{}
+        |> Delivery.changeset(
+          Map.merge(
+            %{
+              broadcast_uuid: broadcast.uuid,
+              recipient_email: "r#{System.unique_integer([:positive])}@example.com",
+              status: "failed",
+              error: ":not_configured"
+            },
+            attrs
+          )
+        )
+        |> Repo.insert()
+
+      delivery
+    end
+
+    defp resend_socket(broadcast, assigns \\ %{}) do
+      %Phoenix.LiveView.Socket{
+        assigns:
+          socket().assigns
+          |> Map.merge(%{
+            broadcast_id: broadcast.uuid,
+            page_param: nil,
+            broadcast: broadcast,
+            confirm_action: :resend_failed,
+            show_confirm_modal: true,
+            flash: %{},
+            __changed__: %{}
+          })
+          |> Map.merge(assigns)
+      }
+    end
+
+    defp confirm_resend(socket) do
+      {:noreply, updated} = BroadcastDetails.handle_event("confirm_action", %{}, socket)
+      updated
+    end
+
+    defp loaded(broadcast) do
+      {:noreply, updated} =
+        BroadcastDetails.handle_params(%{"id" => broadcast.uuid}, "/", socket())
+
+      updated
+    end
+
+    test "show_confirm names how many recipients it will reach", %{broadcast: broadcast} do
+      failed_delivery(broadcast)
+      failed_delivery(broadcast)
+
+      {:noreply, updated} =
+        BroadcastDetails.handle_event(
+          "show_confirm",
+          %{"action" => "resend_failed"},
+          loaded(broadcast)
+        )
+
+      assert updated.assigns.show_confirm_modal
+      assert updated.assigns.confirm_action == :resend_failed
+      assert updated.assigns.confirm_title == "Resend failed deliveries"
+      assert updated.assigns.confirm_message =~ "the 2 recipients whose delivery failed"
+    end
+
+    test "confirming reopens them and the page shows the send running", %{broadcast: broadcast} do
+      row = failed_delivery(broadcast)
+
+      updated = broadcast |> resend_socket() |> confirm_resend()
+
+      refute updated.assigns.show_confirm_modal
+      assert updated.assigns.flash["info"] == "Resending 1 failed delivery"
+      assert updated.assigns.broadcast.status == "sending"
+      assert updated.assigns.resendable_count == 0
+      assert Repo.get(Delivery, row.uuid).status == "pending"
+    end
+
+    test "needs newsletters.send, even for a crafted event", %{broadcast: broadcast} do
+      row = failed_delivery(broadcast)
+      socket = resend_socket(broadcast, %{phoenix_kit_current_scope: scope_with(["newsletters"])})
+
+      updated = confirm_resend(socket)
+
+      assert updated.assigns.flash["error"] == "You don't have permission to send broadcasts"
+      assert Repo.get(Delivery, row.uuid).status == "failed"
+      assert Newsletters.get_broadcast!(broadcast.uuid).status == "sent"
+    end
+
+    test "a CRM broadcast also needs the CRM key" do
+      {:ok, crm_broadcast} =
+        Newsletters.create_broadcast(%{
+          subject: "CRM",
+          source_type: "crm_list",
+          crm_list_uuid: Ecto.UUID.generate(),
+          status: "sent"
+        })
+
+      row = failed_delivery(crm_broadcast)
+
+      socket =
+        resend_socket(crm_broadcast, %{
+          phoenix_kit_current_scope: scope_with(["newsletters", "newsletters.send"])
+        })
+
+      updated = confirm_resend(socket)
+
+      assert updated.assigns.flash["error"] == "You don't have permission to use CRM lists"
+      assert Repo.get(Delivery, row.uuid).status == "failed"
+    end
+
+    test "a refusal says why and brings the page up to date", %{broadcast: broadcast} do
+      row = failed_delivery(broadcast)
+      {:ok, _cancelled} = Newsletters.update_broadcast(broadcast, %{status: "cancelled"})
+
+      updated = broadcast |> resend_socket() |> confirm_resend()
+
+      assert updated.assigns.flash["error"] == "Cannot send a broadcast with status cancelled."
+      assert updated.assigns.broadcast.status == "cancelled"
+      assert Repo.get(Delivery, row.uuid).status == "failed"
+    end
+
+    test "a stale page with nothing left to resend is told so", %{broadcast: broadcast} do
+      updated = broadcast |> resend_socket() |> confirm_resend()
+
+      assert updated.assigns.flash["error"] == "There are no failed deliveries to resend."
+      assert updated.assigns.broadcast.status == "sent"
+    end
+
+    test "counts what can go out apart from what cannot", %{broadcast: broadcast} do
+      failed_delivery(broadcast)
+      failed_delivery(broadcast, %{error: Delivery.no_result_error()})
+
+      assert %{resendable_count: 1, unresendable_count: 1} = loaded(broadcast).assigns
+    end
+
+    test "a broadcast still running offers nothing yet", %{broadcast: broadcast} do
+      failed_delivery(broadcast)
+      {:ok, sending} = Newsletters.update_broadcast(broadcast, %{status: "sending"})
+
+      assert %{resendable_count: 0, unresendable_count: 0} = loaded(sending).assigns
+    end
+  end
+
   describe "recipient_display/1" do
     test "shows the address a managed organization's mail goes to, not its login" do
       organization = %User{

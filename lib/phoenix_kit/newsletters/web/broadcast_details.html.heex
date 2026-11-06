@@ -63,6 +63,18 @@
           </button>
         <% end %>
 
+        <%= if @resendable_count > 0 and @can_send do %>
+          <button
+            type="button"
+            phx-click="show_confirm"
+            phx-value-action="resend_failed"
+            class="btn btn-primary btn-sm"
+          >
+            <.icon name="hero-paper-airplane" class="w-4 h-4" />
+            {gettext("Resend failed deliveries")}
+          </button>
+        <% end %>
+
         <button type="button" phx-click="refresh" class="btn btn-ghost btn-sm ml-auto">
           <.icon name="hero-arrow-path" class="w-4 h-4" /> {gettext("Refresh")}
         </button>
@@ -218,6 +230,16 @@
           </div>
         </div>
       </div>
+
+      <p :if={@unresendable_count > 0} class="text-sm text-warning mb-6">
+        <.icon name="hero-exclamation-triangle" class="w-3 h-3 inline" />
+        {ngettext(
+          "%{count} failed delivery may have gone out, so it cannot be resent.",
+          "%{count} failed deliveries may have gone out, so they cannot be resent.",
+          @unresendable_count,
+          count: @unresendable_count
+        )}
+      </p>
 
       <%!-- Deliveries Table (desktop) --%>
       <h2 class="text-lg font-semibold mb-1">{gettext("Deliveries")}</h2>

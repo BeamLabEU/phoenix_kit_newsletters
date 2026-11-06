@@ -237,9 +237,14 @@ queueing does the harm.
 
 ### Left open
 
-- **No resend after a bad connection.** Permanent failures fail each recipient quickly
-  and the broadcast ends `sent`, so an operator who fixes the connection cannot resend.
-  This predates the audit, and it is the most useful next step.
+- **Resending, built since, leaves one group behind.** `Broadcaster.resend_failed/1`
+  and the details page's button are the way back from a bad connection, but a delivery
+  the sweep settled stays `failed` for good: its mail may have gone out, and nothing
+  can tell. The page says how many there are.
+- **A resend can lose to the sweep inside one tick.** The sweep checks for jobs and then
+  fails pending rows in two statements. A resend committed between them has its rows
+  marked `failed` and its jobs skip. That takes a click within milliseconds of the
+  broadcast finishing, and it mails nobody twice, so it is not guarded.
 - **The finish check still walks the broadcast's index near the end** of a send: cheap,
   as measured, but not constant. A `(broadcast_uuid, status)` index would remove that,
   and needs a V4 migration.

@@ -131,7 +131,7 @@ The base `newsletters` key allows drafting, layouts, broadcast lists/counts.
 
 | Permission | Enforcement |
 |---|---|
-| `newsletters.send` | Send/schedule in `BroadcastEditor` **before saving**; retry/cancel in `BroadcastDetails.confirm_action` |
+| `newsletters.send` | Send/schedule in `BroadcastEditor` **before saving**; retry/resend/cancel in `BroadcastDetails.confirm_action` |
 | `newsletters.audiences` | Load delivery addresses in `BroadcastDetails`; `Verification` checks at mount **and** in its event handler; verification tab also requires it |
 | `crm` | `Access.crm_lists?/1` also requires `CRMSource.available?/0`; gates offering, previewing, saving and sending a CRM audience |
 
@@ -288,6 +288,17 @@ footer), with Branding logo/accent. Never rebuild core chrome here or read/write
   host's prefix, and skips this when no Oban runs on the node.
 - `maybe_finalize_broadcast/1` runs per delivery under the row lock, so it asks
   about its own broadcast with `not exists`, never the table-wide subquery.
+- `Broadcaster.resend_failed/1` is the only way back from `sent`. Same rule as a
+  first send: one transaction locks the row (`sent` only: a running send owns its
+  rows, a cancellation is final), reopens `Delivery.resendable_query/1`'s rows
+  and inserts their jobs, so the sweep never sees `sending` without them.
+  `Oban.insert_all/1` skips `unique`, so keep both guards against a duplicate: the
+  lock, and queueing only rows the `UPDATE` returned, never a prior read. Mail
+  cannot be retracted, so a row qualifies only if nothing suggests a provider
+  took it: `failed`, no `sent_at`, not the sweep's `no_result_error/0` (a result
+  that could not be written ends there too). Never render again, and keep `sent_at`.
+  `bounced_count` becomes the `bounced` row count, since exhausted rows were
+  counted and every one of them reopens.
 - Mask addresses (`EmailVerification.mask_addresses/1`) in anything that reaches
   a log, `delivery.error` or Oban's job errors: SMTP errors quote the recipient.
 - `increment_broadcast_counter/2` is called by `phoenix_kit_emails` after

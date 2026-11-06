@@ -9,12 +9,13 @@ defmodule PhoenixKitNewsletters.Test.DeadRenderHooks do
   import Phoenix.Component, only: [assign: 3]
 
   # The admin pages check `newsletters.send` / `newsletters.audiences`, so
-  # they get a scope holding every key; the public pages get no one.
+  # they get a scope holding every key, unless a test narrows it through the
+  # session to see what someone without a key is shown. The public pages get no
+  # one.
   def on_mount(:admin, params, session, socket) do
     {:cont, socket} = on_mount(:default, params, session, socket)
 
-    {:cont,
-     assign(socket, :phoenix_kit_current_scope, PhoenixKitNewsletters.TestScopes.full_scope())}
+    {:cont, assign(socket, :phoenix_kit_current_scope, admin_scope(session))}
   end
 
   def on_mount(:default, _params, _session, socket) do
@@ -25,4 +26,10 @@ defmodule PhoenixKitNewsletters.Test.DeadRenderHooks do
      |> assign(:phoenix_kit_current_user, nil)
      |> assign(:current_locale, "en")}
   end
+
+  defp admin_scope(%{"test_permissions" => permissions}) do
+    PhoenixKitNewsletters.TestScopes.scope_with(permissions)
+  end
+
+  defp admin_scope(_session), do: PhoenixKitNewsletters.TestScopes.full_scope()
 end

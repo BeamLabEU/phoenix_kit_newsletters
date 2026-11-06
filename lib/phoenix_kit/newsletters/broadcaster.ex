@@ -26,6 +26,22 @@ defmodule PhoenixKit.Newsletters.Broadcaster do
 
   The status is judged on the locked row, not on the struct passed in, which may
   be as old as the page it came from.
+
+  ## Resending
+
+  `resend_failed/1` is the way back from a send that failed for a reason that has
+  since been fixed, usually a bad connection. It holds to the same transaction: a
+  `sent` broadcast returns to `sending` only together with its reopened rows and
+  their jobs.
+
+  `Oban.insert_all/1` does not apply the worker's `unique` rule, so two other
+  things stop concurrent resends queueing a delivery twice: the row lock makes the
+  later ones see `sending`, and only rows the `UPDATE` itself moved out of `failed`
+  get a job. Either is enough alone; without both, every click queues everyone.
+
+  The body is not rendered again, so these recipients read what the rest of the
+  audience read, and `sent_at` stays the first send's. The layout around it is
+  read when each mail goes out, as in any send, so an edit since then shows.
   """
 
   require Logger
@@ -107,12 +123,7 @@ defmodule PhoenixKit.Newsletters.Broadcaster do
     # reused for both the count and the enqueue.
     recipients = resolve_recipients(broadcast)
 
-    # Resolve the very profile the worker will send with, so the throttle we
-    # apply here matches the rate limits of the profile that actually sends.
-    interval =
-      broadcast
-      |> DeliveryWorker.resolve_send_profile()
-      |> send_interval_seconds()
+    interval = throttle_interval(broadcast)
 
     result =
       repo.transaction(
@@ -156,6 +167,104 @@ defmodule PhoenixKit.Newsletters.Broadcaster do
       nil -> repo.rollback(:not_found)
       {:error, changeset} -> repo.rollback(changeset)
     end
+  end
+
+  # Resolves the very profile the worker will send with, so the throttle applied
+  # here matches the rate limits of the profile that actually sends.
+  defp throttle_interval(broadcast) do
+    broadcast
+    |> DeliveryWorker.resolve_send_profile()
+    |> send_interval_seconds()
+  end
+
+  @doc """
+  Sends a finished broadcast again to its failed deliveries, in one transaction
+  (see the moduledoc), and returns how many were reopened.
+
+  Only `Delivery.resendable_query/1`'s rows go out: nobody who may already have
+  the mail is sent it twice. Each job makes the worker's usual checks, so anyone
+  who has stopped being a recipient since ends up `blocked`.
+
+  Refuses with `{:error, {:invalid_status, status}}` unless the row, as it is now,
+  is `sent`: a send still under way owns its rows, and a cancellation is final.
+  Also `{:error, :nothing_to_resend}`, `{:error, :not_found}`, or a CRM list's
+  `{:error, {:crm_list_not_active, status}}`, as for `send/1`.
+  """
+  @spec resend_failed(Broadcast.t()) ::
+          {:ok, Broadcast.t(), pos_integer()}
+          | {:error,
+             {:invalid_status, String.t()}
+             | {:crm_list_not_active, String.t()}
+             | :nothing_to_resend
+             | :not_found
+             | Ecto.Changeset.t()}
+  def resend_failed(%Broadcast{} = broadcast) do
+    with :ok <- validate_recipient_source(broadcast) do
+      repo = repo()
+      interval = throttle_interval(broadcast)
+
+      result =
+        repo.transaction(
+          fn -> reopen_failed(broadcast.uuid, repo, interval) end,
+          timeout: @send_timeout
+        )
+
+      with {:ok, {reopened, count}} <- result do
+        Logger.info(
+          "Broadcaster: Re-enqueued #{count} failed deliveries for broadcast #{reopened.uuid}" <>
+            throttle_log(interval, count)
+        )
+
+        {:ok, reopened, count}
+      end
+    end
+  end
+
+  defp reopen_failed(broadcast_uuid, repo, interval) do
+    case Newsletters.lock_broadcast(broadcast_uuid) do
+      %Broadcast{status: "sent"} = locked -> reopen_deliveries(locked, repo, interval)
+      %Broadcast{status: status} -> repo.rollback({:invalid_status, status})
+      nil -> repo.rollback(:not_found)
+    end
+  end
+
+  defp reopen_deliveries(broadcast, repo, interval) do
+    {count, delivery_uuids} =
+      broadcast.uuid
+      |> Delivery.resendable_query()
+      |> select([d], d.uuid)
+      |> repo.update_all(set: [status: "pending", error: nil, updated_at: UtilsDate.utc_now()])
+
+    if count == 0, do: repo.rollback(:nothing_to_resend)
+
+    # A delivery that ran out of retries was counted as a bounce, and it is no
+    # longer one. Which failed rows were counted is not recorded, but every one
+    # that was has just been reopened, so what is left is the real bounces.
+    attrs = %{status: "sending", bounced_count: count_bounced(repo, broadcast.uuid)}
+
+    case Newsletters.update_broadcast(broadcast, attrs) do
+      {:ok, sending} ->
+        enqueue_reopened(delivery_uuids, sending, interval)
+        {sending, count}
+
+      {:error, changeset} ->
+        repo.rollback(changeset)
+    end
+  end
+
+  defp count_bounced(repo, broadcast_uuid) do
+    Delivery
+    |> where([d], d.broadcast_uuid == ^broadcast_uuid and d.status == "bounced")
+    |> repo.aggregate(:count)
+  end
+
+  defp enqueue_reopened(delivery_uuids, broadcast, interval) do
+    delivery_uuids
+    |> Enum.chunk_every(@batch_size)
+    |> Enum.reduce(0, fn batch, offset ->
+      enqueue_jobs(batch, broadcast, interval, offset)
+      offset + length(batch)
+    end)
   end
 
   defp correct_total(broadcast, repo) do
@@ -329,22 +438,26 @@ defmodule PhoenixKit.Newsletters.Broadcaster do
     {_count, inserted} =
       repo.insert_all(Delivery, deliveries, returning: [:uuid], on_conflict: :nothing)
 
-    # `offset` continues the recipient count across batches, so the spacing is
-    # continuous over the whole broadcast rather than restarting each chunk —
-    # otherwise every batch would dump its first 500 sends at once.
-    jobs =
-      inserted
-      |> Enum.with_index(offset)
-      |> Enum.map(fn {%{uuid: delivery_uuid}, index} ->
-        DeliveryWorker.new(
-          %{delivery_uuid: delivery_uuid, broadcast_uuid: broadcast.uuid},
-          schedule_opts(interval, index)
-        )
-      end)
-
-    Oban.insert_all(jobs)
+    inserted
+    |> Enum.map(& &1.uuid)
+    |> enqueue_jobs(broadcast, interval, offset)
 
     {length(inserted), length(deliveries) - length(inserted)}
+  end
+
+  # `offset` continues the recipient count across batches, so the spacing is
+  # continuous over the whole broadcast rather than restarting each chunk —
+  # otherwise every batch would dump its first 500 sends at once.
+  defp enqueue_jobs(delivery_uuids, broadcast, interval, offset) do
+    delivery_uuids
+    |> Enum.with_index(offset)
+    |> Enum.map(fn {delivery_uuid, index} ->
+      DeliveryWorker.new(
+        %{delivery_uuid: delivery_uuid, broadcast_uuid: broadcast.uuid},
+        schedule_opts(interval, index)
+      )
+    end)
+    |> Oban.insert_all()
   end
 
   # No rate limit: insert with no scheduling at all, byte-for-byte the old

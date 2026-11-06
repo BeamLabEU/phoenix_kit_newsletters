@@ -48,6 +48,8 @@ defmodule PhoenixKit.Newsletters.Web.BroadcastDetails do
         |> assign(:broadcast, nil)
         |> assign(:deliveries, [])
         |> assign(:delivery_stats, %{})
+        |> assign(:resendable_count, 0)
+        |> assign(:unresendable_count, 0)
         |> assign(:page_param, nil)
         |> assign(:page, 1)
         |> assign(:per_page, Paging.per_page())
@@ -125,6 +127,26 @@ defmodule PhoenixKit.Newsletters.Web.BroadcastDetails do
   end
 
   @impl true
+  def handle_event("show_confirm", %{"action" => "resend_failed"}, socket) do
+    count = socket.assigns.resendable_count
+
+    {:noreply,
+     socket
+     |> assign(:show_confirm_modal, true)
+     |> assign(:confirm_action, :resend_failed)
+     |> assign(:confirm_title, gettext("Resend failed deliveries"))
+     |> assign(
+       :confirm_message,
+       ngettext(
+         "This sends the broadcast again to the %{count} recipient whose delivery failed. Nobody else is mailed, and anyone who can no longer receive it is skipped.",
+         "This sends the broadcast again to the %{count} recipients whose delivery failed. Nobody else is mailed, and anyone who can no longer receive it is skipped.",
+         count,
+         count: count
+       )
+     )}
+  end
+
+  @impl true
   def handle_event("hide_confirm", _params, socket) do
     {:noreply,
      socket
@@ -142,6 +164,9 @@ defmodule PhoenixKit.Newsletters.Web.BroadcastDetails do
 
       :retry_send ->
         with :ok <- authorize_retry(socket), do: retry_send(socket)
+
+      :resend_failed ->
+        with :ok <- authorize_retry(socket), do: resend_failed(socket)
 
       _ ->
         {:noreply, socket}
@@ -251,6 +276,32 @@ defmodule PhoenixKit.Newsletters.Web.BroadcastDetails do
        |> push_navigate(to: Routes.path("/admin/newsletters/broadcasts"))}
   end
 
+  # Decided on the locked row, not this page's copy, so unlike `retry_send/1` the
+  # struct needs no reload first.
+  defp resend_failed(socket) do
+    case Broadcaster.resend_failed(socket.assigns.broadcast) do
+      {:ok, _broadcast, count} ->
+        {:noreply,
+         socket
+         |> put_flash(
+           :info,
+           ngettext(
+             "Resending %{count} failed delivery",
+             "Resending %{count} failed deliveries",
+             count,
+             count: count
+           )
+         )
+         |> load_broadcast_data()}
+
+      {:error, reason} ->
+        {:noreply,
+         socket
+         |> put_flash(:error, SendError.message(reason))
+         |> load_broadcast_data()}
+    end
+  end
+
   defp load_broadcast_data(socket) do
     id = socket.assigns.broadcast_id
 
@@ -259,6 +310,7 @@ defmodule PhoenixKit.Newsletters.Web.BroadcastDetails do
       stats = Newsletters.get_delivery_stats(id)
       total = stats |> Map.values() |> Enum.sum()
       {page, offset} = Paging.resolve(socket.assigns.page_param, total)
+      {resendable, unresendable} = resend_counts(broadcast, stats)
 
       # Recipient addresses only with `newsletters.audiences`.
       deliveries =
@@ -274,6 +326,8 @@ defmodule PhoenixKit.Newsletters.Web.BroadcastDetails do
       |> assign(:broadcast, broadcast)
       |> assign(:deliveries, deliveries)
       |> assign(:delivery_stats, stats)
+      |> assign(:resendable_count, resendable)
+      |> assign(:unresendable_count, unresendable)
       |> assign(:page, page)
       |> assign(:total_count, total)
       |> assign(:total_pages, Paging.total_pages(total))
@@ -291,6 +345,15 @@ defmodule PhoenixKit.Newsletters.Web.BroadcastDetails do
         |> push_navigate(to: Routes.path("/admin/newsletters/broadcasts"))
     end
   end
+
+  # Only a finished broadcast can resend. Failed rows left out of the count stay
+  # failed for good, so the page says why rather than leaving the numbers to differ.
+  defp resend_counts(%{status: "sent", uuid: uuid}, stats) do
+    resendable = Newsletters.count_resendable_deliveries(uuid)
+    {resendable, stat_value(stats, "failed") - resendable}
+  end
+
+  defp resend_counts(_broadcast, _stats), do: {0, 0}
 
   defp page_url(page, broadcast_uuid) do
     query = if page > 1, do: "?page=#{page}", else: ""

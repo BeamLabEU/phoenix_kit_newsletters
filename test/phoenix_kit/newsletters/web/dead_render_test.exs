@@ -19,7 +19,9 @@ defmodule PhoenixKit.Newsletters.Web.DeadRenderTest do
   import Phoenix.ConnTest
 
   alias PhoenixKit.Newsletters
+  alias PhoenixKit.Newsletters.Delivery
   alias PhoenixKit.Newsletters.Layouts
+  alias PhoenixKitNewsletters.Test.Repo
 
   @endpoint PhoenixKitNewsletters.Test.DeadRenderEndpoint
 
@@ -157,6 +159,68 @@ defmodule PhoenixKit.Newsletters.Web.DeadRenderTest do
       sent = broadcast(%{status: "sent"})
 
       refute html_response(get(conn, "/broadcasts/#{sent.uuid}"), 200) =~ "Cancel broadcast"
+    end
+
+    defp delivery(broadcast, attrs) do
+      {:ok, delivery} =
+        %Delivery{}
+        |> Delivery.changeset(
+          Map.merge(
+            %{
+              broadcast_uuid: broadcast.uuid,
+              recipient_email: "r#{System.unique_integer([:positive])}@example.com"
+            },
+            attrs
+          )
+        )
+        |> Repo.insert()
+
+      delivery
+    end
+
+    test "a sent broadcast with failed deliveries offers to resend them", %{conn: conn} do
+      sent = broadcast(%{status: "sent"})
+      delivery(sent, %{status: "failed", error: ":not_configured"})
+
+      html = html_response(get(conn, "/broadcasts/#{sent.uuid}"), 200)
+
+      assert html =~ "Resend failed deliveries"
+      refute html =~ "may have gone out"
+    end
+
+    test "a sent broadcast with none does not", %{conn: conn} do
+      sent = broadcast(%{status: "sent"})
+      delivery(sent, %{status: "sent"})
+
+      refute html_response(get(conn, "/broadcasts/#{sent.uuid}"), 200) =~
+               "Resend failed deliveries"
+    end
+
+    test "someone who cannot send is not offered it", %{conn: conn} do
+      sent = broadcast(%{status: "sent"})
+      delivery(sent, %{status: "failed", error: ":not_configured"})
+      conn = init_test_session(conn, %{"test_permissions" => ["newsletters"]})
+
+      refute html_response(get(conn, "/broadcasts/#{sent.uuid}"), 200) =~
+               "Resend failed deliveries"
+    end
+
+    test "a broadcast still sending does not, whatever has failed so far", %{conn: conn} do
+      sending = broadcast(%{status: "sending"})
+      delivery(sending, %{status: "failed", error: ":not_configured"})
+
+      refute html_response(get(conn, "/broadcasts/#{sending.uuid}"), 200) =~
+               "Resend failed deliveries"
+    end
+
+    test "says why a failed delivery cannot be resent", %{conn: conn} do
+      sent = broadcast(%{status: "sent"})
+      delivery(sent, %{status: "failed", error: Delivery.no_result_error()})
+
+      html = html_response(get(conn, "/broadcasts/#{sent.uuid}"), 200)
+
+      assert html =~ "1 failed delivery may have gone out"
+      refute html =~ "Resend failed deliveries"
     end
 
     test "the list offers the next page", %{conn: conn} do

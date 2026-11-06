@@ -106,6 +106,11 @@ since opted out, left the list or role, or been deactivated or trashed is record
 A broadcast can be cancelled while it is `scheduled` or `sending`, and only a draft can be
 edited.
 
+Once a broadcast is `sent`, its details page can send the failed deliveries again, for when a
+broken connection has been fixed. Only deliveries known not to have reached a provider go out,
+so nobody who has the mail gets it twice. A delivery whose job ended without a result may have
+gone out, so it is left alone, and the page says how many there are.
+
 Each email is rendered in the recipient's language (`RecipientLanguage`: a user's preferred locale; a
 CRM contact's `locale`, else the list's; else the site's content language):
 

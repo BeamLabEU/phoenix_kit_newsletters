@@ -55,7 +55,7 @@ defmodule PhoenixKit.Newsletters.Workers.DeliveryWorker do
 
   # Seconds before the second and third attempts. Oban's default backoff puts
   # about 36 seconds between the first attempt and the last, so a short provider
-  # outage would fail everyone it reached, and those have no resend path.
+  # outage would fail everyone it reached, leaving an operator to resend them all.
   @retry_delays [300, 1_800]
 
   @incomplete_job_states ~w(suspended available scheduled executing retryable)

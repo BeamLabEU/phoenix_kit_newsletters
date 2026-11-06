@@ -19,6 +19,10 @@ defmodule PhoenixKit.Newsletters.Web.SendErrorTest do
              "Cannot send a broadcast with status sent."
   end
 
+  test "a resend with nothing left to send says so" do
+    assert SendError.message(:nothing_to_resend) == "There are no failed deliveries to resend."
+  end
+
   test "an unmapped reason stays diagnosable rather than silently generic" do
     assert SendError.message({:some_future_reason, %{detail: 1}}) ==
              "Failed to send: {:some_future_reason, %{detail: 1}}"

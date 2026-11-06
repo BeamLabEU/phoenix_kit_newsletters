@@ -28,6 +28,11 @@ defmodule PhoenixKit.Newsletters.Delivery do
   # "sending") while a recipient's send is still queued to run.
   @non_terminal_statuses ["pending"]
 
+  # What the sweep records for a delivery whose job left no result. The mail may
+  # have gone out (a node killed after the provider call, a result that could not
+  # be written), so this text is also what keeps such a row out of a resend.
+  @no_result_error "The delivery job ended without a result"
+
   # `phoenix_kit_newsletters_deliveries` `character varying` column widths,
   # interpolated into `PhoenixKitNewsletters.Migrations`' V1 DDL — the single
   # source of truth so the migration chain and core's `ExpectedSchema`
@@ -152,6 +157,23 @@ defmodule PhoenixKit.Newsletters.Delivery do
     from(d in __MODULE__,
       where: d.broadcast_uuid == ^broadcast_uuid and d.status in ^@non_terminal_statuses,
       select: 1
+    )
+  end
+
+  @doc false
+  def no_result_error, do: @no_result_error
+
+  @doc false
+  # The failed deliveries of one broadcast that can safely go out again, for
+  # Broadcaster.resend_failed/1 and the count beside its button. A second copy
+  # cannot be retracted, so a row only qualifies if nothing suggests a provider
+  # took it: `sent_at` is proof it did, whatever a host's provider events have
+  # written since, and the sweep's text means nobody knows.
+  def resendable_query(broadcast_uuid) do
+    from(d in __MODULE__,
+      where: d.broadcast_uuid == ^broadcast_uuid and d.status == "failed",
+      where: is_nil(d.sent_at),
+      where: is_nil(d.error) or d.error != ^@no_result_error
     )
   end
 end
