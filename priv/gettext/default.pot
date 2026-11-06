@@ -488,7 +488,7 @@ msgstr ""
 msgid "Send to"
 msgstr ""
 
-#: lib/phoenix_kit/newsletters/web/broadcast_editor.ex:777
+#: lib/phoenix_kit/newsletters/web/broadcast_editor.ex:783
 #, elixir-autogen, elixir-format
 msgid "Sends at %{local} (%{tz}) · %{utc} UTC"
 msgstr ""
@@ -624,7 +624,7 @@ msgstr ""
 msgid "missing file"
 msgstr ""
 
-#: lib/phoenix_kit/newsletters/web/broadcast_editor.ex:744
+#: lib/phoenix_kit/newsletters/web/broadcast_editor.ex:750
 #, elixir-autogen, elixir-format
 msgid "%{name} (archived)"
 msgstr ""
@@ -703,8 +703,8 @@ msgstr ""
 msgid "HTML"
 msgstr ""
 
-#: lib/phoenix_kit/newsletters/render.ex:178
-#: lib/phoenix_kit/newsletters/render.ex:184
+#: lib/phoenix_kit/newsletters/render.ex:217
+#: lib/phoenix_kit/newsletters/render.ex:223
 #, elixir-autogen, elixir-format
 msgid "Hello {{name}},"
 msgstr ""
@@ -791,7 +791,7 @@ msgstr ""
 msgid "Only an active layout can be the default"
 msgstr ""
 
-#: lib/phoenix_kit/newsletters/render.ex:175
+#: lib/phoenix_kit/newsletters/render.ex:214
 #, elixir-autogen, elixir-format
 msgid "Our latest news"
 msgstr ""
@@ -801,7 +801,7 @@ msgstr ""
 msgid "Restore"
 msgstr ""
 
-#: lib/phoenix_kit/newsletters/web/layout_editor.ex:295
+#: lib/phoenix_kit/newsletters/web/layout_editor.ex:301
 #, elixir-autogen, elixir-format
 msgid "Sample broadcast"
 msgstr ""
@@ -841,15 +841,16 @@ msgstr ""
 msgid "The HTML your broadcasts are sent inside"
 msgstr ""
 
-#: lib/phoenix_kit/newsletters/render.ex:180
-#: lib/phoenix_kit/newsletters/render.ex:186
-#: lib/phoenix_kit/newsletters/web/layout_editor.ex:297
+#: lib/phoenix_kit/newsletters/render.ex:219
+#: lib/phoenix_kit/newsletters/render.ex:225
+#: lib/phoenix_kit/newsletters/web/layout_editor.ex:303
 #, elixir-autogen, elixir-format
 msgid "This is where the broadcast's own text goes."
 msgstr ""
 
-#: lib/phoenix_kit/newsletters/render.ex:182
-#: lib/phoenix_kit/newsletters/web/layout_editor.ex:334
+#: lib/phoenix_kit/newsletters/render.ex:221
+#: lib/phoenix_kit/newsletters/render.ex:370
+#: lib/phoenix_kit/newsletters/web/layout_editor.ex:340
 #: lib/phoenix_kit/newsletters/web/unsubscribe_html/role_optout_unsubscribe.html.heex:33
 #, elixir-autogen, elixir-format
 msgid "Unsubscribe"

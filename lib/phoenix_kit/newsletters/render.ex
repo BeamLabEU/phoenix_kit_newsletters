@@ -56,6 +56,16 @@ defmodule PhoenixKit.Newsletters.Render do
 
   The text part is the broadcast's own text with its variables filled in,
   never wrapped.
+
+  ## Unsubscribe link
+
+  Every email gives its reader a visible way out, whoever built it. When
+  `unsubscribe_url` is bound and the finished HTML does not already hold it, a
+  small line goes at the end of the body, in the reader's language; the text part
+  gets the same address. That covers a body with no layout, a layout without the
+  link and a host's footer file alike, so it runs on the output rather than on any
+  one of them. A link inside an HTML comment is not one a reader can see.
+  `preferences_url` does not count: its token expires, and an opt-out must not.
   """
 
   use Gettext, backend: PhoenixKit.Newsletters.Gettext
@@ -67,6 +77,7 @@ defmodule PhoenixKit.Newsletters.Render do
   alias PhoenixKit.Newsletters.Paths
   alias PhoenixKit.Settings
   alias PhoenixKit.Templates.Substitution
+  alias PhoenixKit.Utils.RecipientLocale
   alias PhoenixKit.Utils.Routes
 
   require Logger
@@ -74,6 +85,15 @@ defmodule PhoenixKit.Newsletters.Render do
   @group "newsletters"
 
   @content ~r/\{\{\{\s*content\s*\}\}\}|\{\{\s*content\s*\}\}/
+  @comment ~r/<!--.*?-->/s
+  @end_of_body ~r{</body\s*>}i
+
+  # Inline styles only: mail clients drop style sheets. Grey on white or on core's
+  # page colour, and it reads on a dark layout too.
+  @unsubscribe_line ~s(<p style="margin:0;padding:16px;text-align:center;) <>
+                      ~s(font-family:Helvetica,Arial,sans-serif;font-size:12px;line-height:1.5;">) <>
+                      ~s(<a href="{{url}}" style="color:#71717a;text-decoration:underline;">) <>
+                      ~s({{label}}</a></p>)
 
   @typedoc "Variables keyed by placeholder name."
   @type variables :: %{String.t() => term()}
@@ -98,6 +118,12 @@ defmodule PhoenixKit.Newsletters.Render do
   def html(body_html, layout, variables, opts \\ []) when is_binary(body_html) do
     locale = Keyword.get(opts, :locale)
 
+    body_html
+    |> document(layout, variables, locale, opts)
+    |> with_unsubscribe_link(unsubscribe_url(variables), locale)
+  end
+
+  defp document(body_html, layout, variables, locale, opts) do
     case wrapper(layout, locale) do
       {:ok, wrapper} ->
         chrome = chrome(Keyword.get(opts, :subject), with_branding(opts, variables))
@@ -160,10 +186,23 @@ defmodule PhoenixKit.Newsletters.Render do
 
   defp clean_subject(subject), do: subject |> String.replace(~r/[\r\n]+/, " ") |> String.trim()
 
-  @doc "The text part: the broadcast's own text with its variables filled in."
-  @spec text(String.t() | nil, variables()) :: String.t()
-  def text(nil, _variables), do: ""
-  def text(text, variables), do: Substitution.substitute(text, stringify(variables))
+  @doc """
+  The text part: the broadcast's own text with its variables filled in, and the
+  unsubscribe address when it does not already hold it.
+
+  ## Options
+
+    * `:locale` — the reader's language, for that line's label.
+  """
+  @spec text(String.t() | nil, variables(), keyword()) :: String.t()
+  def text(text, variables, opts \\ [])
+  def text(nil, _variables, _opts), do: ""
+
+  def text(text, variables, opts) do
+    text
+    |> Substitution.substitute(stringify(variables))
+    |> with_unsubscribe_text(unsubscribe_url(variables), Keyword.get(opts, :locale))
+  end
 
   @doc """
   A sample broadcast for core's email preview (`email_templates/0`): what a
@@ -193,9 +232,16 @@ defmodule PhoenixKit.Newsletters.Render do
     %{
       "name" => "Jane Doe",
       "email" => "jane.doe@example.com",
-      "unsubscribe_url" => Paths.unsubscribe_url("sample")
+      "unsubscribe_url" => preview_unsubscribe_url()
     }
   end
+
+  @doc """
+  The unsubscribe address a preview binds, there being no recipient to sign one
+  for: with it bound, a preview shows the line a send would add.
+  """
+  @spec preview_unsubscribe_url() :: String.t()
+  def preview_unsubscribe_url, do: Paths.unsubscribe_url("sample")
 
   @doc """
   The site's own variables, as core's layout binds them, for everything that is
@@ -264,6 +310,64 @@ defmodule PhoenixKit.Newsletters.Render do
 
   defp wrapper(html, _locale) when is_binary(html) do
     if Layout.places_content?(html), do: {:ok, html}, else: :none
+  end
+
+  defp unsubscribe_url(variables) do
+    case stringify(variables) do
+      %{"unsubscribe_url" => url} when is_binary(url) and url != "" -> url
+      _none -> nil
+    end
+  end
+
+  defp with_unsubscribe_link(html, nil, _locale), do: html
+
+  defp with_unsubscribe_link(html, url, locale) do
+    if holds_url?(html, url) do
+      html
+    else
+      bound = %{"url" => url, "label" => unsubscribe_label(locale)}
+      line = Substitution.substitute(@unsubscribe_line, bound, escape: true)
+
+      before_end_of_body(html, line)
+    end
+  end
+
+  # Both spellings: `{{unsubscribe_url}}` escapes the value, `{{{unsubscribe_url}}}`
+  # does not, and they differ as soon as an address holds an `&`.
+  defp holds_url?(html, url) do
+    escaped = Substitution.substitute("{{url}}", %{"url" => url}, escape: true)
+
+    html
+    |> String.replace(@comment, "")
+    |> String.contains?([url, escaped])
+  end
+
+  # The last `</body>`, or the end of a layout that is only a fragment.
+  defp before_end_of_body(html, line) do
+    case @end_of_body |> Regex.scan(html, return: :index) |> List.last() do
+      [{at, _length}] ->
+        binary_part(html, 0, at) <> line <> binary_part(html, at, byte_size(html) - at)
+
+      nil ->
+        html <> line
+    end
+  end
+
+  # A blank text part stays blank: the HTML carries the link, and a text part of
+  # nothing but that line would be all a text-only reader got.
+  defp with_unsubscribe_text(text, nil, _locale), do: text
+
+  defp with_unsubscribe_text(text, url, locale) do
+    if String.trim(text) == "" or String.contains?(text, url) do
+      text
+    else
+      String.trim_trailing(text) <> "\n\n" <> unsubscribe_label(locale) <> ": " <> url
+    end
+  end
+
+  # A job has no request to take a language from, so the reader's is set here.
+  defp unsubscribe_label(locale) do
+    RecipientLocale.in_locale(locale, fn -> gettext("Unsubscribe") end)
   end
 
   defp put_subject(variables, nil), do: variables

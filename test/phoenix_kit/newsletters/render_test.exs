@@ -293,4 +293,183 @@ defmodule PhoenixKit.Newsletters.RenderTest do
       assert Render.text("From {{site_name}}", %{"site_name" => "Acme"}) == "From Acme"
     end
   end
+
+  describe "the unsubscribe link" do
+    @url "https://site.example/out?token=abc"
+    @out %{"unsubscribe_url" => @url}
+    @tag_link ~s(<a href="{{unsubscribe_url}}">Leave</a>)
+
+    defp links(html), do: length(:binary.matches(html, ~s(href="#{@url}")))
+
+    test "a body with no layout gets one, before the end of the document", %{tmp_dir: dir} do
+      html = Render.html("<p>Hello</p>", nil, @out, locale: "en", paths: [dir])
+
+      assert links(html) == 1
+      assert html =~ ~r{>Unsubscribe</a></p>\s*</body>}
+    end
+
+    test "a layout without one gets one, inside its body", %{tmp_dir: dir} do
+      layout = layout(%{"en" => "<html><body>{{{content}}}<p>Foot</p></body></html>"})
+
+      html = Render.html("Hi", layout, @out, locale: "en", paths: [dir])
+
+      assert links(html) == 1
+
+      assert html =~
+               ~r{<p>Foot</p><p style="[^"]*"><a href="[^"]*"[^>]*>Unsubscribe</a></p></body>}
+    end
+
+    test "the last end of body is the one, whatever its case", %{tmp_dir: dir} do
+      layout = layout(%{"en" => "{{{content}}}</body><i>tail</i></BODY >"})
+
+      html = Render.html("Hi", layout, @out, locale: "en", paths: [dir])
+
+      assert html =~ ~r{</body><i>tail</i><p style=.*</p></BODY >$}
+    end
+
+    test "a layout that is only a fragment gets it at the end", %{tmp_dir: dir} do
+      layout = layout(%{"en" => "<div>{{{content}}}</div>"})
+
+      html = Render.html("Hi", layout, @out, locale: "en", paths: [dir])
+
+      assert links(html) == 1
+      assert String.ends_with?(html, "</a></p>")
+    end
+
+    test "a body that is a whole document gets one", %{tmp_dir: dir} do
+      html = Render.html("<html><body><p>Mine</p></body></html>", nil, @out, paths: [dir])
+
+      assert links(html) == 1
+      assert html =~ ~r{</p></body></html>$}
+    end
+
+    test "is not added when the body has it, as a tag or a Markdown link", %{tmp_dir: dir} do
+      html = Render.html("<p>#{@tag_link}</p>", nil, @out, paths: [dir])
+
+      assert links(html) == 1
+      assert html =~ ">Leave</a>"
+      refute html =~ ">Unsubscribe</a>"
+    end
+
+    test "is not added when the layout has it", %{tmp_dir: dir} do
+      layout = layout(%{"en" => "{{{content}}}#{@tag_link}"})
+
+      html = Render.html("Hi", layout, @out, locale: "en", paths: [dir])
+
+      assert links(html) == 1
+      refute html =~ ">Unsubscribe</a>"
+    end
+
+    test "is not added when a host's footer file has it", %{tmp_dir: dir} do
+      write(dir, "_footer-newsletters/html.html", @tag_link)
+
+      without_layout = Render.html("Hi", nil, @out, locale: "en", paths: [dir])
+
+      under_layout =
+        Render.html("Hi", layout(%{"en" => "{{{content}}}{{{footer}}}"}), @out,
+          locale: "en",
+          paths: [dir]
+        )
+
+      for html <- [without_layout, under_layout] do
+        assert links(html) == 1
+        refute html =~ ">Unsubscribe</a>"
+      end
+    end
+
+    test "an address printed as text counts: the reader can use it", %{tmp_dir: dir} do
+      html = Render.html("<p>Leave: {{{unsubscribe_url}}}</p>", nil, @out, paths: [dir])
+
+      refute html =~ ">Unsubscribe</a>"
+    end
+
+    test "either escaping of an address with an ampersand counts", %{tmp_dir: dir} do
+      url = "https://site.example/out?a=1&b=2"
+      out = %{"unsubscribe_url" => url}
+
+      for tag <- ["{{unsubscribe_url}}", "{{{unsubscribe_url}}}"] do
+        html = Render.html(~s(<a href="#{tag}">Leave</a>), nil, out, paths: [dir])
+
+        refute html =~ ">Unsubscribe</a>"
+      end
+    end
+
+    test "the address it adds is escaped", %{tmp_dir: dir} do
+      out = %{"unsubscribe_url" => ~s(https://site.example/out?a=1&b="2)}
+
+      html = Render.html("Hi", nil, out, paths: [dir])
+
+      assert html =~ ~s(href="https://site.example/out?a=1&amp;b=&quot;2")
+    end
+
+    test "a commented-out link is not one a reader can see", %{tmp_dir: dir} do
+      layout = layout(%{"en" => "{{{content}}}<!-- #{@tag_link} --><body></body>"})
+
+      html = Render.html("Hi", layout, @out, locale: "en", paths: [dir])
+
+      assert html =~ ">Unsubscribe</a>"
+    end
+
+    test "a preferences link does not stand in for it: that token expires", %{tmp_dir: dir} do
+      variables = Map.put(@out, "preferences_url", "https://site.example/prefs")
+      layout = layout(%{"en" => ~s({{{content}}}<a href="{{preferences_url}}">Prefs</a>)})
+
+      html = Render.html("Hi", layout, variables, locale: "en", paths: [dir])
+
+      assert links(html) == 1
+      assert html =~ ">Unsubscribe</a>"
+    end
+
+    test "with no address there is nothing to link to", %{tmp_dir: dir} do
+      for variables <- [%{}, %{"unsubscribe_url" => ""}, %{"unsubscribe_url" => nil}] do
+        refute Render.html("Hi", nil, variables, paths: [dir]) =~ ">Unsubscribe</a>"
+      end
+    end
+
+    test "atom keys count, as for every other variable", %{tmp_dir: dir} do
+      assert Render.html("Hi", nil, %{unsubscribe_url: @url}, paths: [dir]) =~ ">Unsubscribe</a>"
+    end
+
+    test "is in the reader's language, dialects included", %{tmp_dir: dir} do
+      assert Render.html("Hi", nil, @out, locale: "et", paths: [dir]) =~ ">Loobu tellimusest</a>"
+      assert Render.html("Hi", nil, @out, locale: "ru-RU", paths: [dir]) =~ ">Отписаться</a>"
+    end
+
+    test "leaves the process's language as it found it", %{tmp_dir: dir} do
+      before = Gettext.get_locale()
+
+      Render.html("Hi", nil, @out, locale: "ru", paths: [dir])
+
+      assert Gettext.get_locale() == before
+    end
+  end
+
+  describe "the text part's unsubscribe address" do
+    @url "https://site.example/out?token=abc"
+    @out %{"unsubscribe_url" => @url}
+
+    test "follows the text, on a line of its own" do
+      assert Render.text("Hello\n\n", @out) == "Hello\n\nUnsubscribe: #{@url}"
+    end
+
+    test "is in the reader's language" do
+      assert Render.text("Hi", @out, locale: "et") == "Hi\n\nLoobu tellimusest: #{@url}"
+    end
+
+    test "is not repeated when the text already holds it" do
+      text = "Leave: {{unsubscribe_url}}"
+
+      assert Render.text(text, @out) == "Leave: #{@url}"
+    end
+
+    test "with no address the text is left as it is" do
+      assert Render.text("Hi", %{}) == "Hi"
+      assert Render.text("Hi", %{"unsubscribe_url" => ""}) == "Hi"
+    end
+
+    test "a blank text stays blank, the HTML having the link" do
+      assert Render.text(nil, @out) == ""
+      assert Render.text("  \n", @out) == "  \n"
+    end
+  end
 end

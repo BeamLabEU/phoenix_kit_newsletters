@@ -282,7 +282,13 @@ defmodule PhoenixKit.Newsletters.Web.LayoutEditor do
 
         # The preview shows this language's own HTML, not a fallback: an
         # empty tab previews as empty.
-        Render.html(sample_body(), html, %{}, locale: locale, subject: subject)
+        Render.html(
+          sample_body(),
+          html,
+          %{"unsubscribe_url" => Render.preview_unsubscribe_url()},
+          locale: locale,
+          subject: subject
+        )
       else
         ""
       end

@@ -490,7 +490,7 @@ msgstr "Подписаться снова"
 msgid "Send to"
 msgstr "Кому"
 
-#: lib/phoenix_kit/newsletters/web/broadcast_editor.ex:777
+#: lib/phoenix_kit/newsletters/web/broadcast_editor.ex:783
 #, elixir-autogen, elixir-format
 msgid "Sends at %{local} (%{tz}) · %{utc} UTC"
 msgstr "Отправка в %{local} (%{tz}) · %{utc} UTC"
@@ -627,7 +627,7 @@ msgstr "Удалить вложение"
 msgid "missing file"
 msgstr "файл отсутствует"
 
-#: lib/phoenix_kit/newsletters/web/broadcast_editor.ex:744
+#: lib/phoenix_kit/newsletters/web/broadcast_editor.ex:750
 #, elixir-autogen, elixir-format
 msgid "%{name} (archived)"
 msgstr "%{name} (в архиве)"
@@ -706,8 +706,8 @@ msgstr "Отображаемое название"
 msgid "HTML"
 msgstr "HTML"
 
-#: lib/phoenix_kit/newsletters/render.ex:178
-#: lib/phoenix_kit/newsletters/render.ex:184
+#: lib/phoenix_kit/newsletters/render.ex:217
+#: lib/phoenix_kit/newsletters/render.ex:223
 #, elixir-autogen, elixir-format
 msgid "Hello {{name}},"
 msgstr "Здравствуйте, {{name}}!"
@@ -796,7 +796,7 @@ msgstr "Шаблоны оформления не найдены"
 msgid "Only an active layout can be the default"
 msgstr "По умолчанию может быть только активный шаблон оформления"
 
-#: lib/phoenix_kit/newsletters/render.ex:175
+#: lib/phoenix_kit/newsletters/render.ex:214
 #, elixir-autogen, elixir-format
 msgid "Our latest news"
 msgstr "Наши последние новости"
@@ -807,7 +807,7 @@ msgid "Restore"
 msgstr "Восстановить"
 
 ## --- Broadcast details page ---
-#: lib/phoenix_kit/newsletters/web/layout_editor.ex:295
+#: lib/phoenix_kit/newsletters/web/layout_editor.ex:301
 #, elixir-autogen, elixir-format
 msgid "Sample broadcast"
 msgstr "Пример выпуска"
@@ -847,15 +847,16 @@ msgstr "Текст (хранится для справки)"
 msgid "The HTML your broadcasts are sent inside"
 msgstr "HTML, в котором отправляются ваши выпуски"
 
-#: lib/phoenix_kit/newsletters/render.ex:180
-#: lib/phoenix_kit/newsletters/render.ex:186
-#: lib/phoenix_kit/newsletters/web/layout_editor.ex:297
+#: lib/phoenix_kit/newsletters/render.ex:219
+#: lib/phoenix_kit/newsletters/render.ex:225
+#: lib/phoenix_kit/newsletters/web/layout_editor.ex:303
 #, elixir-autogen, elixir-format
 msgid "This is where the broadcast's own text goes."
 msgstr "Здесь будет текст самого выпуска."
 
-#: lib/phoenix_kit/newsletters/render.ex:182
-#: lib/phoenix_kit/newsletters/web/layout_editor.ex:334
+#: lib/phoenix_kit/newsletters/render.ex:221
+#: lib/phoenix_kit/newsletters/render.ex:370
+#: lib/phoenix_kit/newsletters/web/layout_editor.ex:340
 #: lib/phoenix_kit/newsletters/web/unsubscribe_html/role_optout_unsubscribe.html.heex:33
 #, elixir-autogen, elixir-format
 msgid "Unsubscribe"

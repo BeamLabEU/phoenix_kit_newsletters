@@ -209,6 +209,8 @@ substitution pass. `strip_html/1` keeps link addresses and decodes entities, onc
    `preferences_url` from the map so it stays literal rather than linking `/`.
 3. With no layout or no body slot for that language, use core's standard
    `PhoenixKit.Email.Layout.wrap/3`, group `"newsletters"`. Never wrap text.
+4. On the output, add an Unsubscribe line to both parts unless they hold this
+   reader's `unsubscribe_url` (not in a comment; `preferences_url` expires).
 
 `Render.site_variables/0` binds `logo_url`, `accent_color`, `site_name` and
 `site_url` for subject patterns, bodies without a layout and the text part;

@@ -29,6 +29,7 @@ defmodule PhoenixKit.Newsletters.Workers.DeliveryWorkerTest do
   alias PhoenixKit.Newsletters.Broadcast
   alias PhoenixKit.Newsletters.Delivery
   alias PhoenixKit.Newsletters.Layouts
+  alias PhoenixKit.Newsletters.UnsubscribeToken
   alias PhoenixKit.Newsletters.UserGroupSource
   alias PhoenixKit.Newsletters.Workers.DeliveryWorker
   alias PhoenixKit.Settings
@@ -339,6 +340,52 @@ defmodule PhoenixKit.Newsletters.Workers.DeliveryWorkerTest do
     end
   end
 
+  describe "the unsubscribe link in a sent email" do
+    defp sent_email(attrs, user \\ create_user()) do
+      broadcast = create_broadcast(attrs)
+      delivery = create_delivery(broadcast, user)
+
+      assert :ok = DeliveryWorker.perform(job_for(delivery))
+
+      assert_email_sent(fn email ->
+        send(self(), {:sent, email})
+        true
+      end)
+
+      assert_received {:sent, email}
+      email
+    end
+
+    test "a broadcast with no layout carries a working one in both parts" do
+      email = sent_email(%{html_body: "<p>Hi</p>", text_body: "Hi"})
+
+      [_, url] = Regex.run(~r/<a href="([^"]+)"[^>]*>Unsubscribe<\/a>/, email.html_body)
+
+      assert %{"token" => token} = url |> URI.parse() |> Map.fetch!(:query) |> URI.decode_query()
+      assert {:role_optout, _claims} = UnsubscribeToken.verify(token)
+      assert email.text_body == "Hi\n\nUnsubscribe: #{url}"
+    end
+
+    test "an author's own link is not doubled in either part" do
+      email =
+        sent_email(%{
+          html_body: ~s(<a href="{{unsubscribe_url}}">Leave</a>),
+          text_body: "Leave: {{unsubscribe_url}}"
+        })
+
+      assert email.html_body =~ ">Leave</a>"
+      refute email.html_body =~ ">Unsubscribe</a>"
+      refute email.text_body =~ "Unsubscribe:"
+    end
+
+    test "both parts are in the reader's language" do
+      email = sent_email(%{html_body: "<p>Hi</p>", text_body: "Hi"}, create_user_in("et"))
+
+      assert email.html_body =~ ">Loobu tellimusest</a>"
+      assert email.text_body =~ "Loobu tellimusest: http"
+    end
+  end
+
   describe "build_attachment/1" do
     test "reads a real stored file into a Swoosh.Attachment" do
       file = create_attachment_file!(bytes: "the actual file bytes", filename: "invoice.txt")
@@ -537,8 +584,9 @@ defmodule PhoenixKit.Newsletters.Workers.DeliveryWorkerTest do
 
       html = DeliveryWorker.compose_html("<p>{{name}}</p>", "{{content}}", vars)
 
-      # Single-pass substitution: the mischievous value lands verbatim.
-      assert html == "<p>{{unsubscribe_url}}</p>"
+      # Single-pass substitution: the mischievous value lands verbatim, and being
+      # no link to anything, the real one still follows it.
+      assert String.starts_with?(html, "<p>{{unsubscribe_url}}</p><p style=")
     end
 
     test "{{variable}} values are HTML-escaped, {{{variable}}} are not" do
@@ -1205,7 +1253,7 @@ defmodule PhoenixKit.Newsletters.Workers.DeliveryWorkerTest do
 
       assert_email_sent(fn email ->
         assert email.html_body =~ "<p>From #{site}</p>"
-        assert email.text_body == "From #{site}"
+        assert String.starts_with?(email.text_body, "From #{site}\n\nUnsubscribe: ")
       end)
     end
   end
@@ -1758,7 +1806,12 @@ defmodule PhoenixKit.Newsletters.Workers.DeliveryWorkerTest do
       broadcast = create_broadcast(%{template_uuid: layout.uuid, text_body: "Hi {{email}}"})
       send_to(broadcast, create_delivery(broadcast, user))
 
-      assert_email_sent(fn email -> assert email.text_body == "Hi #{user.email}" end)
+      # Nothing around it: the text, then only the unsubscribe line.
+      text = "Hi #{user.email}"
+
+      assert_email_sent(fn email ->
+        assert [^text, "Unsubscribe: http" <> _url] = String.split(email.text_body, "\n\n")
+      end)
     end
 
     test "a CRM contact in de gets the German layout", %{layout: layout} do

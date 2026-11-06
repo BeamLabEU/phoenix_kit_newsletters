@@ -36,6 +36,22 @@ defmodule PhoenixKit.Newsletters.Web.LayoutEditorTest do
       assert socket.assigns.preview_html =~ "Sample broadcast"
     end
 
+    test "the preview shows the unsubscribe line a send would add, and only then" do
+      socket = mounted(LayoutEditor, %{})
+
+      # The starter places the link, so it appears once and is not doubled.
+      assert [_, _] = String.split(socket.assigns.preview_html, ">Unsubscribe</a>")
+
+      {:noreply, socket} =
+        LayoutEditor.handle_event(
+          "validate",
+          %{"name" => "acme_layout", "fields" => %{"html_body" => "<div>{{{content}}}</div>"}},
+          socket
+        )
+
+      assert [_, _] = String.split(socket.assigns.preview_html, ">Unsubscribe</a>")
+    end
+
     test "edits per language and saves every language" do
       socket = mounted(LayoutEditor, %{})
       locale = socket.assigns.editor_locale

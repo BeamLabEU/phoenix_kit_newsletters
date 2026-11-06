@@ -133,7 +133,10 @@ CRM contact's `locale`, else the list's; else the site's content language):
   subject. The text part is never wrapped, and keeps each link's address after its text.
 - `{{logo_url}}`, `{{accent_color}}`, `{{site_name}}` and `{{site_url}}` also work in a subject
   pattern, in a body without a layout, and in the text part. Placeholders work in Markdown
-  links too: `[Unsubscribe]({{unsubscribe_url}})`.
+  links too: `[Unsubscribe]({{unsubscribe_url}})`. An email that does not hold its
+  reader's `{{unsubscribe_url}}`, in the body, the layout or a host's footer file, gets a
+  small Unsubscribe line at the end of both parts. A `{{preferences_url}}` link does not
+  stand in for it, as that link expires.
 
 Layouts are managed under **Newsletters → Layouts** in the admin. Rows created before
 this table existed (operator-authored email templates, plus any system email a broadcast or

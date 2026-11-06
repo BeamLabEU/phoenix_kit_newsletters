@@ -722,7 +722,8 @@ defmodule PhoenixKit.Newsletters.Web.BroadcastEditor do
 
   # The email as a reader of `locale` gets it — the same Render a send
   # uses, with the site's variables — and with the recipient's own placeholders
-  # ({{name}}, {{unsubscribe_url}}) left visible, since there is no recipient yet.
+  # ({{name}}, {{email}}) left visible, since there is no recipient yet. A sample
+  # unsubscribe address is bound, so the author sees the line a send would add.
   # Empty until there is a body, so the "appears as you type" hint shows.
   @doc false
   def render_preview(markdown, template_uuid, templates, locale, subject) do
@@ -733,7 +734,12 @@ defmodule PhoenixKit.Newsletters.Web.BroadcastEditor do
 
       markdown
       |> Content.render_markdown()
-      |> Render.html(layout, site, locale: locale, subject: subject)
+      |> Render.html(
+        layout,
+        Map.put(site, "unsubscribe_url", Render.preview_unsubscribe_url()),
+        locale: locale,
+        subject: subject
+      )
     else
       ""
     end

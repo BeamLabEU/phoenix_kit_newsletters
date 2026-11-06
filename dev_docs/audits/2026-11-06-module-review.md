@@ -182,9 +182,9 @@ These need a decision or a change elsewhere, so nothing was done.
   so a recipient opening a mail five times adds five to `opened_count`, and the list can
   show Opened above Sent. The row can no longer walk backwards, but only that package can
   stop the count: it has to increment only when a row moved.
-- **A broadcast with no layout has no visible unsubscribe link** unless its author wrote
-  one. `List-Unsubscribe` is set, but core's footer has no link in the body, which matters
-  for CAN-SPAM. Appending one is a product decision.
+- **A broadcast with no layout had no visible unsubscribe link** unless its author wrote
+  one. Fixed after 0.7.0: `Render` adds a line to any email whose output does not hold its
+  reader's `unsubscribe_url`.
 - **Disabling the module does not stop a running send**, and it removes the page with
   Cancel on it. Whether it should stop is a product decision.
 - **A base-key user can change mail about to go out** by editing the layout of a scheduled

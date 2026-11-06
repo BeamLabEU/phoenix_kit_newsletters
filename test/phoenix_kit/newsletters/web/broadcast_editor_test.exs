@@ -520,6 +520,20 @@ defmodule PhoenixKit.Newsletters.Web.BroadcastEditorTest do
       assert html =~ "Hello"
     end
 
+    test "shows the unsubscribe line a send would add" do
+      assert BroadcastEditor.render_preview("Hello", "", [], "en", "Subject") =~
+               ">Unsubscribe</a>"
+    end
+
+    test "shows no second line when the body has its own link" do
+      markdown = "[Leave]({{unsubscribe_url}})"
+
+      html = BroadcastEditor.render_preview(markdown, "", [], "en", "Subject")
+
+      assert html =~ ">Leave</a>"
+      refute html =~ ">Unsubscribe</a>"
+    end
+
     test "an empty body previews as nothing, so the hint shows" do
       assert BroadcastEditor.render_preview("  ", "", [], "en", "Subject") == ""
     end

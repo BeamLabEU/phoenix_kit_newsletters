@@ -454,7 +454,8 @@ defmodule PhoenixKit.Newsletters.Workers.DeliveryWorker do
     html =
       compose_html(broadcast.html_body || "", layout, variables, locale: locale, subject: subject)
 
-    text = Render.text(broadcast.text_body, Map.put(variables, "subject", subject))
+    text =
+      Render.text(broadcast.text_body, Map.put(variables, "subject", subject), locale: locale)
 
     {:ok, subject, html, text}
   end
