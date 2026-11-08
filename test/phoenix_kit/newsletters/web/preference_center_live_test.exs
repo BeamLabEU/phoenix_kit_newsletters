@@ -321,4 +321,53 @@ defmodule PhoenixKit.Newsletters.Web.PreferenceCenterLiveTest do
       assert Gettext.get_locale() == "et"
     end
   end
+
+  describe "a tab open since the contact changed elsewhere" do
+    defp opened(contact) do
+      {:ok, socket} =
+        mount_and_resolve(%{"token" => PreferenceToken.sign(contact.uuid)}, %{}, socket())
+
+      socket
+    end
+
+    # CRM judges an opt-out on the struct it is given and writes the consent log
+    # from it: the tab's copy would erase what an email link recorded since.
+    test "Unsubscribe from all keeps the opt-out an email link recorded" do
+      contact = add_contact()
+      page = opened(contact)
+
+      {:ok, _} = CRMSource.opt_out(Repo.reload!(contact), source: "unsubscribe_link")
+      first = Repo.reload!(contact)
+
+      {:noreply, _} = PreferenceCenterLive.handle_event("unsubscribe_all", %{}, page)
+
+      after_click = Repo.reload!(contact)
+      assert after_click.opted_out_at == first.opted_out_at
+      assert after_click.consent == first.consent
+    end
+
+    test "turning on a list already on is not an error" do
+      contact = add_contact()
+      list = subscribable_list()
+      page = opened(contact)
+
+      {:ok, _} = CRMSource.subscribe(contact, list)
+
+      {:noreply, updated} =
+        PreferenceCenterLive.handle_event("toggle_list", %{"list_uuid" => list.uuid}, page)
+
+      refute updated.assigns.flash["error"]
+      assert CRMSource.subscribed?(contact, list)
+      assert Enum.find(updated.assigns.lists, &(&1.list.uuid == list.uuid)).subscribed?
+    end
+
+    test "a page with no contact answers instead of crashing" do
+      page = socket(%{mode: :invalid_token, contact: nil, lists: []})
+
+      for event <- ["unsubscribe_all", "resubscribe"] do
+        {:noreply, updated} = PreferenceCenterLive.handle_event(event, %{}, page)
+        assert updated.assigns.flash["error"] =~ "Could not process"
+      end
+    end
+  end
 end

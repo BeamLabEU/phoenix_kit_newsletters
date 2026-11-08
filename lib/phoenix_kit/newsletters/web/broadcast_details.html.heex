@@ -1,6 +1,8 @@
 <PhoenixKitWeb.Components.LayoutWrapper.app_layout
   flash={@flash}
+  socket={assigns[:socket]}
   phoenix_kit_current_scope={assigns[:phoenix_kit_current_scope]}
+  current_locale={assigns[:current_locale]}
   page_title={@page_title}
   page_subtitle={@page_subtitle}
   page_section={@page_section}
@@ -9,19 +11,17 @@
   project_title={@project_title}
 >
 <div class="container flex-col mx-auto px-4 py-6">
-  <%!-- Confirm Modal --%>
-  <%= if @show_confirm_modal do %>
-    <div class="modal modal-open">
-      <div class="modal-box">
-        <h3 class="font-bold text-lg mb-4">{@confirm_title}</h3>
-        <p class="mb-4">{@confirm_message}</p>
-        <div class="modal-action">
-          <button phx-click="hide_confirm" class="btn btn-outline">{gettext("Cancel")}</button>
-          <button phx-click="confirm_action" class="btn btn-error">{@confirm_title}</button>
-        </div>
-      </div>
-    </div>
-  <% end %>
+  <%!-- Esc and the backdrop close it through on_cancel, like its Cancel button. --%>
+  <.confirm_modal
+    show={@show_confirm_modal}
+    on_cancel="hide_confirm"
+    on_confirm="confirm_action"
+    title={@confirm_title}
+    confirm_text={@confirm_title}
+    cancel_text={gettext("Cancel")}
+    prompt={@confirm_message}
+    danger={@confirm_action == :cancel_broadcast}
+  />
 
   <%= if @loading do %>
     <div class="flex justify-center items-center h-32">
@@ -33,12 +33,9 @@
       <%!-- Header actions --%>
       <div class="flex flex-wrap gap-2 mb-6">
         <%= if @broadcast.status == "draft" do %>
-          <.pk_link
-            navigate={"/admin/newsletters/broadcasts/#{@broadcast.uuid}/edit"}
-            class="btn btn-outline btn-sm"
-          >
+          <.link navigate={Paths.broadcast_edit(@broadcast.uuid)} class="btn btn-outline btn-sm">
             <.icon name="hero-pencil" class="w-4 h-4" /> {gettext("Edit")}
-          </.pk_link>
+          </.link>
         <% end %>
 
         <%= if Newsletters.cancellable?(@broadcast.status) and @can_send do %>
@@ -98,7 +95,7 @@
           <div class="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
             <div>
               <p class="text-base-content/60 text-xs font-medium uppercase mb-1">{gettext("Status")}</p>
-              <span class={"badge #{status_badge_class(@broadcast.status)}"}>
+              <span class={"badge #{StatusLabel.broadcast_badge_class(@broadcast.status)}"}>
                 {status_label(@broadcast.status)}
               </span>
             </div>
@@ -240,13 +237,19 @@
         </div>
       </div>
 
-      <%!-- The message itself. A cancelled broadcast has no other way to it. --%>
-      <details :if={@broadcast.markdown_body} class="collapse collapse-arrow bg-base-200 mb-6">
-        <summary class="collapse-title text-sm font-medium">{gettext("Message")}</summary>
-        <div class="collapse-content">
+      <%!-- The message itself. A cancelled broadcast has no other way to it. Core's
+           accordion keeps it open across Refresh and every other patch. --%>
+      <.accordion
+        :if={@broadcast.markdown_body}
+        id="broadcast-message"
+        class="bg-base-200 border-0 mb-6"
+        title_class="font-medium"
+      >
+        <:title>{gettext("Message")}</:title>
+        <:content>
           <pre class="text-sm whitespace-pre-wrap break-words">{@broadcast.markdown_body}</pre>
-        </div>
-      </details>
+        </:content>
+      </.accordion>
 
       <p :if={@unresendable_count > 0} class="text-sm text-warning mb-6">
         <.icon name="hero-exclamation-triangle" class="w-3 h-3 inline" />
@@ -273,83 +276,74 @@
         <% @deliveries == [] -> %>
           <.empty_state variant="compact" title={gettext("No deliveries yet")} />
         <% true -> %>
-        <div class="hidden md:block">
-          <.table_default variant="zebra" size="sm" class="w-full">
-            <.table_default_header>
-              <.table_default_row>
-                <.table_default_header_cell>{gettext("Recipient")}</.table_default_header_cell>
-                <.table_default_header_cell>{gettext("Status")}</.table_default_header_cell>
-                <.table_default_header_cell>{gettext("Sent at")}</.table_default_header_cell>
-                <.table_default_header_cell>{gettext("Delivered at")}</.table_default_header_cell>
-                <.table_default_header_cell>{gettext("Opened at")}</.table_default_header_cell>
-                <.table_default_header_cell>{gettext("Error")}</.table_default_header_cell>
-              </.table_default_row>
-            </.table_default_header>
+        <%!-- Cards on a phone, from the same rows. --%>
+        <.table_default
+          id="deliveries-table"
+          variant="zebra"
+          size="sm"
+          class="w-full"
+          items={@deliveries}
+          card_fields={
+            fn delivery ->
+              [
+                %{label: gettext("Sent at"), value: format_datetime(delivery.sent_at, @tz)},
+                %{
+                  label: gettext("Delivered at"),
+                  value: format_datetime(delivery.delivered_at, @tz)
+                },
+                %{label: gettext("Opened at"), value: format_datetime(delivery.opened_at, @tz)}
+              ] ++
+                if delivery.error,
+                  do: [%{label: gettext("Error"), value: delivery.error}],
+                  else: []
+            end
+          }
+        >
+          <:card_header :let={delivery}>
+            <div class="flex items-start justify-between gap-2">
+              <span class="font-mono text-sm truncate">{recipient_display(delivery)}</span>
+              <span class={"badge badge-sm #{delivery_badge_class(delivery.status)}"}>
+                {delivery_label(delivery.status)}
+              </span>
+            </div>
+          </:card_header>
 
-            <.table_default_body>
-              <.table_default_row :for={delivery <- @deliveries}>
-                <.table_default_cell class="font-mono text-sm">
-                  {recipient_display(delivery)}
-                </.table_default_cell>
-                <.table_default_cell>
-                  <span class={"badge badge-sm #{delivery_badge_class(delivery.status)}"}>
-                    {delivery_label(delivery.status)}
-                  </span>
-                </.table_default_cell>
-                <.table_default_cell class="text-sm text-base-content/70">
-                  {format_datetime(delivery.sent_at, @tz)}
-                </.table_default_cell>
-                <.table_default_cell class="text-sm text-base-content/70">
-                  {format_datetime(delivery.delivered_at, @tz)}
-                </.table_default_cell>
-                <.table_default_cell class="text-sm text-base-content/70">
-                  {format_datetime(delivery.opened_at, @tz)}
-                </.table_default_cell>
-                <.table_default_cell class="text-sm text-error max-w-xs truncate">
-                  {delivery.error || ""}
-                </.table_default_cell>
-              </.table_default_row>
-            </.table_default_body>
-          </.table_default>
-        </div>
+          <.table_default_header>
+            <.table_default_row>
+              <.table_default_header_cell>{gettext("Recipient")}</.table_default_header_cell>
+              <.table_default_header_cell>{gettext("Status")}</.table_default_header_cell>
+              <.table_default_header_cell>{gettext("Sent at")}</.table_default_header_cell>
+              <.table_default_header_cell>{gettext("Delivered at")}</.table_default_header_cell>
+              <.table_default_header_cell>{gettext("Opened at")}</.table_default_header_cell>
+              <.table_default_header_cell>{gettext("Error")}</.table_default_header_cell>
+            </.table_default_row>
+          </.table_default_header>
 
-        <%!-- Deliveries Cards (mobile) --%>
-        <div class="md:hidden mb-6">
-          <div class="space-y-3">
-            <%= for delivery <- @deliveries do %>
-              <div class="card card-border card-sm bg-base-100">
-                <div class="card-body gap-3">
-                  <%!-- Header: email + status --%>
-                  <div class="flex items-start justify-between gap-2">
-                    <span class="font-mono text-sm truncate">
-                      {recipient_display(delivery)}
-                    </span>
-                    <span class={"badge badge-sm #{delivery_badge_class(delivery.status)}"}>
-                      {delivery_label(delivery.status)}
-                    </span>
-                  </div>
-
-                  <%!-- Body: key/value grid --%>
-                  <div class="grid grid-cols-2 gap-x-4 gap-y-2 text-sm">
-                    <div class="text-base-content/60">{gettext("Sent at")}</div>
-                    <div>{format_datetime(delivery.sent_at, @tz)}</div>
-
-                    <div class="text-base-content/60">{gettext("Delivered at")}</div>
-                    <div>{format_datetime(delivery.delivered_at, @tz)}</div>
-
-                    <div class="text-base-content/60">{gettext("Opened at")}</div>
-                    <div>{format_datetime(delivery.opened_at, @tz)}</div>
-
-                    <%= if delivery.error do %>
-                      <div class="text-base-content/60">{gettext("Error")}</div>
-                      <div class="text-error text-xs">{delivery.error}</div>
-                    <% end %>
-                  </div>
-                </div>
-              </div>
-            <% end %>
-          </div>
-        </div>
+          <.table_default_body>
+            <.table_default_row :for={delivery <- @deliveries}>
+              <.table_default_cell class="font-mono text-sm">
+                {recipient_display(delivery)}
+              </.table_default_cell>
+              <.table_default_cell>
+                <span class={"badge badge-sm #{delivery_badge_class(delivery.status)}"}>
+                  {delivery_label(delivery.status)}
+                </span>
+              </.table_default_cell>
+              <.table_default_cell class="text-sm text-base-content/70">
+                {format_datetime(delivery.sent_at, @tz)}
+              </.table_default_cell>
+              <.table_default_cell class="text-sm text-base-content/70">
+                {format_datetime(delivery.delivered_at, @tz)}
+              </.table_default_cell>
+              <.table_default_cell class="text-sm text-base-content/70">
+                {format_datetime(delivery.opened_at, @tz)}
+              </.table_default_cell>
+              <.table_default_cell class="text-sm text-error max-w-xs truncate">
+                {delivery.error || ""}
+              </.table_default_cell>
+            </.table_default_row>
+          </.table_default_body>
+        </.table_default>
 
         <div :if={@total_pages > 1} class="flex flex-wrap items-center justify-between gap-2 mt-4">
           <.pagination_info

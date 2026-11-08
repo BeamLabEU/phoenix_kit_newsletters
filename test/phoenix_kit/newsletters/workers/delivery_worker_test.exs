@@ -262,7 +262,7 @@ defmodule PhoenixKit.Newsletters.Workers.DeliveryWorkerTest do
   end
 
   describe "build_profile_email/5" do
-    test "uses the profile's identity, reply-to, and appends the signature" do
+    test "uses the profile's identity and reply-to, and leaves the bodies as rendered" do
       profile =
         create_send_profile(%{
           from_name: "Acme News",
@@ -279,8 +279,9 @@ defmodule PhoenixKit.Newsletters.Workers.DeliveryWorkerTest do
 
       assert email.from == {"Acme News", "news@acme.test"}
       assert email.subject == "Weekly update"
-      assert email.html_body == "<p>Body</p><p>Best, Acme</p>"
-      assert email.text_body == "BodyBest, Acme"
+      # The signature is rendered into the body (render_email/5), not added here.
+      assert email.html_body == "<p>Body</p>"
+      assert email.text_body == "Body"
       assert [{_, "reader@example.com"}] = email.to
       assert email.reply_to == {"", "support@acme.test"}
     end
@@ -383,6 +384,42 @@ defmodule PhoenixKit.Newsletters.Workers.DeliveryWorkerTest do
 
       assert email.html_body =~ ">Loobu tellimusest</a>"
       assert email.text_body =~ "Loobu tellimusest: http"
+    end
+  end
+
+  describe "render_email/5 with a send profile" do
+    @describetag :requires_v158
+
+    # Appended to the finished email, the signature followed `</html>` and ran on
+    # from the text part's unsubscribe address, so the link a text reader had
+    # ended in "Best, Acme".
+    test "the signature closes the body, above the unsubscribe line, in both parts" do
+      profile =
+        create_send_profile(%{
+          signature_html: "<p>Best, {{site_name}}</p>",
+          signature_text: "Best, Acme"
+        })
+
+      user = create_user()
+      broadcast = create_broadcast(%{html_body: "<p>Hi</p>", text_body: "Hi"})
+      url = "https://site.example/out?token=abc"
+
+      {:ok, _subject, html, text} =
+        DeliveryWorker.render_email(broadcast, user, profile, url, "")
+
+      site = Settings.get_project_title()
+
+      assert html =~ ~r{<p>Hi</p><p>Best, #{Regex.escape(site)}</p>.*>Unsubscribe</a>.*</body>}s
+      assert text == "Hi\n\nBest, Acme\n\nUnsubscribe: #{url}"
+    end
+
+    test "without a profile there is no signature" do
+      broadcast = create_broadcast(%{html_body: "<p>Hi</p>", text_body: "Hi"})
+
+      {:ok, _subject, _html, text} =
+        DeliveryWorker.render_email(broadcast, create_user(), nil, "https://x.example/u", "")
+
+      assert text == "Hi\n\nUnsubscribe: https://x.example/u"
     end
   end
 

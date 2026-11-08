@@ -21,6 +21,7 @@ defmodule PhoenixKit.Newsletters.Web.Verification do
 
   import PhoenixKitWeb.Components.Core.EmptyState
   import PhoenixKitWeb.Components.Core.Icon
+  import PhoenixKitWeb.Components.Core.Select
   import PhoenixKitWeb.Components.Core.TableDefault
 
   import PhoenixKit.Newsletters.Web.Timezone, only: [format_datetime: 2]

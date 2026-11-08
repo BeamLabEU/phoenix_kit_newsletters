@@ -228,6 +228,29 @@ defmodule PhoenixKit.Newsletters.Web.BroadcastDetailsTest do
       # The refusal also refreshes the page off its stale copy.
       assert updated.assigns.broadcast.status == "sent"
     end
+
+    # Broadcaster.send/1 also starts drafts and scheduled broadcasts. Retry is
+    # offered for a failed one only, and a crafted show_confirm must not reach past
+    # the button to send a draft from this page.
+    for status <- ~w(draft scheduled) do
+      test "a crafted retry on a #{status} broadcast sends nothing" do
+        broadcast = create_user_group_broadcast([Ecto.UUID.generate()], ["Marketing"])
+
+        {:ok, broadcast} =
+          Newsletters.update_broadcast(broadcast, %{
+            status: unquote(status),
+            markdown_body: "Hello",
+            scheduled_at: DateTime.add(DateTime.utc_now(), 3600)
+          })
+
+        {:noreply, updated} =
+          BroadcastDetails.handle_event("confirm_action", %{}, confirm_socket(broadcast))
+
+        assert updated.assigns.flash["error"] =~ "Cannot send a broadcast with status"
+        assert Newsletters.get_broadcast!(broadcast.uuid).status == unquote(status)
+        assert updated.assigns.confirm_action == nil
+      end
+    end
   end
 
   describe "cancelling" do

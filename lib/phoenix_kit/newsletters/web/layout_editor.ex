@@ -20,7 +20,10 @@ defmodule PhoenixKit.Newsletters.Web.LayoutEditor do
   use Phoenix.LiveView
   use Gettext, backend: PhoenixKit.Newsletters.Gettext
 
+  import PhoenixKitWeb.Components.Core.FormActions
   import PhoenixKitWeb.Components.Core.Icon
+  import PhoenixKitWeb.Components.Core.Input
+  import PhoenixKitWeb.Components.Core.Textarea
 
   alias PhoenixKit.Newsletters
   alias PhoenixKit.Newsletters.Layout
@@ -178,25 +181,62 @@ defmodule PhoenixKit.Newsletters.Web.LayoutEditor do
   # The form says which tab its fields belong to. After a reconnect the page opens
   # on its first tab and form recovery replays the tab that was open, whose text
   # would otherwise land on the wrong language and be saved there.
+  # The other tabs' text first (`all`, hidden inputs that only change anything
+  # after a reconnect), then the open tab's. Only text, under a key some tab
+  # owns: anything else in the params is a crafted request, and is ignored.
   defp apply_params(socket, params) do
     socket = select_submitted_tab(socket, params["editor_language"])
     keys = socket.assigns.editor_keys
-    fields = params["fields"] || %{}
+    fields = submitted_map(params["fields"])
 
     translations =
-      Enum.reduce(@fields, socket.assigns.translations, fn field, acc ->
-        with key when is_binary(key) <- keys[field],
-             {:ok, value} <- Map.fetch(fields, field) do
-          Map.update!(acc, field, &Map.put(&1, key, value))
-        else
-          _ -> acc
-        end
-      end)
+      socket.assigns.translations
+      |> merge_other_tabs(submitted_map(params["all"]), socket.assigns.tabs)
+      |> merge_open_tab(fields, keys)
 
     socket
-    |> assign(:name, params["name"] || socket.assigns.name)
+    |> assign(:name, submitted_name(params["name"], socket.assigns.name))
     |> assign(:translations, translations)
     |> assign_suggested_name()
+  end
+
+  defp merge_open_tab(translations, fields, keys) do
+    Enum.reduce(@fields, translations, fn field, acc ->
+      with key when is_binary(key) <- keys[field],
+           {:ok, value} when is_binary(value) <- Map.fetch(fields, field) do
+        Map.update!(acc, field, &Map.put(&1, key, value))
+      else
+        _ -> acc
+      end
+    end)
+  end
+
+  defp merge_other_tabs(translations, all, tabs) do
+    Enum.reduce(@fields, translations, fn field, acc ->
+      owned = for tab <- tabs, key = tab.keys[field], is_binary(key), do: key
+      submitted = all |> Map.get(field) |> submitted_map()
+
+      Map.update!(acc, field, &Map.merge(&1, owned_text(submitted, owned)))
+    end)
+  end
+
+  defp owned_text(submitted, owned) do
+    for {key, value} <- submitted, key in owned and is_binary(value), into: %{}, do: {key, value}
+  end
+
+  defp submitted_map(value) when is_map(value), do: value
+  defp submitted_map(_value), do: %{}
+
+  defp submitted_name(name, _current) when is_binary(name), do: name
+  defp submitted_name(_name, current), do: current
+
+  # What the template carries as hidden inputs: every stored text except the open
+  # tab's own, which its inputs carry.
+  defp other_tab_values(translations, editor_keys) do
+    for field <- @fields,
+        {key, value} <- translations[field] || %{},
+        is_binary(key) and is_binary(value) and key != editor_keys[field],
+        do: {field, key, value}
   end
 
   defp select_submitted_tab(socket, language) do

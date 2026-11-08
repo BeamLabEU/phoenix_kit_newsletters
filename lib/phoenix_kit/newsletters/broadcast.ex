@@ -133,6 +133,7 @@ defmodule PhoenixKit.Newsletters.Broadcast do
     |> validate_source_reference()
     |> validate_attachments()
     |> foreign_key_constraint(:template_uuid, name: :fk_newsletters_broadcasts_template)
+    |> foreign_key_constraint(:created_by_user_uuid, name: :fk_newsletters_broadcasts_created_by)
   end
 
   @max_attachments 10

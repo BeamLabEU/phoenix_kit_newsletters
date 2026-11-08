@@ -6,8 +6,10 @@ defmodule PhoenixKit.Newsletters.Web.BroadcastEditor do
   use Phoenix.LiveView
   use Gettext, backend: PhoenixKit.Newsletters.Gettext
 
+  import PhoenixKitWeb.Components.Core.Checkbox
   import PhoenixKitWeb.Components.Core.Icon
-  import PhoenixKitWeb.Components.Core.PkLink
+  import PhoenixKitWeb.Components.Core.Input
+  import PhoenixKitWeb.Components.Core.Select
 
   alias PhoenixKit.Modules.Storage
   alias PhoenixKit.Newsletters
@@ -30,6 +32,7 @@ defmodule PhoenixKit.Newsletters.Web.BroadcastEditor do
   alias PhoenixKit.Newsletters.Web.SendError
   alias PhoenixKit.Newsletters.Web.StatusLabel
   alias PhoenixKit.Newsletters.Web.Timezone
+  alias PhoenixKit.Newsletters.Workers.DeliveryWorker
   alias PhoenixKit.Settings
   alias PhoenixKit.Utils.Date, as: DateUtils
   alias PhoenixKit.Utils.Format
@@ -60,7 +63,7 @@ defmodule PhoenixKit.Newsletters.Web.BroadcastEditor do
           gettext("Compose and send a broadcast email to your newsletter list")
         )
         |> assign(:page_section, gettext("Newsletters"))
-        |> assign(:page_section_path, Routes.path("/admin/newsletters/broadcasts"))
+        |> assign(:page_section_path, Paths.broadcasts_index())
         |> assign(:page_crumbs, [])
         |> assign(:project_title, Settings.get_project_title())
         |> assign_new(:current_locale, fn -> nil end)
@@ -82,8 +85,9 @@ defmodule PhoenixKit.Newsletters.Web.BroadcastEditor do
         |> assign(:preview_languages, [])
         |> assign(:markdown_content, "")
         |> assign(:preview_html, "")
+        |> assign(:preview_signature, nil)
         |> assign(:scheduled_at, "")
-        |> assign(:saving, false)
+        |> assign(:sending, false)
         |> assign(:attachments, [])
         |> assign(:attachment_files, [])
         |> assign(:show_media_selector, false)
@@ -130,6 +134,7 @@ defmodule PhoenixKit.Newsletters.Web.BroadcastEditor do
      socket
      |> assign_tz()
      |> assign_preview_languages()
+     |> assign_preview_signature(%Broadcast{})
      |> assign(:crm_lists, crm_lists)
      |> assign(:templates, templates)
      |> assign(:available_roles, UserGroupSource.list_roles())
@@ -149,6 +154,7 @@ defmodule PhoenixKit.Newsletters.Web.BroadcastEditor do
     role_uuids = resolve_role_uuids(source_type, params)
     template_uuid = params["template_uuid"] || socket.assigns.template_uuid
     scheduled_at = params["scheduled_at"] || socket.assigns.scheduled_at
+    attachments = resolve_attachments(socket.assigns, params)
     # Only a language the picker offers: every new value would otherwise be
     # a new locale key in core's override-lookup cache.
     preview_locale =
@@ -162,7 +168,8 @@ defmodule PhoenixKit.Newsletters.Web.BroadcastEditor do
         template_uuid,
         socket.assigns.templates,
         preview_locale,
-        subject
+        subject,
+        signature: socket.assigns[:preview_signature]
       )
 
     {:noreply,
@@ -176,6 +183,7 @@ defmodule PhoenixKit.Newsletters.Web.BroadcastEditor do
      |> assign(:scheduled_at, scheduled_at)
      |> assign(:preview_locale, preview_locale)
      |> assign(:preview_html, preview_html)
+     |> assign_attachments(attachments)
      |> refresh_preflight(previous_source)}
   end
 
@@ -241,29 +249,35 @@ defmodule PhoenixKit.Newsletters.Web.BroadcastEditor do
      |> load_attachment_files()}
   end
 
+  # Two steps. This event saves the draft and answers at once; the send itself
+  # runs from `handle_info({:send_now, _}, _)`, after the answer. Resolving and
+  # enqueueing a large audience can outlast the 30 seconds the browser waits for
+  # an event's answer, and then the browser reloads: on `/new` that was an empty
+  # form while the first send went on, and a second click mailed everyone twice.
+  # Now the page is already on the draft's own address, so a reload opens the
+  # draft, whose row lock refuses a second send. The draft is kept even when the
+  # send is refused, which is what makes the next click update it, not insert
+  # another. "Send now" is not scheduled, so a time the draft kept is cleared.
   defp send_now(socket) do
-    case persist(socket, broadcast_attrs(socket, "draft")) do
+    case persist(socket, Map.put(broadcast_attrs(socket, "draft"), :scheduled_at, nil)) do
       {:ok, broadcast} ->
-        case Broadcaster.send(broadcast) do
-          {:ok, _broadcast} ->
-            {:noreply,
-             socket
-             |> put_flash(:info, gettext("Broadcast is being sent"))
-             |> push_navigate(to: Routes.path("/admin/newsletters/broadcasts/#{broadcast.uuid}"))}
+        send(self(), {:send_now, broadcast})
 
-          # The draft is saved even though the send was refused: keeping it here
-          # is what makes the next click update it rather than insert another.
-          {:error, reason} ->
-            {:noreply,
-             socket
-             |> assign(:broadcast, broadcast)
-             |> put_flash(:error, SendError.message(reason))}
-        end
+        {:noreply,
+         socket
+         |> assign(:broadcast, broadcast)
+         |> assign(:sending, true)
+         |> patch_to_draft(broadcast)}
 
       {:error, reason} ->
         {:noreply, save_refused(socket, reason)}
     end
   end
+
+  defp patch_to_draft(%{assigns: %{live_action: :new}} = socket, broadcast),
+    do: push_patch(socket, to: Paths.broadcast_edit(broadcast.uuid))
+
+  defp patch_to_draft(socket, _broadcast), do: socket
 
   defp schedule(socket) do
     case socket.assigns.scheduled_at do
@@ -312,6 +326,23 @@ defmodule PhoenixKit.Newsletters.Web.BroadcastEditor do
   defp blank?(text), do: not is_binary(text) or String.trim(text) == ""
 
   @impl true
+  def handle_info({:send_now, broadcast}, socket) do
+    case Broadcaster.send(broadcast) do
+      {:ok, _broadcast} ->
+        {:noreply,
+         socket
+         |> put_flash(:info, gettext("Broadcast is being sent"))
+         |> push_navigate(to: Paths.broadcast_show(broadcast.uuid))}
+
+      {:error, reason} ->
+        {:noreply,
+         socket
+         |> assign(:sending, false)
+         |> assign(:broadcast, broadcast)
+         |> put_flash(:error, SendError.message(reason))}
+    end
+  end
+
   def handle_info({:editor_content_changed, %{content: content}}, socket) do
     preview_html =
       render_preview(
@@ -319,7 +350,8 @@ defmodule PhoenixKit.Newsletters.Web.BroadcastEditor do
         socket.assigns.template_uuid,
         socket.assigns.templates,
         socket.assigns.preview_locale,
-        socket.assigns.subject
+        socket.assigns.subject,
+        signature: socket.assigns[:preview_signature]
       )
 
     {:noreply,
@@ -355,7 +387,9 @@ defmodule PhoenixKit.Newsletters.Web.BroadcastEditor do
   defp load_draft(socket, broadcast) do
     crm_lists = crm_lists(socket)
     templates = load_templates(broadcast.template_uuid)
-    socket = socket |> assign_tz() |> assign_preview_languages()
+
+    socket =
+      socket |> assign_tz() |> assign_preview_languages() |> assign_preview_signature(broadcast)
 
     socket
     |> assign(:crm_lists, crm_lists)
@@ -364,7 +398,7 @@ defmodule PhoenixKit.Newsletters.Web.BroadcastEditor do
     |> assign(:page_crumbs, [
       %{
         label: broadcast.subject,
-        path: Routes.path("/admin/newsletters/broadcasts/#{broadcast.uuid}")
+        path: Paths.broadcast_show(broadcast.uuid)
       }
     ])
     |> assign(:broadcast, broadcast)
@@ -382,7 +416,8 @@ defmodule PhoenixKit.Newsletters.Web.BroadcastEditor do
         broadcast.template_uuid,
         templates,
         socket.assigns.preview_locale,
-        broadcast.subject
+        broadcast.subject,
+        signature: socket.assigns[:preview_signature]
       )
     )
     |> assign(
@@ -397,19 +432,19 @@ defmodule PhoenixKit.Newsletters.Web.BroadcastEditor do
   defp leave_for_details(socket, uuid) do
     socket
     |> put_flash(:error, gettext("Only a draft can be edited"))
-    |> push_navigate(to: Routes.path("/admin/newsletters/broadcasts/#{uuid}"))
+    |> push_navigate(to: Paths.broadcast_show(uuid))
   end
 
   defp leave_for_list(socket) do
     socket
     |> put_flash(:error, gettext("Broadcast not found"))
-    |> push_navigate(to: Routes.path("/admin/newsletters/broadcasts"))
+    |> push_navigate(to: Paths.broadcasts_index())
   end
 
   # A refused save: the row changed under this form, so there is nothing to fix
   # here and the operator goes to the broadcast as it is now.
   defp save_refused(socket, %Ecto.Changeset{} = changeset) do
-    socket |> assign(:saving, false) |> put_flash(:error, validation_error(changeset))
+    put_flash(socket, :error, validation_error(changeset))
   end
 
   defp save_refused(socket, {:invalid_status, _status}) do
@@ -465,6 +500,18 @@ defmodule PhoenixKit.Newsletters.Web.BroadcastEditor do
     end
   end
 
+  # The signature of the profile a send would go out through, which the preview
+  # shows where the send puts it. Read once per page, not per keystroke.
+  defp assign_preview_signature(socket, broadcast) do
+    signature =
+      case DeliveryWorker.resolve_send_profile(broadcast) do
+        %{signature_html: html} -> html
+        nil -> nil
+      end
+
+    assign(socket, :preview_signature, signature)
+  end
+
   # The preview's language picker: the site's languages, the preview
   # starting in the site's content language.
   defp assign_preview_languages(socket) do
@@ -488,6 +535,30 @@ defmodule PhoenixKit.Newsletters.Web.BroadcastEditor do
     |> assign(:role_uuids, role_uuids)
     |> assign(:template_uuid, params["template_uuid"] || socket.assigns.template_uuid)
     |> assign(:scheduled_at, params["scheduled_at"] || socket.assigns.scheduled_at)
+    |> assign_attachments(resolve_attachments(socket.assigns, params))
+  end
+
+  # The form carries the attachments as well as the picker setting them, so that
+  # form recovery after a reconnect brings them back: without them a remount
+  # emptied a new broadcast's list (and reverted an edited one), and Send now then
+  # mailed everyone without the files. Only a form that says it holds the list
+  # speaks for it, and only well-formed uuids, as many as a broadcast takes.
+  defp resolve_attachments(_assigns, %{"attachments_sent" => _} = params) do
+    params
+    |> Map.get("attachments", [])
+    |> List.wrap()
+    |> Enum.filter(&match?({:ok, _}, Ecto.UUID.cast(&1)))
+    |> Enum.uniq()
+    |> Enum.take(Broadcast.max_attachments())
+  end
+
+  defp resolve_attachments(assigns, _params), do: assigns.attachments
+
+  # Storage is read only when the list really changed, not on every keystroke.
+  defp assign_attachments(%{assigns: %{attachments: same}} = socket, same), do: socket
+
+  defp assign_attachments(socket, attachments) do
+    socket |> assign(:attachments, attachments) |> load_attachment_files()
   end
 
   # Drops the CRM list selection the moment source_type switches away from
@@ -632,19 +703,16 @@ defmodule PhoenixKit.Newsletters.Web.BroadcastEditor do
   end
 
   defp save_broadcast(socket, status, extra_attrs) do
-    socket = assign(socket, :saving, true)
-
     case persist(socket, Map.merge(broadcast_attrs(socket, status), extra_attrs)) do
       {:ok, broadcast} ->
         {:noreply,
          socket
-         |> assign(:saving, false)
          |> assign(:broadcast, broadcast)
          |> put_flash(
            :info,
            gettext("Broadcast saved as %{status}", status: StatusLabel.broadcast(status))
          )
-         |> push_navigate(to: Routes.path("/admin/newsletters/broadcasts"))}
+         |> push_navigate(to: Paths.broadcasts_index())}
 
       {:error, reason} ->
         {:noreply, save_refused(socket, reason)}
@@ -667,10 +735,18 @@ defmodule PhoenixKit.Newsletters.Web.BroadcastEditor do
 
   # An existing broadcast is written only while the database still has it as a
   # draft; this form's copy is as old as the tab.
+  # A new broadcast records who wrote it; an edit leaves the author as it is.
   defp persist(socket, attrs) do
     case socket.assigns.broadcast do
-      nil -> Newsletters.create_broadcast(attrs)
+      nil -> Newsletters.create_broadcast(Map.put(attrs, :created_by_user_uuid, author(socket)))
       broadcast -> Newsletters.update_draft(broadcast, attrs)
+    end
+  end
+
+  defp author(socket) do
+    case socket.assigns[:phoenix_kit_current_user] do
+      %{uuid: uuid} -> uuid
+      _none -> nil
     end
   end
 
@@ -723,10 +799,11 @@ defmodule PhoenixKit.Newsletters.Web.BroadcastEditor do
   # The email as a reader of `locale` gets it — the same Render a send
   # uses, with the site's variables — and with the recipient's own placeholders
   # ({{name}}, {{email}}) left visible, since there is no recipient yet. A sample
-  # unsubscribe address is bound, so the author sees the line a send would add.
+  # unsubscribe address is bound, so the author sees the line a send would add,
+  # and `:signature` is the send profile's, placed as a send places it.
   # Empty until there is a body, so the "appears as you type" hint shows.
   @doc false
-  def render_preview(markdown, template_uuid, templates, locale, subject) do
+  def render_preview(markdown, template_uuid, templates, locale, subject, opts \\ []) do
     if is_binary(markdown) and String.trim(markdown) != "" do
       layout = Enum.find(templates, &(&1.uuid == template_uuid))
       site = Render.site_variables()
@@ -738,11 +815,38 @@ defmodule PhoenixKit.Newsletters.Web.BroadcastEditor do
         layout,
         Map.put(site, "unsubscribe_url", Render.preview_unsubscribe_url()),
         locale: locale,
-        subject: subject
+        subject: subject,
+        signature: Keyword.get(opts, :signature)
       )
     else
       ""
     end
+  end
+
+  # The picker's lists, after the draft's own list when the picker no longer
+  # offers it (see the template), as a disabled option that stays selected.
+  defp crm_list_options(crm_lists, stranded) do
+    stranded_option =
+      if stranded,
+        do: [
+          [
+            key: gettext("%{name} (no longer selectable)", name: stranded.name),
+            value: stranded.uuid,
+            disabled: true
+          ]
+        ],
+        else: []
+
+    stranded_option ++
+      Enum.map(crm_lists, fn list ->
+        {ngettext(
+           "%{name} (%{count} member)",
+           "%{name} (%{count} members)",
+           list.subscriber_count,
+           name: list.name,
+           count: list.subscriber_count
+         ), list.uuid}
+      end)
   end
 
   defp template_display_name(template, locale) do

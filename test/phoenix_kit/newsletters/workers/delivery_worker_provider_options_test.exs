@@ -105,7 +105,7 @@ defmodule PhoenixKit.Newsletters.Workers.DeliveryWorkerProviderOptionsTest do
       assert email.provider_options == %{}
     end
 
-    test "the identity and signature behavior is unchanged" do
+    test "the identity behavior is unchanged, and the bodies pass through" do
       # Guard against the provider-options plumbing disturbing what already worked.
       email =
         profile(%{
@@ -121,8 +121,8 @@ defmodule PhoenixKit.Newsletters.Workers.DeliveryWorkerProviderOptionsTest do
       assert email.to == [{"", "subscriber@example.com"}]
       assert email.subject == "Hello"
       assert email.reply_to == {"", "support@example.com"}
-      assert email.html_body == "<p>Body</p><p>Bye</p>"
-      assert email.text_body == "BodyBye"
+      assert email.html_body == "<p>Body</p>"
+      assert email.text_body == "Body"
     end
   end
 end

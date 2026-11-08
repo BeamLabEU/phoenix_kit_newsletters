@@ -14,6 +14,7 @@ defmodule PhoenixKit.Newsletters.Web.BroadcastEditorTest do
 
   alias PhoenixKit.Newsletters
   alias PhoenixKit.Newsletters.Broadcast
+  alias PhoenixKit.Newsletters.Paths
   alias PhoenixKit.Newsletters.Web.BroadcastEditor
   alias PhoenixKit.Users.Auth.User
   alias PhoenixKit.Users.Roles
@@ -538,6 +539,15 @@ defmodule PhoenixKit.Newsletters.Web.BroadcastEditorTest do
       assert BroadcastEditor.render_preview("  ", "", [], "en", "Subject") == ""
     end
 
+    test "shows the send profile's signature after the body, above the unsubscribe line" do
+      html =
+        BroadcastEditor.render_preview("Hello", "", [], "en", "Subject",
+          signature: "<p>Best, Acme</p>"
+        )
+
+      assert html =~ ~r{<p>Hello</p>\s*<p>Best, Acme</p>.*>Unsubscribe</a>}s
+    end
+
     test "the picker offers active layouts, plus the broadcast's own when archived" do
       active = create_layout("active_layout", %{"en" => "{{{content}}}"})
       archived = create_layout("old_layout", %{"en" => "{{{content}}}"}, "archived")
@@ -706,8 +716,10 @@ defmodule PhoenixKit.Newsletters.Web.BroadcastEditorTest do
 
       socket =
         Enum.reduce(1..3, socket(%{crm_lists: [list]}), fn _click, socket ->
-          {:noreply, updated} = BroadcastEditor.handle_event("send_now", params, socket)
+          {:noreply, saved} = BroadcastEditor.handle_event("send_now", params, socket)
+          {:noreply, updated} = run_deferred_send(saved)
           assert updated.assigns.flash["error"] =~ "not active"
+          refute updated.assigns.sending
           updated
         end)
 
@@ -737,7 +749,7 @@ defmodule PhoenixKit.Newsletters.Web.BroadcastEditorTest do
       start_supervised!({Oban, repo: Repo, testing: :manual, queues: [], plugins: false})
       {role, _user} = role_with_reader()
 
-      {:noreply, _updated} =
+      {:noreply, saved} =
         BroadcastEditor.handle_event(
           "submit",
           %{
@@ -753,6 +765,8 @@ defmodule PhoenixKit.Newsletters.Web.BroadcastEditorTest do
             markdown_content: "Stale"
           })
         )
+
+      run_deferred_send(saved)
 
       assert [%Broadcast{markdown_body: "From the form", status: "sending"}] =
                Repo.all(from(b in Broadcast, where: b.subject == "Pasted"))
@@ -909,6 +923,129 @@ defmodule PhoenixKit.Newsletters.Web.BroadcastEditorTest do
         )
 
       assert updated.assigns.role_uuids == [valid]
+    end
+  end
+
+  # Send now answers first and sends from a message to itself (see
+  # BroadcastEditor.send_now/1); a hand-built socket has to be given it.
+  defp run_deferred_send(socket) do
+    assert_received {:send_now, %Broadcast{} = broadcast}
+    BroadcastEditor.handle_info({:send_now, broadcast}, socket)
+  end
+
+  describe "Send now answers before it sends" do
+    @describetag :requires_v158
+
+    # A large audience can take longer to enqueue than the browser waits for an
+    # answer, after which it reloads: on /new, an empty form beside a send still
+    # going, and a second click mailed everyone again.
+    test "on /new it saves the draft, moves to the draft's address and sends after" do
+      start_supervised!({Oban, repo: Repo, testing: :manual, queues: [], plugins: false})
+      {role, _user} = role_with_reader()
+      subject = "Deferred #{System.unique_integer([:positive])}"
+
+      {:noreply, saved} =
+        BroadcastEditor.handle_event(
+          "send_now",
+          %{
+            "subject" => subject,
+            "source_type" => "user_group",
+            "role_uuids" => [role.uuid],
+            "editor_content" => "Body"
+          },
+          socket(%{source_type: "user_group", available_roles: [role], live_action: :new})
+        )
+
+      assert [%Broadcast{uuid: uuid, status: "draft"}] =
+               Repo.all(from(b in Broadcast, where: b.subject == ^subject))
+
+      assert saved.assigns.sending
+      assert saved.assigns.broadcast.uuid == uuid
+      assert {:live, :patch, %{to: to}} = saved.redirected
+      assert to == Paths.broadcast_edit(uuid)
+
+      # LiveView carries out the patch before the message arrives.
+      {:noreply, sent} = run_deferred_send(%{saved | redirected: nil})
+
+      assert %Broadcast{status: "sending"} = Newsletters.get_broadcast!(uuid)
+      assert {:live, :redirect, %{to: details}} = sent.redirected
+      assert details == Paths.broadcast_show(uuid)
+    end
+
+    test "records the author and drops a time the draft kept" do
+      {role, user} = role_with_reader()
+      subject = "Authored #{System.unique_integer([:positive])}"
+
+      {:noreply, _saved} =
+        BroadcastEditor.handle_event(
+          "send_now",
+          %{
+            "subject" => subject,
+            "source_type" => "user_group",
+            "role_uuids" => [role.uuid],
+            "editor_content" => "Body",
+            "scheduled_at" => "2099-01-01T10:00"
+          },
+          socket(%{
+            source_type: "user_group",
+            available_roles: [role],
+            phoenix_kit_current_user: user
+          })
+        )
+
+      assert [%Broadcast{created_by_user_uuid: author, scheduled_at: nil}] =
+               Repo.all(from(b in Broadcast, where: b.subject == ^subject))
+
+      assert author == user.uuid
+      assert_received {:send_now, _broadcast}
+    end
+  end
+
+  describe "attachments in the form" do
+    # Form recovery after a reconnect replays the form, and only the form.
+    test "a form that carries the list restores it" do
+      uuid = Ecto.UUID.generate()
+
+      {:noreply, updated} =
+        BroadcastEditor.handle_event(
+          "validate",
+          %{"attachments_sent" => "true", "attachments" => [uuid, uuid, "not-a-uuid"]},
+          socket(%{attachments: []})
+        )
+
+      assert updated.assigns.attachments == [uuid]
+      assert [{^uuid, nil}] = updated.assigns.attachment_files
+    end
+
+    test "an empty list in the form clears it, and no list leaves it alone" do
+      uuid = Ecto.UUID.generate()
+
+      {:noreply, cleared} =
+        BroadcastEditor.handle_event(
+          "validate",
+          %{"attachments_sent" => "true"},
+          socket(%{attachments: [uuid]})
+        )
+
+      assert cleared.assigns.attachments == []
+
+      {:noreply, kept} =
+        BroadcastEditor.handle_event("validate", %{}, socket(%{attachments: [uuid]}))
+
+      assert kept.assigns.attachments == [uuid]
+    end
+
+    test "no more than a broadcast takes" do
+      uuids = for _ <- 1..15, do: Ecto.UUID.generate()
+
+      {:noreply, updated} =
+        BroadcastEditor.handle_event(
+          "validate",
+          %{"attachments_sent" => "true", "attachments" => uuids},
+          socket(%{attachments: []})
+        )
+
+      assert updated.assigns.attachments == Enum.take(uuids, Broadcast.max_attachments())
     end
   end
 end

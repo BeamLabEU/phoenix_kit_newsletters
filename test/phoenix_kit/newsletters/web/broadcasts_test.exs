@@ -16,6 +16,7 @@ defmodule PhoenixKit.Newsletters.Web.BroadcastsTest do
 
   alias PhoenixKit.Newsletters
   alias PhoenixKit.Newsletters.Web.Broadcasts
+  alias PhoenixKit.Newsletters.Web.LayoutsIndex
   alias PhoenixKit.Settings
   alias PhoenixKit.Users.Auth.User
 
@@ -107,5 +108,29 @@ defmodule PhoenixKit.Newsletters.Web.BroadcastsTest do
 
       assert %{total_count: 1, total_pages: 1, broadcasts: [_sent]} = at(%{"status" => "sent"})
     end
+  end
+
+  # A crafted `status[]=` used to raise in URI encoding and take the page down.
+  test "a status filter that is not a string is ignored" do
+    socket = %Phoenix.LiveView.Socket{assigns: %{__changed__: %{}}}
+
+    assert {:noreply, %{redirected: nil}} =
+             Broadcasts.handle_event("filter_status", %{"status" => ["sent"]}, socket)
+
+    assert {:noreply, %{redirected: {:live, :patch, %{to: to}}}} =
+             Broadcasts.handle_event("filter_status", %{"status" => "sent"}, socket)
+
+    assert to =~ "status=sent"
+  end
+
+  test "the layouts filter ignores one that is not a string as well" do
+    socket = %Phoenix.LiveView.Socket{assigns: %{__changed__: %{}}}
+
+    assert {:noreply, %{redirected: nil}} =
+             LayoutsIndex.handle_event(
+               "filter_status",
+               %{"status" => %{"a" => "b"}},
+               socket
+             )
   end
 end

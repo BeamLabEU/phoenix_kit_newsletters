@@ -332,8 +332,12 @@ defmodule PhoenixKit.Newsletters.Broadcaster do
 
   defp throttle_log(interval, total) do
     span = round(max(total - 1, 0) * interval / 60)
-    " (throttled to 1 per #{interval}s — the last one goes out in ~#{span} min)"
+    " (throttled to 1 per #{seconds(interval)}s — the last one goes out in ~#{span} min)"
   end
+
+  # A rate above one per second gives a fraction: 0.28, not 0.2777777777777778.
+  defp seconds(interval) when is_float(interval), do: Float.round(interval, 2)
+  defp seconds(interval), do: interval
 
   defp duplicate_log(0), do: ""
 

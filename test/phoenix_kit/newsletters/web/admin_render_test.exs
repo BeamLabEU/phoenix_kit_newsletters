@@ -99,7 +99,7 @@ defmodule PhoenixKit.Newsletters.Web.AdminRenderTest do
                html
              )
 
-    [system_row] = Regex.run(~r{<tr>(?:(?!</tr>).)*test_email(?:(?!</tr>).)*</tr>}s, html)
+    [system_row] = Regex.run(~r{<tr[^>]*>(?:(?!</tr>).)*test_email(?:(?!</tr>).)*</tr>}s, html)
     assert system_row =~ "System email"
   end
 end

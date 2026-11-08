@@ -6,10 +6,11 @@ defmodule PhoenixKit.Newsletters.Web.BroadcastDetails do
   use Phoenix.LiveView
   use Gettext, backend: PhoenixKit.Newsletters.Gettext
 
+  import PhoenixKitWeb.Components.Core.Accordion
   import PhoenixKitWeb.Components.Core.EmptyState
   import PhoenixKitWeb.Components.Core.Icon
+  import PhoenixKitWeb.Components.Core.Modal, only: [confirm_modal: 1]
   import PhoenixKitWeb.Components.Core.Pagination
-  import PhoenixKitWeb.Components.Core.PkLink
   import PhoenixKitWeb.Components.Core.TableDefault
 
   import PhoenixKit.Newsletters.Web.Timezone, only: [format_datetime: 2]
@@ -21,6 +22,7 @@ defmodule PhoenixKit.Newsletters.Web.BroadcastDetails do
   alias PhoenixKit.Newsletters.Broadcaster
   alias PhoenixKit.Newsletters.CRMSource
   alias PhoenixKit.Newsletters.Layout
+  alias PhoenixKit.Newsletters.Paths
   alias PhoenixKit.Newsletters.UserGroupSource
   alias PhoenixKit.Newsletters.Web.Paging
   alias PhoenixKit.Newsletters.Web.SendError
@@ -43,7 +45,7 @@ defmodule PhoenixKit.Newsletters.Web.BroadcastDetails do
         |> assign(:page_title, gettext("Broadcast details"))
         |> assign(:page_subtitle, nil)
         |> assign(:page_section, gettext("Newsletters"))
-        |> assign(:page_section_path, Routes.path("/admin/newsletters/broadcasts"))
+        |> assign(:page_section_path, Paths.broadcasts_index())
         |> assign(:project_title, Settings.get_project_title())
         |> assign_new(:current_locale, fn -> nil end)
         |> assign(:broadcast, nil)
@@ -155,17 +157,20 @@ defmodule PhoenixKit.Newsletters.Web.BroadcastDetails do
 
   @impl true
   def handle_event("confirm_action", _params, socket) do
-    socket = assign(socket, :show_confirm_modal, false)
+    action = socket.assigns.confirm_action
+    # Once: a replayed confirm finds nothing to do.
+    socket = assign(socket, show_confirm_modal: false, confirm_action: nil)
 
-    case socket.assigns.confirm_action do
+    case action do
       :cancel_broadcast ->
         with :ok <- authorize_send(socket), do: cancel_broadcast(socket)
 
       :retry_send ->
-        with :ok <- authorize_retry(socket), do: retry_send(socket)
+        retry_send(socket)
 
       :resend_failed ->
-        with :ok <- authorize_retry(socket), do: resend_failed(socket)
+        with :ok <- authorize_retry(socket, socket.assigns.broadcast),
+             do: resend_failed(socket)
 
       _ ->
         {:noreply, socket}
@@ -203,7 +208,7 @@ defmodule PhoenixKit.Newsletters.Web.BroadcastDetails do
       {:ok, broadcast} ->
         {:noreply,
          push_navigate(socket,
-           to: Routes.path("/admin/newsletters/broadcasts/#{broadcast.uuid}/edit")
+           to: Paths.broadcast_edit(broadcast.uuid)
          )}
 
       {:error, {:invalid_status, status}} ->
@@ -264,9 +269,8 @@ defmodule PhoenixKit.Newsletters.Web.BroadcastDetails do
   # broadcast the CRM module's key too, since the send resolves the list.
   # `confirm_action` takes the action from assigns, but `show_confirm` is a
   # client event, so the check sits here rather than on the button only.
-  defp authorize_retry(socket) do
+  defp authorize_retry(socket, broadcast) do
     scope = Access.scope(socket)
-    broadcast = socket.assigns.broadcast
 
     cond do
       not Access.can_send?(scope) ->
@@ -289,8 +293,37 @@ defmodule PhoenixKit.Newsletters.Web.BroadcastDetails do
   # an already-sending (or already-sent) broadcast back into "sending" with
   # a fresh sent_at — and re-enqueue anyone added to the audience since.
   # Reloading first makes the guard judge the row as it actually is.
+  #
+  # Retry is for a failed broadcast only, which the row must still be:
+  # `Broadcaster.send/1` also starts drafts and scheduled ones, and a crafted
+  # `show_confirm` would otherwise send one of those from here, at once. The
+  # permissions are judged on the same fresh row, whose audience is the one sent.
   defp retry_send(socket) do
-    case Broadcaster.send(Newsletters.get_broadcast!(socket.assigns.broadcast_id)) do
+    broadcast = Newsletters.get_broadcast!(socket.assigns.broadcast_id)
+
+    with :ok <- authorize_retry(socket, broadcast),
+         :ok <- require_failed(socket, broadcast) do
+      run_retry(socket, broadcast)
+    end
+  rescue
+    Ecto.NoResultsError ->
+      {:noreply,
+       socket
+       |> put_flash(:error, gettext("Broadcast not found"))
+       |> push_navigate(to: Paths.broadcasts_index())}
+  end
+
+  defp require_failed(_socket, %Broadcast{status: "failed"}), do: :ok
+
+  defp require_failed(socket, %Broadcast{status: status}) do
+    {:noreply,
+     socket
+     |> put_flash(:error, SendError.message({:invalid_status, status}))
+     |> load_broadcast_data()}
+  end
+
+  defp run_retry(socket, broadcast) do
+    case Broadcaster.send(broadcast) do
       {:ok, _broadcast} ->
         {:noreply,
          socket
@@ -307,12 +340,6 @@ defmodule PhoenixKit.Newsletters.Web.BroadcastDetails do
          |> put_flash(:error, SendError.message(reason))
          |> load_broadcast_data()}
     end
-  rescue
-    Ecto.NoResultsError ->
-      {:noreply,
-       socket
-       |> put_flash(:error, gettext("Broadcast not found"))
-       |> push_navigate(to: Routes.path("/admin/newsletters/broadcasts"))}
   end
 
   # Decided on the locked row, not this page's copy, so unlike `retry_send/1` the
@@ -383,7 +410,7 @@ defmodule PhoenixKit.Newsletters.Web.BroadcastDetails do
         socket
         |> assign(:loading, false)
         |> put_flash(:error, gettext("Broadcast not found"))
-        |> push_navigate(to: Routes.path("/admin/newsletters/broadcasts"))
+        |> push_navigate(to: Paths.broadcasts_index())
     end
   end
 
@@ -401,7 +428,7 @@ defmodule PhoenixKit.Newsletters.Web.BroadcastDetails do
 
   defp page_url(page, broadcast_uuid) do
     query = if page > 1, do: "?page=#{page}", else: ""
-    Routes.path("/admin/newsletters/broadcasts/#{broadcast_uuid}#{query}")
+    Paths.broadcast_show(broadcast_uuid) <> query
   end
 
   defp crm_preflight(%{source_type: "crm_list", crm_list_uuid: crm_list_uuid})
@@ -442,18 +469,6 @@ defmodule PhoenixKit.Newsletters.Web.BroadcastDetails do
   defp gettext_delivery("failed"), do: gettext("Failed")
   defp gettext_delivery("blocked"), do: gettext("Blocked")
   defp gettext_delivery(other), do: other
-
-  defp status_badge_class(status) do
-    case status do
-      "draft" -> "badge-ghost"
-      "scheduled" -> "badge-info"
-      "sending" -> "badge-warning"
-      "sent" -> "badge-success"
-      "cancelled" -> "badge-error"
-      "failed" -> "badge-error"
-      _ -> "badge-ghost"
-    end
-  end
 
   defp delivery_badge_class(status) do
     case status do

@@ -1,6 +1,8 @@
 <PhoenixKitWeb.Components.LayoutWrapper.app_layout
   flash={@flash}
+  socket={assigns[:socket]}
   phoenix_kit_current_scope={assigns[:phoenix_kit_current_scope]}
+  current_locale={assigns[:current_locale]}
   page_title={@page_title}
   page_subtitle={@page_subtitle}
   page_section={@page_section}
@@ -158,15 +160,19 @@
           </span>
         </div>
         <p :if={@batch.state == "done"} class="text-sm text-base-content/70">
-          {gettext("Last verification finished: %{at} (%{total} addresses)",
-            at: format_datetime(@batch.finished_at, @tz),
-            total: @batch.total
+          {ngettext(
+            "Last verification finished: %{at} (%{count} address)",
+            "Last verification finished: %{at} (%{count} addresses)",
+            @batch.total,
+            at: format_datetime(@batch.finished_at, @tz)
           )}
         </p>
         <p :if={@batch.state == "cancelled"} class="text-sm text-warning">
-          {gettext("The last verification was cancelled after %{processed} of %{total} addresses",
-            processed: @batch.processed,
-            total: @batch.total
+          {ngettext(
+            "The last verification was cancelled after %{processed} of %{count} address",
+            "The last verification was cancelled after %{processed} of %{count} addresses",
+            @batch.total,
+            processed: @batch.processed
           )}
         </p>
       </div>
@@ -204,18 +210,19 @@
       >
         <:toolbar_title>
           <form id="verification-status-filter" phx-change="filter_status">
-            <label class="select select-sm">
-              <select name="status">
-                <option value="" selected={@status_filter == ""}>{gettext("All statuses")}</option>
-                <option
-                  :for={status <- VerificationRows.statuses()}
-                  value={status}
-                  selected={@status_filter == status}
-                >
-                  {status_label(String.to_existing_atom(status))}
-                </option>
-              </select>
-            </label>
+            <.select
+              name="status"
+              value={@status_filter}
+              prompt={gettext("All statuses")}
+              options={
+                Enum.map(
+                  VerificationRows.statuses(),
+                  &{status_label(String.to_existing_atom(&1)), &1}
+                )
+              }
+              class="select-sm"
+              aria-label={gettext("Status")}
+            />
           </form>
         </:toolbar_title>
 

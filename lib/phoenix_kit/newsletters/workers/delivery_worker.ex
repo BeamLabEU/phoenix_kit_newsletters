@@ -112,10 +112,12 @@ defmodule PhoenixKit.Newsletters.Workers.DeliveryWorker do
          {:ok, broadcast} <- get_broadcast(broadcast_uuid),
          {:ok, broadcast} <- guard_broadcast_sendable(broadcast),
          {:ok, recipient} <- get_recipient(delivery, broadcast),
+         # Before rendering: its signature is part of the message (see Render).
+         profile = resolve_send_profile(broadcast),
          {unsubscribe_url, list_unsubscribe_url} = build_unsubscribe_url(recipient, broadcast),
          preferences_url = build_preferences_url(recipient, broadcast),
          {:ok, subject, html_body, text_body} <-
-           render_email(broadcast, recipient, unsubscribe_url, preferences_url),
+           render_email(broadcast, recipient, profile, unsubscribe_url, preferences_url),
          # Resolved as late as possible — right before the email is actually
          # built and sent, not earlier in the chain — so a job that fails an
          # earlier step (delivery/broadcast/recipient lookup, rendering)
@@ -126,11 +128,11 @@ defmodule PhoenixKit.Newsletters.Workers.DeliveryWorker do
          :ok <- guard_recipient_sendable(delivery, broadcast),
          {:ok, result} <-
            send_email(
+             profile,
              %{broadcast | subject: subject},
              recipient,
              html_body,
              text_body,
-             unsubscribe_url,
              list_unsubscribe_url,
              attachments
            ) do
@@ -441,24 +443,38 @@ defmodule PhoenixKit.Newsletters.Workers.DeliveryWorker do
     }
   end
 
+  @doc false
   # Everything in the reader's language: the layout's translation, its
   # subject pattern and core's chrome (see Render's moduledoc). The text
-  # part is never wrapped.
-  defp render_email(broadcast, recipient, unsubscribe_url, preferences_url) do
+  # part is never wrapped. `profile` is the one the mail goes out through, or
+  # `nil`, and gives the signature. Not `defp` so a test can see what a send
+  # through a profile renders without a real provider behind it.
+  def render_email(broadcast, recipient, profile, unsubscribe_url, preferences_url) do
     variables = build_variables(recipient, unsubscribe_url, preferences_url)
     locale = RecipientLanguage.for_recipient(recipient, broadcast)
     layout = load_layout(broadcast)
+    {signature_html, signature_text} = signatures(profile)
 
     subject = Render.subject(broadcast.subject, layout, locale, variables)
 
     html =
-      compose_html(broadcast.html_body || "", layout, variables, locale: locale, subject: subject)
+      compose_html(broadcast.html_body || "", layout, variables,
+        locale: locale,
+        subject: subject,
+        signature: signature_html
+      )
 
     text =
-      Render.text(broadcast.text_body, Map.put(variables, "subject", subject), locale: locale)
+      Render.text(broadcast.text_body, Map.put(variables, "subject", subject),
+        locale: locale,
+        signature: signature_text
+      )
 
     {:ok, subject, html, text}
   end
+
+  defp signatures(%SendProfile{signature_html: html, signature_text: text}), do: {html, text}
+  defp signatures(nil), do: {nil, nil}
 
   @doc false
   # Layout first, variables second — the layout carries its own variables
@@ -587,40 +603,41 @@ defmodule PhoenixKit.Newsletters.Workers.DeliveryWorker do
   # (`skip_queue: true` below). This job already paces and retries the send, the
   # delivery needs the provider's own message id for status events, not a queue
   # reference, and the queue re-sends through the default integration, which
-  # would take the mail off the send profile chosen for it.
+  # would take the mail off the send profile chosen for it. `profile` is
+  # `resolve_send_profile/1`'s answer, read once per job before rendering.
   defp send_email(
+         nil,
          broadcast,
          recipient,
          html_body,
          text_body,
-         unsubscribe_url,
          list_unsubscribe_url,
          attachments
        ) do
-    case resolve_send_profile(broadcast) do
-      nil ->
-        send_email_legacy(
-          broadcast,
-          recipient,
-          html_body,
-          text_body,
-          unsubscribe_url,
-          list_unsubscribe_url,
-          attachments
-        )
+    send_email_legacy(
+      broadcast,
+      recipient,
+      html_body,
+      text_body,
+      list_unsubscribe_url,
+      attachments
+    )
+  end
 
-      profile ->
-        deliver_profile_email(
-          profile,
-          broadcast,
-          recipient,
-          html_body,
-          text_body,
-          unsubscribe_url,
-          list_unsubscribe_url,
-          attachments
-        )
-    end
+  defp send_email(
+         %SendProfile{} = profile,
+         broadcast,
+         recipient,
+         html_body,
+         text_body,
+         list_unsubscribe_url,
+         attachments
+       ) do
+    profile
+    |> build_profile_email(broadcast, recipient, html_body, text_body)
+    |> maybe_put_list_unsubscribe_headers(broadcast, list_unsubscribe_url)
+    |> maybe_put_attachments(attachments)
+    |> PhoenixKit.Mailer.deliver_via_integration(profile.integration_uuid, skip_queue: true)
   end
 
   @doc false
@@ -785,7 +802,6 @@ defmodule PhoenixKit.Newsletters.Workers.DeliveryWorker do
          recipient,
          html_body,
          text_body,
-         _unsubscribe_url,
          list_unsubscribe_url,
          attachments
        ) do
@@ -801,23 +817,6 @@ defmodule PhoenixKit.Newsletters.Workers.DeliveryWorker do
     |> maybe_put_list_unsubscribe_headers(broadcast, list_unsubscribe_url)
     |> maybe_put_attachments(attachments)
     |> PhoenixKit.Mailer.deliver_email(skip_queue: true)
-  end
-
-  defp deliver_profile_email(
-         profile,
-         broadcast,
-         recipient,
-         html_body,
-         text_body,
-         _unsubscribe_url,
-         list_unsubscribe_url,
-         attachments
-       ) do
-    profile
-    |> build_profile_email(broadcast, recipient, html_body, text_body)
-    |> maybe_put_list_unsubscribe_headers(broadcast, list_unsubscribe_url)
-    |> maybe_put_attachments(attachments)
-    |> PhoenixKit.Mailer.deliver_via_integration(profile.integration_uuid, skip_queue: true)
   end
 
   @doc false
@@ -840,8 +839,9 @@ defmodule PhoenixKit.Newsletters.Workers.DeliveryWorker do
 
   @doc false
   # Builds the Swoosh.Email for a profile-routed send: identity
-  # (from name/email, falling back to the legacy settings), reply-to,
-  # and the profile's signature appended to both bodies. Not `defp` so
+  # (from name/email, falling back to the legacy settings), reply-to and
+  # provider options. The bodies arrive finished: the profile's signature is
+  # already in them, where `render_email/5` put it. Not `defp` so
   # it can be unit-tested directly without triggering real delivery —
   # same rationale as `resolve_send_profile/1` above. Actual delivery
   # via the resolved integration (SES/SMTP/Brevo) is exercised live in
@@ -858,8 +858,8 @@ defmodule PhoenixKit.Newsletters.Workers.DeliveryWorker do
     |> Swoosh.Email.to(recipient.email)
     |> Swoosh.Email.from({from_name, from_email})
     |> Swoosh.Email.subject(broadcast.subject)
-    |> Swoosh.Email.html_body(append_signature(html_body, profile.signature_html))
-    |> Swoosh.Email.text_body(append_signature(text_body, profile.signature_text))
+    |> Swoosh.Email.html_body(html_body)
+    |> Swoosh.Email.text_body(text_body)
     |> maybe_reply_to(profile.reply_to)
     |> put_provider_options(profile)
   end
@@ -881,12 +881,6 @@ defmodule PhoenixKit.Newsletters.Workers.DeliveryWorker do
   end
 
   defp maybe_reply_to(email, _reply_to), do: email
-
-  defp append_signature(body, signature) when is_binary(signature) and signature != "" do
-    (body || "") <> signature
-  end
-
-  defp append_signature(body, _signature), do: body
 
   @doc false
   # `terminal?` is `attempt >= max_attempts` from the current Oban.Job —

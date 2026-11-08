@@ -472,4 +472,58 @@ defmodule PhoenixKit.Newsletters.RenderTest do
       assert Render.text("  \n", @out) == "  \n"
     end
   end
+
+  describe "a send profile's signature" do
+    @url "https://site.example/out?token=abc"
+    @out %{"unsubscribe_url" => @url}
+
+    test "goes into the layout's content slot, after the body", %{tmp_dir: dir} do
+      layout = layout(%{"en" => "<html><body><div>{{{content}}}</div><p>Foot</p></body></html>"})
+
+      html =
+        Render.html("<p>Hi</p>", layout, @out,
+          locale: "en",
+          paths: [dir],
+          signature: "<p>Sig</p>"
+        )
+
+      assert html =~ ~r{<div><p>Hi</p><p>Sig</p></div><p>Foot</p><p style=[^>]*><a href=}
+    end
+
+    test "inside core's standard layout, never after the document", %{tmp_dir: dir} do
+      html = Render.html("<p>Hi</p>", nil, @out, paths: [dir], signature: "<p>Sig</p>")
+
+      assert html =~ ~r{<p>Hi</p><p>Sig</p>}
+      assert html =~ ~r{</html>\s*$}
+    end
+
+    test "before the end of a body that is a whole document", %{tmp_dir: dir} do
+      html =
+        Render.html("<html><body><p>Hi</p></body></html>", nil, %{},
+          paths: [dir],
+          signature: "<p>S</p>"
+        )
+
+      assert html == "<html><body><p>Hi</p><p>S</p></body></html>"
+    end
+
+    test "has its variables filled in like the body", %{tmp_dir: dir} do
+      html =
+        Render.html("Hi", nil, %{"name" => "<Ada>"}, paths: [dir], signature: "<p>{{name}}</p>")
+
+      assert html =~ "<p>&lt;Ada&gt;</p>"
+    end
+
+    test "stands on lines of its own in the text, before the unsubscribe address" do
+      assert Render.text("Hi\n", @out, signature: "\nBest, Acme\n") ==
+               "Hi\n\nBest, Acme\n\nUnsubscribe: #{@url}"
+    end
+
+    test "is left out of a blank text, and a blank signature adds nothing" do
+      assert Render.text("", %{}, signature: "Best") == ""
+      assert Render.text("Hi", %{}, signature: "  ") == "Hi"
+      assert Render.text("Hi", %{}, signature: nil) == "Hi"
+      assert Render.html("<p>Hi</p>", "{{{content}}}", %{}, signature: "") == "<p>Hi</p>"
+    end
+  end
 end

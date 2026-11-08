@@ -39,7 +39,10 @@
           </form>
         <% end %>
 
-        <div class="divider text-xs text-base-content/50">{gettext("OR")}</div>
+        <%!-- "Or" only between two choices: after a result there is one. --%>
+        <div :if={@crm_state == :confirm} class="divider text-xs text-base-content/50">
+          {gettext("OR")}
+        </div>
 
         <form method="post" action={PhoenixKit.Newsletters.Paths.unsubscribe()}>
           <input type="hidden" name="_csrf_token" value={Plug.CSRFProtection.get_csrf_token()} />

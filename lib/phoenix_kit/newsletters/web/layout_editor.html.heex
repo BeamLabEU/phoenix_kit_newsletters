@@ -1,6 +1,8 @@
 <PhoenixKitWeb.Components.LayoutWrapper.app_layout
   flash={@flash}
+  socket={assigns[:socket]}
   phoenix_kit_current_scope={assigns[:phoenix_kit_current_scope]}
+  current_locale={assigns[:current_locale]}
   page_title={@page_title}
   page_subtitle={@page_subtitle}
   page_section={@page_section}
@@ -11,6 +13,16 @@
 <div class="container flex-col mx-auto px-4 py-6">
   <form id="layout-form" phx-change="validate" phx-submit="save">
     <input type="hidden" name="editor_language" value={@editor_locale} />
+    <%!-- Every other tab's text as it stands. Only the open tab's fields are
+         inputs, and form recovery after a reconnect replays only the form, so
+         without these an unsaved edit on any other tab went back to the stored
+         text, and Save wrote that. --%>
+    <input
+      :for={{field, key, value} <- other_tab_values(@translations, @editor_keys)}
+      type="hidden"
+      name={"all[#{field}][#{key}]"}
+      value={value}
+    />
     <div :if={@errors != []} class="alert alert-error mb-4">
       <.icon name="hero-exclamation-triangle" class="w-5 h-5" />
       <ul class="text-sm">
@@ -20,22 +32,21 @@
 
     <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
       <div class="space-y-4">
-        <fieldset class="fieldset">
-          <label class="label" for="layout-name">{gettext("Name")}</label>
-          <input
+        <div>
+          <.input
             id="layout-name"
-            type="text"
             name="name"
             value={@name}
-            class="input w-full font-mono"
+            label={gettext("Name")}
+            class="font-mono"
             placeholder="monthly_layout"
             phx-debounce="300"
+            hint={
+              gettext(
+                "Lowercase Latin letters, numbers and underscores; starts with a letter. For example: monthly_news."
+              )
+            }
           />
-          <p class="label text-xs whitespace-normal">
-            {gettext(
-              "Lowercase Latin letters, numbers and underscores; starts with a letter. For example: monthly_news."
-            )}
-          </p>
           <p :if={@suggested_name} class="label text-xs whitespace-normal">
             {gettext("Suggested name:")}
             <code class="font-mono">{@suggested_name}</code>
@@ -47,7 +58,7 @@
               {gettext("Use this name")}
             </button>
           </p>
-        </fieldset>
+        </div>
 
         <div role="tablist" class="tabs tabs-border flex-wrap">
           <button
@@ -85,86 +96,83 @@
               key: @editor_tab.locale
             )}
           </p>
-          <fieldset class="fieldset">
-            <label class="label">{gettext("Display name")}</label>
-            <input
-              type="text"
+          <div>
+            <.input
+              id="layout-display-name"
               name="fields[display_name]"
-              disabled={is_nil(@editor_keys["display_name"])}
               value={Map.get(@translations["display_name"], @editor_keys["display_name"], "")}
-              class="input w-full"
+              label={gettext("Display name")}
+              disabled={is_nil(@editor_keys["display_name"])}
               phx-debounce="300"
             />
             <p :if={is_nil(@editor_keys["display_name"])} class="label text-xs whitespace-normal">
               {gettext("Not editable here: in this field the language is stored under another tab.")}
             </p>
-          </fieldset>
+          </div>
 
-          <fieldset class="fieldset">
-            <label class="label">{gettext("Subject pattern (optional)")}</label>
-            <input
-              type="text"
+          <div>
+            <.input
+              id="layout-subject"
               name="fields[subject]"
-              disabled={is_nil(@editor_keys["subject"])}
               value={Map.get(@translations["subject"], @editor_keys["subject"], "")}
-              class="input w-full"
+              label={gettext("Subject pattern (optional)")}
+              disabled={is_nil(@editor_keys["subject"])}
               placeholder="{{subject}}"
               phx-debounce="300"
+              hint={
+                gettext(
+                  "Must contain {{subject}}, the broadcast's own subject. Leave blank to send the broadcast's subject unchanged."
+                )
+              }
             />
-            <p class="label text-xs">
-              {gettext(
-                "Must contain {{subject}}, the broadcast's own subject. Leave blank to send the broadcast's subject unchanged."
-              )}
-            </p>
             <p :if={is_nil(@editor_keys["subject"])} class="label text-xs whitespace-normal">
               {gettext("Not editable here: in this field the language is stored under another tab.")}
             </p>
-          </fieldset>
+          </div>
 
-          <fieldset class="fieldset">
-            <label class="label">{gettext("HTML")}</label>
-            <textarea
+          <div>
+            <.textarea
+              id="layout-html"
               name="fields[html_body]"
+              value={Map.get(@translations["html_body"], @editor_keys["html_body"], "")}
+              label={gettext("HTML")}
               disabled={is_nil(@editor_keys["html_body"])}
-              class="textarea w-full font-mono text-xs"
+              class="font-mono text-xs"
               rows="18"
               phx-debounce="500"
-            >{Map.get(@translations["html_body"], @editor_keys["html_body"], "")}</textarea>
-            <p class="label text-xs whitespace-normal">
-              {gettext(
-                "{{{content}}} is the broadcast. Also available: {{{header}}}, {{{footer}}}, {{logo_url}}, {{accent_color}}, {{site_name}}, {{site_url}}, {{subject}}, {{name}}, {{email}}, {{unsubscribe_url}}, {{preferences_url}}."
-              )}
-            </p>
+              hint={
+                gettext(
+                  "{{{content}}} is the broadcast. Also available: {{{header}}}, {{{footer}}}, {{logo_url}}, {{accent_color}}, {{site_name}}, {{site_url}}, {{subject}}, {{name}}, {{email}}, {{unsubscribe_url}}, {{preferences_url}}."
+                )
+              }
+            />
             <p :if={is_nil(@editor_keys["html_body"])} class="label text-xs whitespace-normal">
               {gettext("Not editable here: in this field the language is stored under another tab.")}
             </p>
-          </fieldset>
+          </div>
 
-          <fieldset class="fieldset">
-            <label class="label">{gettext("Text (kept for reference)")}</label>
-            <textarea
+          <div>
+            <.textarea
+              id="layout-text"
               name="fields[text_body]"
+              value={Map.get(@translations["text_body"], @editor_keys["text_body"], "")}
+              label={gettext("Text (kept for reference)")}
               disabled={is_nil(@editor_keys["text_body"])}
-              class="textarea w-full font-mono text-xs"
+              class="font-mono text-xs"
               rows="5"
               phx-debounce="500"
-            >{Map.get(@translations["text_body"], @editor_keys["text_body"], "")}</textarea>
+            />
             <p :if={is_nil(@editor_keys["text_body"])} class="label text-xs whitespace-normal">
               {gettext("Not editable here: in this field the language is stored under another tab.")}
             </p>
-          </fieldset>
+          </div>
         </div>
 
-        <div class="flex gap-2">
-          <button type="submit" class="btn btn-primary">{gettext("Save layout")}</button>
-          <.link navigate={Paths.layouts_index()} class="btn btn-ghost">
-            {gettext("Cancel")}
-          </.link>
-        </div>
+        <.form_actions cancel_to={Paths.layouts_index()} submit_label={gettext("Save layout")} />
       </div>
 
       <div>
-        <label class="label">{gettext("Preview")} · {@editor_locale}</label>
+        <span class="label">{gettext("Preview")} · {@editor_locale}</span>
         <div
           class="border border-base-300 rounded-lg overflow-hidden bg-white"
           style="height: 640px;"

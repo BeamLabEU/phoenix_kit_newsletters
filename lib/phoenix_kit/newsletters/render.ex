@@ -66,6 +66,14 @@ defmodule PhoenixKit.Newsletters.Render do
   link and a host's footer file alike, so it runs on the output rather than on any
   one of them. A link inside an HTML comment is not one a reader can see.
   `preferences_url` does not count: its token expires, and an opt-out must not.
+
+  ## Signature
+
+  A send profile's signature (`:signature` on `html/4` and `text/3`) closes the
+  message, so it is part of the body: inside a layout's `{{{content}}}`, above the
+  unsubscribe line, and filled in by the same substitution pass. Appended to the
+  finished email it would follow `</html>`, outside any layout, and in the text
+  part it would run on from the unsubscribe address, breaking that link.
   """
 
   use Gettext, backend: PhoenixKit.Newsletters.Gettext
@@ -113,15 +121,27 @@ defmodule PhoenixKit.Newsletters.Render do
       and core's chrome.
     * `:subject` — the email's subject, for core's `{{subject}}`.
     * `:paths` — template override roots (default: core's).
+    * `:signature` — a send profile's HTML signature, placed after the body
+      (see the moduledoc).
   """
   @spec html(String.t(), Layout.t() | String.t() | nil, variables(), keyword()) :: String.t()
   def html(body_html, layout, variables, opts \\ []) when is_binary(body_html) do
     locale = Keyword.get(opts, :locale)
 
     body_html
+    |> with_signature(Keyword.get(opts, :signature))
     |> document(layout, variables, locale, opts)
     |> with_unsubscribe_link(unsubscribe_url(variables), locale)
   end
+
+  # A body that is a whole document ends at its `</body>`, like a layout.
+  defp with_signature(body, signature) when is_binary(signature) and signature != "" do
+    if CoreLayout.document?(body),
+      do: before_end_of_body(body, signature),
+      else: body <> signature
+  end
+
+  defp with_signature(body, _signature), do: body
 
   defp document(body_html, layout, variables, locale, opts) do
     case wrapper(layout, locale) do
@@ -193,6 +213,8 @@ defmodule PhoenixKit.Newsletters.Render do
   ## Options
 
     * `:locale` — the reader's language, for that line's label.
+    * `:signature` — a send profile's text signature, on lines of its own after
+      the text and before the unsubscribe address.
   """
   @spec text(String.t() | nil, variables(), keyword()) :: String.t()
   def text(text, variables, opts \\ [])
@@ -200,9 +222,20 @@ defmodule PhoenixKit.Newsletters.Render do
 
   def text(text, variables, opts) do
     text
+    |> with_text_signature(Keyword.get(opts, :signature))
     |> Substitution.substitute(stringify(variables))
     |> with_unsubscribe_text(unsubscribe_url(variables), Keyword.get(opts, :locale))
   end
+
+  # A blank text stays blank, as for the unsubscribe address: a signature alone is
+  # not a message.
+  defp with_text_signature(text, signature) when is_binary(signature) do
+    if String.trim(text) == "" or String.trim(signature) == "",
+      do: text,
+      else: String.trim_trailing(text) <> "\n\n" <> String.trim(signature)
+  end
+
+  defp with_text_signature(text, _signature), do: text
 
   @doc """
   A sample broadcast for core's email preview (`email_templates/0`): what a

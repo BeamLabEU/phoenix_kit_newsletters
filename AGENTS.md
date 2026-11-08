@@ -30,9 +30,8 @@ Most source lives under `lib/phoenix_kit/newsletters/`:
 - `migrations.ex`: `PhoenixKitNewsletters.Migrations` versioned chain;
   `expected_schema.ex`: generated manifest exposed through `expected_schema/0`.
 
-Dependency versions live in `mix.exs`. Keep core's published range
-`>= 2.65.0 and < 4.0.0`: 2.65 supplies the module callbacks; the range admits
-later 2.x minors and 3.x. Do not narrow to one minor with a three-segment
+Dependency versions live in `mix.exs`. Keep core's range `>= 2.65.0 and
+< 4.0.0` (2.65 supplies the module callbacks). Do not narrow to one minor with a three-segment
 `~>` or commit a `path:` dependency (`CorePinConformanceTest`). Raise the floor
 only for a required core API/migration. `phoenix_kit_templates` is a direct
 dependency because rendering calls its substitution API.
@@ -40,8 +39,8 @@ dependency because rendering calls its substitution API.
 CRM (`PhoenixKitCRM.*`) and core's Emails module are runtime soft dependencies:
 guard references with `Code.ensure_loaded?/1` and call through `apply/3`
 (`soft_call/3` is intentionally credo-disabled). Ecto `from`/`join` introspects
-literal schema modules at compile time; a module attribute does not prevent
-this. Build CRM schema atoms with `Module.concat/1` inside functions.
+literal schema modules at compile time, a module attribute too, so build CRM
+schema atoms with `Module.concat/1` inside functions.
 CRM is a test-only dependency to exercise real schemas. `required_modules/0`
 returns `["emails"]`, but layouts use this package and `PhoenixKit.Email.Layout`,
 not `PhoenixKit.Modules.Emails.*`.
@@ -100,9 +99,12 @@ and revert **both** `mix.exs` and `mix.lock` before committing.
   outside `:browser`: RFC 8058 POSTs carry no session or CSRF token.
 - LiveViews use `Phoenix.LiveView` and `use Gettext, backend:
   PhoenixKit.Newsletters.Gettext`, importing core components explicitly
-  (`PhoenixKitWeb.Components.Core.{Icon, PkLink, EmptyState, TableDefault}`).
-  Do not use `PhoenixKitWeb, :live_view`. Admin templates wrap in
-  `PhoenixKitWeb.Components.LayoutWrapper.app_layout`; preferences uses
+  (`PhoenixKitWeb.Components.Core.*`), never raw markup a core one covers
+  (`Input`, `Select`, `Checkbox`, `Textarea`, `Modal`, `TableRowMenu`, `RowLink`,
+  `Accordion`). Do not use `PhoenixKitWeb, :live_view`. Admin templates wrap in
+  `PhoenixKitWeb.Components.LayoutWrapper.app_layout` with
+  `socket={assigns[:socket]}` (the notifications bell) and
+  `current_locale={assigns[:current_locale]}`; preferences uses
   `AuthPageWrapper.auth_page_wrapper`. Controllers/HTML use
   `PhoenixKitWeb, :controller` / `:html`, then `use Gettext, backend:
   PhoenixKit.Newsletters.Gettext`: core's `use` binds core's backend, and
@@ -147,9 +149,8 @@ Without CRM permission, editor/verification offer roles only and reject crafted
 `crm_list` sources. Workers and the scheduled sweep have no viewer scope.
 Admin receives sub-keys through core boot grants, Owner through `"*"`.
 `migrate_legacy/0` / `PermissionBackfill` grants each sub-key once to roles
-already holding the base key, using `newsletters_send_backfilled` and
-`newsletters_audiences_backfilled`; set each flag only after all grants succeed
-so failures retry next boot. Later base-key grants retain the narrow meaning.
+holding the base key, flagged by `newsletters_{send,audiences}_backfilled`, set
+only after every grant succeeds so failures retry next boot.
 
 ## Data & rendering invariants
 
@@ -174,7 +175,10 @@ Tables are `phoenix_kit_newsletters_{broadcasts,deliveries,layouts}`:
   one), and the editor redirects from `/edit` unless the row is a draft. Never
   write an editor save or a cancel through `update_broadcast/2`. The editor reads
   the body from the form's `editor_content`: key events miss a mouse paste and a
-  reconnect. Scheduling refuses a past time. `file_references/0`
+  reconnect; attachments and the layout editor's other tabs are hidden inputs for
+  form recovery. Send now saves, patches `/new` to `/edit`, then sends in
+  `handle_info/2`: a big audience outlasts the 30 s event timeout. Scheduling
+  refuses a past time. `file_references/0`
   protects `attachments` from core's orphan check; list any new file column
   there, because supplying a list takes over this module's tables.
 - `Delivery`: `pending` is the **only non-terminal status**; terminal statuses
@@ -211,6 +215,7 @@ substitution pass. `strip_html/1` keeps link addresses and decodes entities, onc
    `PhoenixKit.Email.Layout.wrap/3`, group `"newsletters"`. Never wrap text.
 4. On the output, add an Unsubscribe line to both parts unless they hold this
    reader's `unsubscribe_url` (not in a comment; `preferences_url` expires).
+   A send profile's signature is part of the body (`:signature`), above it.
 
 `Render.site_variables/0` binds `logo_url`, `accent_color`, `site_name` and
 `site_url` for subject patterns, bodies without a layout and the text part;
@@ -254,15 +259,14 @@ footer), with Branding logo/accent. Never rebuild core chrome here or read/write
   `on_conflict: :nothing`, **no `conflict_target`**. New recipient sources
   require corresponding DB uniqueness before use.
 - Queue is **`newsletters_delivery`**, never `newsletters`, declared by
-  `oban_queues/0`; keep README host config consistent. Worker: `max_attempts: 3`, retried after 5 then 30 minutes
-  (`backoff/1`), unique on `delivery_uuid` while incomplete. Always pass
+  `oban_queues/0` and the README. Worker: `max_attempts: 3`, retried after 5
+  then 30 minutes (`backoff/1`), unique on `delivery_uuid` while incomplete. Always pass
   `skip_queue: true`: the emails package's queue re-sends through the default
   integration, off the send profile, and hands back a reference where the
   message id belongs. Profile `rate_per_hour`, `rate_per_day`, `pause_seconds`
   determine the tightest interval (`send_interval_seconds/1`, a fraction above
-  one per second); schedule job N at N × interval continuously across batches,
-  0 = all at once. Throttling is
-  per broadcast; concurrent broadcasts may exceed a profile's combined caps.
+  one per second); schedule job N at N × interval across batches, 0 = all at
+  once. Throttling is per broadcast: concurrent ones may exceed a profile's caps.
   No `newsletters_rate_limit` setting exists; do not re-add it.
 - Worker sends only `pending` deliveries (`guard_unsent/1`). It re-reads the
   broadcast and sends **only under `"sending"`** (`@sendable_broadcast_statuses`,
@@ -361,7 +365,8 @@ A per-list token must never grant full preference access.
   only for a confirmed address: registration logs in before confirmation, so
   linking by email would hand over someone else's contact (`{:error, :unconfirmed}`).
   Never use `Contacts.connect_user/2`; multiple unlinked contacts sharing an
-  email count as no match. Degrade gracefully when CRM is unavailable.
+  email count as no match. Degrade gracefully when CRM is unavailable. Re-read
+  the contact before each write: CRM writes the consent log from the struct.
 - Answer in the language of the email the link came from: contact → list → site
   (`RecipientLanguage.for_contact/2`), user `preferred_locale` for role tokens.
   The controller wraps rendering in `RecipientLocale.in_locale/2`, never
@@ -371,9 +376,8 @@ A per-list token must never grant full preference access.
 
 ## Address verification
 
-Use the same `CRMSource` / `UserGroupSource.sendable_recipients/1` resolvers as
-sending. The host configures
-`config :phoenix_kit_newsletters, :email_verification_engine, Module`;
+Use the sending resolvers (`CRMSource`, `UserGroupSource.sendable_recipients/1`).
+The host sets `config :phoenix_kit_newsletters, :email_verification_engine, Module`;
 there is no default or engine dependency, even for tests.
 
 - `VerificationEngine` callbacks, batch/verdict shapes and
@@ -394,10 +398,9 @@ there is no default or engine dependency, even for tests.
   Distinguish `not_sure` + `smtp_pending` ("Waiting for SMTP") from
   `smtp_disabled` ("Domain OK (no SMTP)"); show `awaiting_smtp` progress.
   While running, recheck `smtp_runner_waiting?/0` every 10 seconds. Link a
-  waiting-runner hint only to optional engine `settings_path/0`: require a
-  same-site absolute path without backslashes, control characters or whitespace
-  (including browser host-escape forms); otherwise show plain text. There is
-  no core settings-page fallback.
+  waiting-runner hint only to optional engine `settings_path/0`, a same-site
+  absolute path without backslashes, control characters or whitespace; else
+  plain text. No core settings-page fallback.
 
 ## Database & migrations
 
@@ -444,7 +447,7 @@ installs (core 3.0 no longer creates module tables).
   require that release, or repair may reject/revert the new shape. Core 2.52
   removed its old template-FK target; do not reintroduce it.
 - `Broadcast.column_widths/0`, `Delivery.column_widths/0`,
-  `Layout.column_widths/0` are width authorities. `recipient_email` is
+  `Layout.column_widths/0` set widths. `recipient_email` is
   `public.citext` even with a custom table prefix. Never restore removed
   `list_uuid`, its FK or index. Adopt the retired DB default
   `source_type = 'newsletters_list'` verbatim; Ecto uses `"crm_list"`.
@@ -456,16 +459,14 @@ installs (core 3.0 no longer creates module tables).
   `test_helper.exs` starts `Test.Repo`, migrates core, CRM and this chain,
   enables manual sandbox, PubSub manager, ModuleRegistry and dead-render
   endpoint. No reachable DB excludes `:integration`; the attachments probe
-  excludes `:requires_v158` when absent. The "core V158 … not present" warning
-  usually accompanies the same missing-DB condition, not a second problem.
+  excludes `:requires_v158` when absent (its warning usually means no DB).
   Builds-alone/manifest tests also skip if required core test support is absent.
 - `PhoenixKitNewsletters.DataCase` tags integration tests, checks out sandbox
   and supplies `errors_on/1` and `TestScopes` (`full_scope`, `scope_with`,
   `enable_crm`). Hand-built admin sockets need `phoenix_kit_current_scope`;
   registry registration matters because `Scope.can?/2` checks module state.
-- Existing LiveView tests call lifecycle/events directly; controller tests
-  use cookie sessions and `fetch_flash`. These miss initial browser-render
-  failures. Add every new LiveView to `test/support/dead_render_router.ex`
+- LiveView tests call lifecycle/events directly; controller tests use cookie
+  sessions and `fetch_flash`. Both miss browser-render failures. Add every new LiveView to `test/support/dead_render_router.ex`
   and cover it in `web/dead_render_test.exs`; never use a content `:layout`
   assign (see Web conventions). Its endpoint has no parser, so pass params to
   `get/3`: a query string in the path is ignored.
@@ -475,8 +476,8 @@ installs (core 3.0 no longer creates module tables).
   finds the test owner through `$callers` from the async task.
 - `config/test.exs` supplies host Repo, encryption secret, Swoosh test adapter
   and a raw endpoint secret for `Phoenix.Token` without a running endpoint.
-  Unit/conformance/token/content/cache tests and statement-only
-  `migrations_test.exs` run without Postgres; real-DDL migration tests need it.
+  Pure unit tests and statement-only `migrations_test.exs` run without
+  Postgres; real-DDL migration tests need it.
   Worker helpers marked `@doc false` provide direct unit-test seams.
 
 ## Commits & releases
@@ -494,8 +495,7 @@ installs (core 3.0 no longer creates module tables).
   **only after publish succeeds**, tag and push tag. Match newest tag form
   (`git tag --sort=-creatordate | head -1`); tags are immutable. `mix docs`
   uses `source_ref: @version`, so tag/version must agree for source links.
-  Create a GitHub release with `gh release create` if this repo uses them
-  (check `gh release list`).
+  Create a GitHub release (`gh release create`) if `gh release list` has any.
 
 ## Deferred work (do not implement incidentally)
 

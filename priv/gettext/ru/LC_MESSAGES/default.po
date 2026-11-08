@@ -14,11 +14,11 @@ msgstr ""
 
 ## --- Sidebar tab labels ---
 #: lib/phoenix_kit/newsletters/newsletters.ex:62
-#: lib/phoenix_kit/newsletters/web/broadcast_details.ex:45
-#: lib/phoenix_kit/newsletters/web/broadcast_editor.ex:62
-#: lib/phoenix_kit/newsletters/web/broadcasts.ex:30
-#: lib/phoenix_kit/newsletters/web/layouts_index.ex:27
-#: lib/phoenix_kit/newsletters/web/verification.ex:71
+#: lib/phoenix_kit/newsletters/web/broadcast_details.ex:47
+#: lib/phoenix_kit/newsletters/web/broadcast_editor.ex:65
+#: lib/phoenix_kit/newsletters/web/broadcasts.ex:32
+#: lib/phoenix_kit/newsletters/web/layouts_index.ex:31
+#: lib/phoenix_kit/newsletters/web/verification.ex:72
 #, elixir-autogen
 msgid "Newsletters"
 msgstr "Рассылки"
@@ -27,9 +27,9 @@ msgstr "Рассылки"
 msgid "Broadcasts"
 msgstr "Выпуски"
 
-#: lib/phoenix_kit/newsletters/web/broadcast_editor.ex:57
-#: lib/phoenix_kit/newsletters/web/broadcasts.html.heex:28
-#: lib/phoenix_kit/newsletters/web/broadcasts.html.heex:70
+#: lib/phoenix_kit/newsletters/web/broadcast_editor.ex:60
+#: lib/phoenix_kit/newsletters/web/broadcasts.html.heex:30
+#: lib/phoenix_kit/newsletters/web/broadcasts.html.heex:72
 #, elixir-autogen
 msgid "New broadcast"
 msgstr "Новый выпуск"
@@ -38,19 +38,19 @@ msgstr "Новый выпуск"
 msgid "Edit broadcast"
 msgstr "Редактирование выпуска"
 
-#: lib/phoenix_kit/newsletters/web/layout_editor.ex:44
-#: lib/phoenix_kit/newsletters/web/layouts_index.ex:25
+#: lib/phoenix_kit/newsletters/web/layout_editor.ex:47
+#: lib/phoenix_kit/newsletters/web/layouts_index.ex:29
 #, elixir-autogen
 msgid "Layouts"
 msgstr "Шаблоны оформления"
 
-#: lib/phoenix_kit/newsletters/web/verification.ex:69
+#: lib/phoenix_kit/newsletters/web/verification.ex:70
 #, elixir-autogen
 msgid "Address verification"
 msgstr "Проверка адресов"
 
-#: lib/phoenix_kit/newsletters/web/layout_editor.ex:42
-#: lib/phoenix_kit/newsletters/web/layouts_index.html.heex:31
+#: lib/phoenix_kit/newsletters/web/layout_editor.ex:45
+#: lib/phoenix_kit/newsletters/web/layouts_index.html.heex:45
 #, elixir-autogen
 msgid "New layout"
 msgstr "Новый шаблон оформления"
@@ -72,19 +72,18 @@ msgid "Edit send profile"
 msgstr "Редактирование профиля отправки"
 
 ## --- Common admin UI ---
-#: lib/phoenix_kit/newsletters/web/broadcast_details.ex:77
-#: lib/phoenix_kit/newsletters/web/broadcast_editor.ex:102
-#: lib/phoenix_kit/newsletters/web/broadcasts.ex:44
-#: lib/phoenix_kit/newsletters/web/layout_editor.ex:63
-#: lib/phoenix_kit/newsletters/web/layouts_index.ex:37
-#: lib/phoenix_kit/newsletters/web/verification.ex:53
+#: lib/phoenix_kit/newsletters/web/broadcast_details.ex:79
+#: lib/phoenix_kit/newsletters/web/broadcast_editor.ex:106
+#: lib/phoenix_kit/newsletters/web/broadcasts.ex:46
+#: lib/phoenix_kit/newsletters/web/layout_editor.ex:66
+#: lib/phoenix_kit/newsletters/web/layouts_index.ex:41
+#: lib/phoenix_kit/newsletters/web/verification.ex:54
 #, elixir-autogen
 msgid "Newsletters module is not enabled"
 msgstr "Модуль рассылок не включён"
 
-#: lib/phoenix_kit/newsletters/web/broadcast_details.html.heex:19
-#: lib/phoenix_kit/newsletters/web/broadcast_editor.html.heex:241
-#: lib/phoenix_kit/newsletters/web/layout_editor.html.heex:161
+#: lib/phoenix_kit/newsletters/web/broadcast_details.html.heex:21
+#: lib/phoenix_kit/newsletters/web/broadcast_editor.html.heex:212
 #, elixir-autogen
 msgid "Cancel"
 msgstr "Отмена"
@@ -94,151 +93,149 @@ msgstr "Отмена"
 msgid "Loading..."
 msgstr "Загрузка..."
 
-#: lib/phoenix_kit/newsletters/web/broadcast_details.html.heex:40
-#: lib/phoenix_kit/newsletters/web/broadcast_editor.ex:363
-#: lib/phoenix_kit/newsletters/web/layout_editor.ex:83
-#: lib/phoenix_kit/newsletters/web/layouts_index.html.heex:82
+#: lib/phoenix_kit/newsletters/web/broadcast_details.html.heex:37
+#: lib/phoenix_kit/newsletters/web/broadcast_editor.ex:397
+#: lib/phoenix_kit/newsletters/web/layout_editor.ex:86
+#: lib/phoenix_kit/newsletters/web/layouts_index.html.heex:93
 #, elixir-autogen
 msgid "Edit"
 msgstr "Редактировать"
 
-#: lib/phoenix_kit/newsletters/web/broadcast_details.html.heex:88
+#: lib/phoenix_kit/newsletters/web/broadcast_details.html.heex:85
 #, elixir-autogen
 msgid "Refresh"
 msgstr "Обновить"
 
-#: lib/phoenix_kit/newsletters/web/broadcast_details.html.heex:100
-#: lib/phoenix_kit/newsletters/web/broadcast_details.html.heex:281
-#: lib/phoenix_kit/newsletters/web/broadcasts.html.heex:95
-#: lib/phoenix_kit/newsletters/web/layouts_index.html.heex:55
-#: lib/phoenix_kit/newsletters/web/verification.html.heex:234
+#: lib/phoenix_kit/newsletters/web/broadcast_details.html.heex:97
+#: lib/phoenix_kit/newsletters/web/broadcast_details.html.heex:314
+#: lib/phoenix_kit/newsletters/web/broadcasts.ex:117
+#: lib/phoenix_kit/newsletters/web/broadcasts.html.heex:94
+#: lib/phoenix_kit/newsletters/web/layouts_index.html.heex:34
+#: lib/phoenix_kit/newsletters/web/layouts_index.html.heex:53
+#: lib/phoenix_kit/newsletters/web/verification.html.heex:224
+#: lib/phoenix_kit/newsletters/web/verification.html.heex:241
 #, elixir-autogen
 msgid "Status"
 msgstr "Статус"
 
 ## --- Broadcast / delivery statuses ---
-#: lib/phoenix_kit/newsletters/web/broadcasts.ex:122
-#: lib/phoenix_kit/newsletters/web/status_label.ex:10
+#: lib/phoenix_kit/newsletters/web/status_label.ex:11
 #, elixir-autogen
 msgid "Draft"
 msgstr "Черновик"
 
-#: lib/phoenix_kit/newsletters/web/broadcasts.ex:124
-#: lib/phoenix_kit/newsletters/web/status_label.ex:11
+#: lib/phoenix_kit/newsletters/web/status_label.ex:12
 #, elixir-autogen
 msgid "Scheduled"
 msgstr "Запланирован"
 
-#: lib/phoenix_kit/newsletters/web/broadcasts.ex:127
-#: lib/phoenix_kit/newsletters/web/status_label.ex:12
+#: lib/phoenix_kit/newsletters/web/broadcast_editor.html.heex:242
+#: lib/phoenix_kit/newsletters/web/status_label.ex:13
 #, elixir-autogen
 msgid "Sending"
 msgstr "Отправляется"
 
-#: lib/phoenix_kit/newsletters/web/broadcast_details.ex:438
-#: lib/phoenix_kit/newsletters/web/broadcast_details.html.heex:206
-#: lib/phoenix_kit/newsletters/web/broadcasts.ex:129
-#: lib/phoenix_kit/newsletters/web/broadcasts.html.heex:52
-#: lib/phoenix_kit/newsletters/web/broadcasts.html.heex:96
-#: lib/phoenix_kit/newsletters/web/status_label.ex:13
+#: lib/phoenix_kit/newsletters/web/broadcast_details.ex:465
+#: lib/phoenix_kit/newsletters/web/broadcast_details.html.heex:203
+#: lib/phoenix_kit/newsletters/web/broadcasts.html.heex:54
+#: lib/phoenix_kit/newsletters/web/broadcasts.html.heex:95
+#: lib/phoenix_kit/newsletters/web/status_label.ex:14
 #, elixir-autogen
 msgid "Sent"
 msgstr "Отправлен"
 
-#: lib/phoenix_kit/newsletters/web/broadcasts.ex:131
-#: lib/phoenix_kit/newsletters/web/status_label.ex:14
+#: lib/phoenix_kit/newsletters/web/status_label.ex:15
 #, elixir-autogen
 msgid "Cancelled"
 msgstr "Отменён"
 
-#: lib/phoenix_kit/newsletters/web/broadcast_details.ex:437
-#: lib/phoenix_kit/newsletters/web/broadcast_details.html.heex:238
+#: lib/phoenix_kit/newsletters/web/broadcast_details.ex:464
+#: lib/phoenix_kit/newsletters/web/broadcast_details.html.heex:235
 #, elixir-autogen
 msgid "Pending"
 msgstr "В ожидании"
 
-#: lib/phoenix_kit/newsletters/web/broadcast_details.ex:439
-#: lib/phoenix_kit/newsletters/web/broadcast_details.html.heex:210
-#: lib/phoenix_kit/newsletters/web/broadcasts.html.heex:53
-#: lib/phoenix_kit/newsletters/web/broadcasts.html.heex:98
+#: lib/phoenix_kit/newsletters/web/broadcast_details.ex:466
+#: lib/phoenix_kit/newsletters/web/broadcast_details.html.heex:207
+#: lib/phoenix_kit/newsletters/web/broadcasts.html.heex:55
+#: lib/phoenix_kit/newsletters/web/broadcasts.html.heex:97
 #, elixir-autogen
 msgid "Delivered"
 msgstr "Доставлено"
 
-#: lib/phoenix_kit/newsletters/web/broadcast_details.ex:440
-#: lib/phoenix_kit/newsletters/web/broadcast_details.html.heex:214
-#: lib/phoenix_kit/newsletters/web/broadcasts.html.heex:54
-#: lib/phoenix_kit/newsletters/web/broadcasts.html.heex:100
+#: lib/phoenix_kit/newsletters/web/broadcast_details.ex:467
+#: lib/phoenix_kit/newsletters/web/broadcast_details.html.heex:211
+#: lib/phoenix_kit/newsletters/web/broadcasts.html.heex:56
+#: lib/phoenix_kit/newsletters/web/broadcasts.html.heex:99
 #, elixir-autogen
 msgid "Opened"
 msgstr "Открыто"
 
-#: lib/phoenix_kit/newsletters/web/broadcast_details.ex:441
-#: lib/phoenix_kit/newsletters/web/broadcast_details.html.heex:220
-#: lib/phoenix_kit/newsletters/web/broadcasts.html.heex:55
-#: lib/phoenix_kit/newsletters/web/broadcasts.html.heex:101
+#: lib/phoenix_kit/newsletters/web/broadcast_details.ex:468
+#: lib/phoenix_kit/newsletters/web/broadcast_details.html.heex:217
+#: lib/phoenix_kit/newsletters/web/broadcasts.html.heex:57
+#: lib/phoenix_kit/newsletters/web/broadcasts.html.heex:100
 #, elixir-autogen
 msgid "Bounced"
 msgstr "Отклонено"
 
-#: lib/phoenix_kit/newsletters/web/broadcast_details.ex:442
-#: lib/phoenix_kit/newsletters/web/broadcast_details.html.heex:226
-#: lib/phoenix_kit/newsletters/web/broadcasts.ex:134
-#: lib/phoenix_kit/newsletters/web/status_label.ex:15
+#: lib/phoenix_kit/newsletters/web/broadcast_details.ex:469
+#: lib/phoenix_kit/newsletters/web/broadcast_details.html.heex:223
+#: lib/phoenix_kit/newsletters/web/status_label.ex:16
 #, elixir-autogen
 msgid "Failed"
 msgstr "Ошибка"
 
 ## --- Broadcasts list page ---
-#: lib/phoenix_kit/newsletters/web/broadcasts.ex:31
+#: lib/phoenix_kit/newsletters/web/broadcasts.ex:33
 #, elixir-autogen
 msgid "Create and manage email broadcasts"
 msgstr "Создание и управление почтовыми рассылками"
 
-#: lib/phoenix_kit/newsletters/web/broadcasts.ex:121
-#: lib/phoenix_kit/newsletters/web/layouts_index.html.heex:21
-#: lib/phoenix_kit/newsletters/web/verification.html.heex:209
+#: lib/phoenix_kit/newsletters/web/broadcasts.ex:114
+#: lib/phoenix_kit/newsletters/web/layouts_index.html.heex:31
+#: lib/phoenix_kit/newsletters/web/verification.html.heex:216
 #, elixir-autogen
 msgid "All statuses"
 msgstr "Все статусы"
 
-#: lib/phoenix_kit/newsletters/web/broadcasts.html.heex:14
+#: lib/phoenix_kit/newsletters/web/broadcasts.html.heex:16
 #, elixir-autogen
 msgid "No broadcasts found"
 msgstr "Выпуски не найдены"
 
-#: lib/phoenix_kit/newsletters/web/broadcasts.html.heex:15
+#: lib/phoenix_kit/newsletters/web/broadcasts.html.heex:17
 #, elixir-autogen
 msgid "Create your first broadcast to get started."
 msgstr "Создайте первый выпуск, чтобы начать."
 
-#: lib/phoenix_kit/newsletters/web/broadcast_editor.html.heex:19
-#: lib/phoenix_kit/newsletters/web/broadcasts.html.heex:93
+#: lib/phoenix_kit/newsletters/web/broadcast_editor.html.heex:23
+#: lib/phoenix_kit/newsletters/web/broadcasts.html.heex:92
 #: lib/phoenix_kit/newsletters/web/form_errors.ex:51
 #, elixir-autogen
 msgid "Subject"
 msgstr "Тема"
 
-#: lib/phoenix_kit/newsletters/web/broadcast_details.html.heex:139
-#: lib/phoenix_kit/newsletters/web/broadcast_details.html.heex:282
-#: lib/phoenix_kit/newsletters/web/broadcast_details.html.heex:334
-#: lib/phoenix_kit/newsletters/web/broadcasts.html.heex:60
-#: lib/phoenix_kit/newsletters/web/broadcasts.html.heex:103
+#: lib/phoenix_kit/newsletters/web/broadcast_details.html.heex:136
+#: lib/phoenix_kit/newsletters/web/broadcast_details.html.heex:289
+#: lib/phoenix_kit/newsletters/web/broadcast_details.html.heex:315
+#: lib/phoenix_kit/newsletters/web/broadcasts.html.heex:62
+#: lib/phoenix_kit/newsletters/web/broadcasts.html.heex:102
 #, elixir-autogen
 msgid "Sent at"
 msgstr "Отправлено"
 
 ## --- Broadcast editor page ---
-#: lib/phoenix_kit/newsletters/web/broadcast_details.ex:314
-#: lib/phoenix_kit/newsletters/web/broadcast_details.ex:385
-#: lib/phoenix_kit/newsletters/web/broadcast_editor.ex:405
+#: lib/phoenix_kit/newsletters/web/broadcast_details.ex:312
+#: lib/phoenix_kit/newsletters/web/broadcast_details.ex:412
+#: lib/phoenix_kit/newsletters/web/broadcast_editor.ex:440
 #: lib/phoenix_kit/newsletters/web/send_error.ex:40
 #, elixir-autogen
 msgid "Broadcast not found"
 msgstr "Выпуск не найден"
 
-#: lib/phoenix_kit/newsletters/web/broadcast_details.ex:297
-#: lib/phoenix_kit/newsletters/web/broadcast_editor.ex:251
+#: lib/phoenix_kit/newsletters/web/broadcast_details.ex:330
+#: lib/phoenix_kit/newsletters/web/broadcast_editor.ex:334
 #, elixir-autogen
 msgid "Broadcast is being sent"
 msgstr "Выпуск отправляется"
@@ -258,23 +255,23 @@ msgstr "Невозможно отправить: список CRM имеет с�
 msgid "Cannot send a broadcast with status %{status}."
 msgstr "Невозможно отправить выпуск со статусом %{status}."
 
-#: lib/phoenix_kit/newsletters/web/broadcast_editor.ex:271
+#: lib/phoenix_kit/newsletters/web/broadcast_editor.ex:285
 #, elixir-autogen
 msgid "Please select a schedule date and time"
 msgstr "Выберите дату и время отправки"
 
-#: lib/phoenix_kit/newsletters/web/broadcast_editor.ex:645
+#: lib/phoenix_kit/newsletters/web/broadcast_editor.ex:713
 #, elixir-autogen
 msgid "Broadcast saved as %{status}"
 msgstr "Выпуск сохранён со статусом «%{status}»"
 
-#: lib/phoenix_kit/newsletters/web/broadcast_editor.ex:678
+#: lib/phoenix_kit/newsletters/web/broadcast_editor.ex:754
 #: lib/phoenix_kit/newsletters/web/send_error.ex:45
 #, elixir-autogen
 msgid "Validation failed: %{errors}"
 msgstr "Ошибка валидации: %{errors}"
 
-#: lib/phoenix_kit/newsletters/web/broadcast_editor.ex:60
+#: lib/phoenix_kit/newsletters/web/broadcast_editor.ex:63
 #, elixir-autogen
 msgid "Compose and send a broadcast email to your newsletter list"
 msgstr "Создайте и отправьте письмо подписчикам списка"
@@ -284,132 +281,132 @@ msgstr "Создайте и отправьте письмо подписчика
 msgid "Enter email subject..."
 msgstr "Введите тему письма..."
 
-#: lib/phoenix_kit/newsletters/web/broadcast_editor.html.heex:66
-#: lib/phoenix_kit/newsletters/web/verification.html.heex:65
+#: lib/phoenix_kit/newsletters/web/broadcast_editor.html.heex:68
+#: lib/phoenix_kit/newsletters/web/verification.html.heex:67
 #, elixir-autogen
 msgid "Select a list..."
 msgstr "Выберите список..."
 
-#: lib/phoenix_kit/newsletters/web/broadcast_editor.html.heex:225
+#: lib/phoenix_kit/newsletters/web/broadcast_editor.html.heex:196
 #, elixir-autogen
 msgid "Content (Markdown)"
 msgstr "Содержимое (Markdown)"
 
-#: lib/phoenix_kit/newsletters/web/broadcast_editor.html.heex:234
+#: lib/phoenix_kit/newsletters/web/broadcast_editor.html.heex:205
 #, elixir-autogen
 msgid "Write your broadcast content in Markdown..."
 msgstr "Напишите содержимое выпуска в Markdown..."
 
-#: lib/phoenix_kit/newsletters/web/broadcast_editor.html.heex:253
+#: lib/phoenix_kit/newsletters/web/broadcast_editor.html.heex:223
 #, elixir-autogen
 msgid "Save draft"
 msgstr "Сохранить черновик"
 
-#: lib/phoenix_kit/newsletters/web/broadcast_editor.html.heex:271
+#: lib/phoenix_kit/newsletters/web/broadcast_editor.html.heex:244
 #, elixir-autogen
 msgid "Send now"
 msgstr "Отправить сейчас"
 
-#: lib/phoenix_kit/newsletters/web/broadcast_editor.html.heex:292
+#: lib/phoenix_kit/newsletters/web/broadcast_editor.html.heex:266
 #, elixir-autogen
 msgid "Schedule"
 msgstr "Запланировать"
 
-#: lib/phoenix_kit/newsletters/web/broadcast_editor.html.heex:308
-#: lib/phoenix_kit/newsletters/web/layout_editor.html.heex:167
+#: lib/phoenix_kit/newsletters/web/broadcast_editor.html.heex:282
+#: lib/phoenix_kit/newsletters/web/layout_editor.html.heex:175
 #, elixir-autogen
 msgid "Preview"
 msgstr "Предпросмотр"
 
-#: lib/phoenix_kit/newsletters/web/broadcast_editor.html.heex:337
+#: lib/phoenix_kit/newsletters/web/broadcast_editor.html.heex:312
 #, elixir-autogen
 msgid "Preview will appear here as you type"
 msgstr "Предпросмотр появится здесь по мере набора"
 
 ## --- Broadcast details page ---
-#: lib/phoenix_kit/newsletters/web/broadcast_details.ex:111
-#: lib/phoenix_kit/newsletters/web/broadcast_details.html.heex:51
+#: lib/phoenix_kit/newsletters/web/broadcast_details.ex:113
+#: lib/phoenix_kit/newsletters/web/broadcast_details.html.heex:48
 #, elixir-autogen
 msgid "Cancel broadcast"
 msgstr "Отменить выпуск"
 
-#: lib/phoenix_kit/newsletters/web/broadcast_details.ex:121
-#: lib/phoenix_kit/newsletters/web/broadcast_details.html.heex:71
+#: lib/phoenix_kit/newsletters/web/broadcast_details.ex:123
+#: lib/phoenix_kit/newsletters/web/broadcast_details.html.heex:68
 #, elixir-autogen
 msgid "Retry send"
 msgstr "Повторить отправку"
 
-#: lib/phoenix_kit/newsletters/web/broadcast_details.ex:124
+#: lib/phoenix_kit/newsletters/web/broadcast_details.ex:126
 #, elixir-autogen
 msgid "This will retry sending the broadcast from the beginning."
 msgstr "Отправка выпуска начнётся заново."
 
-#: lib/phoenix_kit/newsletters/web/broadcast_details.ex:233
+#: lib/phoenix_kit/newsletters/web/broadcast_details.ex:238
 #, elixir-autogen
 msgid "Broadcast cancelled"
 msgstr "Выпуск отменён"
 
-#: lib/phoenix_kit/newsletters/web/broadcast_details.html.heex:125
+#: lib/phoenix_kit/newsletters/web/broadcast_details.html.heex:122
 #: lib/phoenix_kit/newsletters/web/form_errors.ex:57
 #, elixir-autogen
 msgid "Template"
 msgstr "Шаблон"
 
-#: lib/phoenix_kit/newsletters/web/broadcast_details.html.heex:202
+#: lib/phoenix_kit/newsletters/web/broadcast_details.html.heex:199
 #, elixir-autogen
 msgid "Total recipients"
 msgstr "Всего получателей"
 
-#: lib/phoenix_kit/newsletters/web/broadcast_details.html.heex:262
+#: lib/phoenix_kit/newsletters/web/broadcast_details.html.heex:265
 #, elixir-autogen
 msgid "Deliveries"
 msgstr "Доставки"
 
-#: lib/phoenix_kit/newsletters/web/broadcast_details.html.heex:274
+#: lib/phoenix_kit/newsletters/web/broadcast_details.html.heex:277
 #, elixir-autogen
 msgid "No deliveries yet"
 msgstr "Доставок пока нет"
 
-#: lib/phoenix_kit/newsletters/web/broadcast_details.html.heex:280
+#: lib/phoenix_kit/newsletters/web/broadcast_details.html.heex:313
 #, elixir-autogen
 msgid "Recipient"
 msgstr "Получатель"
 
-#: lib/phoenix_kit/newsletters/web/broadcast_details.html.heex:283
-#: lib/phoenix_kit/newsletters/web/broadcast_details.html.heex:337
+#: lib/phoenix_kit/newsletters/web/broadcast_details.html.heex:291
+#: lib/phoenix_kit/newsletters/web/broadcast_details.html.heex:316
 #, elixir-autogen
 msgid "Delivered at"
 msgstr "Доставлено"
 
-#: lib/phoenix_kit/newsletters/web/broadcast_details.html.heex:284
-#: lib/phoenix_kit/newsletters/web/broadcast_details.html.heex:340
+#: lib/phoenix_kit/newsletters/web/broadcast_details.html.heex:294
+#: lib/phoenix_kit/newsletters/web/broadcast_details.html.heex:317
 #, elixir-autogen
 msgid "Opened at"
 msgstr "Открыто"
 
-#: lib/phoenix_kit/newsletters/web/broadcast_details.html.heex:285
-#: lib/phoenix_kit/newsletters/web/broadcast_details.html.heex:344
+#: lib/phoenix_kit/newsletters/web/broadcast_details.html.heex:297
+#: lib/phoenix_kit/newsletters/web/broadcast_details.html.heex:318
 #, elixir-autogen
 msgid "Error"
 msgstr "Ошибка"
 
-#: lib/phoenix_kit/newsletters/web/broadcast_details.ex:43
+#: lib/phoenix_kit/newsletters/web/broadcast_details.ex:45
 #, elixir-autogen, elixir-format
 msgid "Broadcast details"
 msgstr "Детали выпуска"
 
-#: lib/phoenix_kit/newsletters/web/broadcasts.html.heex:18
+#: lib/phoenix_kit/newsletters/web/broadcasts.html.heex:20
 #, elixir-autogen, elixir-format
 msgid "Create first broadcast"
 msgstr "Создать первый выпуск"
 
-#: lib/phoenix_kit/newsletters/web/broadcasts.html.heex:87
+#: lib/phoenix_kit/newsletters/web/broadcasts.html.heex:86
 #, elixir-autogen, elixir-format
 msgid "View"
 msgstr "Просмотр"
 
-#: lib/phoenix_kit/newsletters/web/broadcast_editor.html.heex:86
-#: lib/phoenix_kit/newsletters/web/verification.html.heex:67
+#: lib/phoenix_kit/newsletters/web/broadcast_editor.ex:842
+#: lib/phoenix_kit/newsletters/web/verification.html.heex:69
 #, elixir-autogen, elixir-format
 msgid "%{name} (%{count} member)"
 msgid_plural "%{name} (%{count} members)"
@@ -417,22 +414,22 @@ msgstr[0] "%{name} (%{count} участник)"
 msgstr[1] "%{name} (%{count} участника)"
 msgstr[2] "%{name} (%{count} участников)"
 
-#: lib/phoenix_kit/newsletters/web/broadcast_details.ex:443
-#: lib/phoenix_kit/newsletters/web/broadcast_details.html.heex:232
+#: lib/phoenix_kit/newsletters/web/broadcast_details.ex:470
+#: lib/phoenix_kit/newsletters/web/broadcast_details.html.heex:229
 #, elixir-autogen, elixir-format
 msgid "Blocked"
 msgstr "Заблокировано"
 
-#: lib/phoenix_kit/newsletters/web/broadcast_details.html.heex:118
+#: lib/phoenix_kit/newsletters/web/broadcast_details.html.heex:115
 #, elixir-autogen, elixir-format
 msgid "CRM"
 msgstr "CRM"
 
-#: lib/phoenix_kit/newsletters/web/broadcast_editor.html.heex:57
-#: lib/phoenix_kit/newsletters/web/broadcast_editor.html.heex:63
-#: lib/phoenix_kit/newsletters/web/broadcasts.ex:161
+#: lib/phoenix_kit/newsletters/web/broadcast_editor.html.heex:51
+#: lib/phoenix_kit/newsletters/web/broadcast_editor.html.heex:67
+#: lib/phoenix_kit/newsletters/web/broadcasts.ex:130
 #: lib/phoenix_kit/newsletters/web/form_errors.ex:54
-#: lib/phoenix_kit/newsletters/web/verification.html.heex:59
+#: lib/phoenix_kit/newsletters/web/verification.html.heex:61
 #, elixir-autogen, elixir-format
 msgid "CRM list"
 msgstr "Список CRM"
@@ -442,13 +439,13 @@ msgstr "Список CRM"
 msgid "Choose which newsletters you'd like to receive."
 msgstr "Выберите, какие рассылки вы хотите получать."
 
-#: lib/phoenix_kit/newsletters/web/preference_center_live.ex:187
-#: lib/phoenix_kit/newsletters/web/preference_center_live.ex:201
+#: lib/phoenix_kit/newsletters/web/preference_center_live.ex:180
+#: lib/phoenix_kit/newsletters/web/preference_center_live.ex:194
 #, elixir-autogen, elixir-format
 msgid "Could not process that request — please try again."
 msgstr "Не удалось обработать запрос — попробуйте ещё раз."
 
-#: lib/phoenix_kit/newsletters/web/preference_center_live.ex:170
+#: lib/phoenix_kit/newsletters/web/preference_center_live.ex:161
 #, elixir-autogen, elixir-format
 msgid "Could not update that subscription — please try again."
 msgstr "Не удалось обновить подписку — попробуйте ещё раз."
@@ -475,7 +472,7 @@ msgstr "Сейчас нет доступных для подписки расс�
 msgid "Please log in to manage your email subscriptions"
 msgstr "Войдите, чтобы управлять своими подписками на рассылки"
 
-#: lib/phoenix_kit/newsletters/web/broadcast_editor.ex:280
+#: lib/phoenix_kit/newsletters/web/broadcast_editor.ex:294
 #, elixir-autogen, elixir-format
 msgid "Please select a valid schedule date and time"
 msgstr "Выберите корректные дату и время отправки"
@@ -490,7 +487,7 @@ msgstr "Подписаться снова"
 msgid "Send to"
 msgstr "Кому"
 
-#: lib/phoenix_kit/newsletters/web/broadcast_editor.ex:783
+#: lib/phoenix_kit/newsletters/web/broadcast_editor.ex:887
 #, elixir-autogen, elixir-format
 msgid "Sends at %{local} (%{tz}) · %{utc} UTC"
 msgstr "Отправка в %{local} (%{tz}) · %{utc} UTC"
@@ -505,7 +502,7 @@ msgstr "Не удалось загрузить ваши подписки. Поп
 msgid "Subscription management isn't available right now. Please try again later."
 msgstr "Управление подписками сейчас недоступно. Попробуйте ещё раз позже."
 
-#: lib/phoenix_kit/newsletters/web/preference_center_live.ex:148
+#: lib/phoenix_kit/newsletters/web/preference_center_live.ex:166
 #, elixir-autogen, elixir-format
 msgid "That list is no longer available."
 msgstr "Этот список больше недоступен."
@@ -515,8 +512,8 @@ msgstr "Этот список больше недоступен."
 msgid "This link is invalid or has expired."
 msgstr "Эта ссылка недействительна или срок её действия истёк."
 
-#: lib/phoenix_kit/newsletters/web/broadcast_details.html.heex:177
-#: lib/phoenix_kit/newsletters/web/broadcast_editor.html.heex:98
+#: lib/phoenix_kit/newsletters/web/broadcast_details.html.heex:174
+#: lib/phoenix_kit/newsletters/web/broadcast_editor.html.heex:73
 #, elixir-autogen, elixir-format
 msgid "This list is archived and cannot be sent to."
 msgstr "Этот список в архиве, отправка невозможна."
@@ -531,7 +528,7 @@ msgstr "Отписаться от всего"
 msgid "Unsubscribe from every newsletter list? You can resubscribe anytime from this page."
 msgstr "Отписаться от всех рассылок? Вы можете снова подписаться в любой момент на этой странице."
 
-#: lib/phoenix_kit/newsletters/web/preference_center_live.ex:196
+#: lib/phoenix_kit/newsletters/web/preference_center_live.ex:189
 #, elixir-autogen, elixir-format
 msgid "Welcome back — you can now choose which lists to receive."
 msgstr "С возвращением — теперь вы можете выбрать, какие списки получать."
@@ -541,14 +538,14 @@ msgstr "С возвращением — теперь вы можете выбр�
 msgid "You're unsubscribed from all newsletters."
 msgstr "Вы отписаны от всех рассылок."
 
-#: lib/phoenix_kit/newsletters/web/preference_center_live.ex:182
+#: lib/phoenix_kit/newsletters/web/preference_center_live.ex:175
 #: lib/phoenix_kit/newsletters/web/unsubscribe_html/crm_unsubscribe.html.heex:17
 #, elixir-autogen, elixir-format
 msgid "You've been unsubscribed from all newsletters."
 msgstr "Вы были отписаны от всех рассылок."
 
-#: lib/phoenix_kit/newsletters/web/broadcast_details.html.heex:181
-#: lib/phoenix_kit/newsletters/web/broadcast_editor.html.heex:141
+#: lib/phoenix_kit/newsletters/web/broadcast_details.html.heex:178
+#: lib/phoenix_kit/newsletters/web/broadcast_editor.html.heex:114
 #, elixir-autogen, elixir-format
 msgid "%{count} selected role no longer exists"
 msgid_plural "%{count} selected roles no longer exist"
@@ -556,78 +553,78 @@ msgstr[0] "%{count} выбранная роль больше не существ
 msgstr[1] "%{count} выбранные роли больше не существуют"
 msgstr[2] "%{count} выбранных ролей больше не существует"
 
+#: lib/phoenix_kit/newsletters/web/broadcast_details.html.heex:109
 #: lib/phoenix_kit/newsletters/web/broadcast_details.html.heex:112
-#: lib/phoenix_kit/newsletters/web/broadcast_details.html.heex:115
-#: lib/phoenix_kit/newsletters/web/broadcast_editor.html.heex:44
-#: lib/phoenix_kit/newsletters/web/broadcast_editor.html.heex:113
-#: lib/phoenix_kit/newsletters/web/broadcasts.ex:162
+#: lib/phoenix_kit/newsletters/web/broadcast_editor.html.heex:42
+#: lib/phoenix_kit/newsletters/web/broadcast_editor.html.heex:88
+#: lib/phoenix_kit/newsletters/web/broadcasts.ex:131
 #: lib/phoenix_kit/newsletters/web/form_errors.ex:55
-#: lib/phoenix_kit/newsletters/web/verification.html.heex:50
+#: lib/phoenix_kit/newsletters/web/verification.html.heex:52
 #, elixir-autogen, elixir-format
 msgid "Roles"
 msgstr "Роли"
 
-#: lib/phoenix_kit/newsletters/web/broadcast_details.html.heex:134
-#: lib/phoenix_kit/newsletters/web/broadcasts.html.heex:57
-#: lib/phoenix_kit/newsletters/web/broadcasts.html.heex:102
+#: lib/phoenix_kit/newsletters/web/broadcast_details.html.heex:131
+#: lib/phoenix_kit/newsletters/web/broadcasts.html.heex:59
+#: lib/phoenix_kit/newsletters/web/broadcasts.html.heex:101
 #, elixir-autogen, elixir-format
 msgid "Scheduled at"
 msgstr "Запланировано на"
 
-#: lib/phoenix_kit/newsletters/web/broadcast_details.html.heex:96
-#: lib/phoenix_kit/newsletters/web/broadcast_details.html.heex:264
-#: lib/phoenix_kit/newsletters/web/broadcasts.html.heex:38
-#: lib/phoenix_kit/newsletters/web/verification.html.heex:187
+#: lib/phoenix_kit/newsletters/web/broadcast_details.html.heex:93
+#: lib/phoenix_kit/newsletters/web/broadcast_details.html.heex:267
+#: lib/phoenix_kit/newsletters/web/broadcasts.html.heex:40
+#: lib/phoenix_kit/newsletters/web/verification.html.heex:193
 #, elixir-autogen, elixir-format
 msgid "Times shown in %{tz}"
 msgstr "Время в %{tz}"
 
-#: lib/phoenix_kit/newsletters/web/broadcast_details.html.heex:106
-#: lib/phoenix_kit/newsletters/web/broadcasts.html.heex:51
-#: lib/phoenix_kit/newsletters/web/broadcasts.html.heex:94
+#: lib/phoenix_kit/newsletters/web/broadcast_details.html.heex:103
+#: lib/phoenix_kit/newsletters/web/broadcasts.html.heex:53
+#: lib/phoenix_kit/newsletters/web/broadcasts.html.heex:93
 #, elixir-autogen, elixir-format
 msgid "Source"
 msgstr "Источник"
 
-#: lib/phoenix_kit/newsletters/web/broadcasts.ex:165
+#: lib/phoenix_kit/newsletters/web/broadcasts.ex:134
 #, elixir-autogen, elixir-format
 msgid "Legacy list"
 msgstr "Устаревший список"
 
-#: lib/phoenix_kit/newsletters/web/broadcast_editor.html.heex:79
+#: lib/phoenix_kit/newsletters/web/broadcast_editor.ex:833
 #, elixir-autogen, elixir-format
 msgid "%{name} (no longer selectable)"
 msgstr "%{name} (больше недоступен для выбора)"
 
-#: lib/phoenix_kit/newsletters/web/broadcast_editor.html.heex:211
+#: lib/phoenix_kit/newsletters/web/broadcast_editor.html.heex:182
 #, elixir-autogen, elixir-format
 msgid "Add files"
 msgstr "Добавить файлы"
 
-#: lib/phoenix_kit/newsletters/web/broadcast_details.html.heex:146
-#: lib/phoenix_kit/newsletters/web/broadcast_editor.html.heex:175
+#: lib/phoenix_kit/newsletters/web/broadcast_details.html.heex:143
+#: lib/phoenix_kit/newsletters/web/broadcast_editor.html.heex:144
 #: lib/phoenix_kit/newsletters/web/form_errors.ex:56
 #, elixir-autogen, elixir-format
 msgid "Attachments"
 msgstr "Вложения"
 
-#: lib/phoenix_kit/newsletters/web/broadcast_editor.html.heex:216
+#: lib/phoenix_kit/newsletters/web/broadcast_editor.html.heex:187
 #, elixir-autogen, elixir-format
 msgid "Attachments total %{size} — large attachments can slow delivery."
 msgstr "Общий размер вложений %{size} — большие вложения могут замедлить доставку."
 
-#: lib/phoenix_kit/newsletters/web/broadcast_editor.html.heex:201
+#: lib/phoenix_kit/newsletters/web/broadcast_editor.html.heex:172
 #, elixir-autogen, elixir-format
 msgid "Remove attachment"
 msgstr "Удалить вложение"
 
-#: lib/phoenix_kit/newsletters/web/broadcast_details.html.heex:166
-#: lib/phoenix_kit/newsletters/web/broadcast_editor.html.heex:194
+#: lib/phoenix_kit/newsletters/web/broadcast_details.html.heex:163
+#: lib/phoenix_kit/newsletters/web/broadcast_editor.html.heex:165
 #, elixir-autogen, elixir-format
 msgid "missing file"
 msgstr "файл отсутствует"
 
-#: lib/phoenix_kit/newsletters/web/broadcast_editor.ex:750
+#: lib/phoenix_kit/newsletters/web/broadcast_editor.ex:854
 #, elixir-autogen, elixir-format
 msgid "%{name} (archived)"
 msgstr "%{name} (в архиве)"
@@ -637,140 +634,140 @@ msgstr "%{name} (в архиве)"
 msgid "A broadcast sent without a layout of its own, in the standard layout"
 msgstr "Выпуск без собственного шаблона оформления, в стандартном оформлении"
 
-#: lib/phoenix_kit/newsletters/web/layouts_index.html.heex:37
+#: lib/phoenix_kit/newsletters/web/layouts_index.html.heex:15
 #, elixir-autogen, elixir-format
 msgid "A broadcast without a layout is sent inside the site's standard email layout. A layout places the broadcast with {{{content}}} and can place the site's {{{header}}} and {{{footer}}}."
 msgstr "Выпуск без шаблона оформления отправляется в стандартном оформлении писем сайта. Шаблон оформления размещает выпуск через {{{content}}} и может использовать шапку {{{header}}} и подвал {{{footer}}} сайта."
 
-#: lib/phoenix_kit/newsletters/web/layouts_index.ex:114
-#: lib/phoenix_kit/newsletters/web/layouts_index.html.heex:16
+#: lib/phoenix_kit/newsletters/web/layouts_index.ex:121
+#: lib/phoenix_kit/newsletters/web/layouts_index.html.heex:29
 #, elixir-autogen, elixir-format
 msgid "Active"
 msgstr "Активен"
 
-#: lib/phoenix_kit/newsletters/web/layouts_index.html.heex:101
+#: lib/phoenix_kit/newsletters/web/layouts_index.html.heex:108
 #, elixir-autogen, elixir-format
 msgid "Archive"
 msgstr "В архив"
 
-#: lib/phoenix_kit/newsletters/web/layouts_index.html.heex:99
+#: lib/phoenix_kit/newsletters/web/layouts_index.html.heex:106
 #, elixir-autogen, elixir-format
 msgid "Archive this layout? Broadcasts already using it keep it."
 msgstr "Отправить шаблон оформления в архив? Выпуски, которые его уже используют, сохранят его."
 
-#: lib/phoenix_kit/newsletters/web/layouts_index.ex:115
-#: lib/phoenix_kit/newsletters/web/layouts_index.html.heex:18
+#: lib/phoenix_kit/newsletters/web/layouts_index.ex:122
+#: lib/phoenix_kit/newsletters/web/layouts_index.html.heex:30
 #, elixir-autogen, elixir-format
 msgid "Archived"
 msgstr "В архиве"
 
-#: lib/phoenix_kit/newsletters/web/layouts_index.html.heex:46
+#: lib/phoenix_kit/newsletters/web/layouts_index.html.heex:66
 #, elixir-autogen, elixir-format
 msgid "Broadcasts use the standard email layout until you add one."
 msgstr "Пока вы не добавите шаблон оформления, выпуски используют стандартное оформление писем."
 
-#: lib/phoenix_kit/newsletters/web/layouts_index.ex:61
+#: lib/phoenix_kit/newsletters/web/layouts_index.ex:68
 #, elixir-autogen, elixir-format
 msgid "Could not archive the layout"
 msgstr "Не удалось отправить шаблон оформления в архив"
 
-#: lib/phoenix_kit/newsletters/web/layouts_index.ex:79
+#: lib/phoenix_kit/newsletters/web/layouts_index.ex:86
 #, elixir-autogen, elixir-format
 msgid "Could not restore the layout"
 msgstr "Не удалось восстановить шаблон оформления"
 
-#: lib/phoenix_kit/newsletters/web/layouts_index.ex:102
+#: lib/phoenix_kit/newsletters/web/layouts_index.ex:109
 #, elixir-autogen, elixir-format
 msgid "Could not update the default layout"
 msgstr "Не удалось изменить шаблон оформления по умолчанию"
 
-#: lib/phoenix_kit/newsletters/web/layouts_index.html.heex:74
+#: lib/phoenix_kit/newsletters/web/layouts_index.html.heex:82
 #, elixir-autogen, elixir-format
 msgid "Default"
 msgstr "По умолчанию"
 
-#: lib/phoenix_kit/newsletters/web/layouts_index.ex:86
+#: lib/phoenix_kit/newsletters/web/layouts_index.ex:93
 #, elixir-autogen, elixir-format
 msgid "Default layout updated"
 msgstr "Шаблон оформления по умолчанию изменён"
 
 #: lib/phoenix_kit/newsletters/web/form_errors.ex:50
-#: lib/phoenix_kit/newsletters/web/layout_editor.html.heex:89
+#: lib/phoenix_kit/newsletters/web/layout_editor.html.heex:104
 #, elixir-autogen, elixir-format
 msgid "Display name"
 msgstr "Отображаемое название"
 
 #: lib/phoenix_kit/newsletters/web/form_errors.ex:52
-#: lib/phoenix_kit/newsletters/web/layout_editor.html.heex:125
+#: lib/phoenix_kit/newsletters/web/layout_editor.html.heex:138
 #, elixir-autogen, elixir-format
 msgid "HTML"
 msgstr "HTML"
 
-#: lib/phoenix_kit/newsletters/render.ex:217
-#: lib/phoenix_kit/newsletters/render.ex:223
+#: lib/phoenix_kit/newsletters/render.ex:250
+#: lib/phoenix_kit/newsletters/render.ex:256
 #, elixir-autogen, elixir-format
 msgid "Hello {{name}},"
 msgstr "Здравствуйте, {{name}}!"
 
-#: lib/phoenix_kit/newsletters/web/broadcast_editor.html.heex:310
+#: lib/phoenix_kit/newsletters/web/broadcast_editor.html.heex:285
 #, elixir-autogen, elixir-format
 msgid "Language"
 msgstr "Язык"
 
-#: lib/phoenix_kit/newsletters/web/layouts_index.html.heex:54
+#: lib/phoenix_kit/newsletters/web/layouts_index.html.heex:52
 #, elixir-autogen, elixir-format
 msgid "Languages"
 msgstr "Языки"
 
-#: lib/phoenix_kit/newsletters/web/broadcast_editor.html.heex:152
+#: lib/phoenix_kit/newsletters/web/broadcast_editor.html.heex:128
 #, elixir-autogen, elixir-format
 msgid "Layout"
 msgstr "Шаблон оформления"
 
-#: lib/phoenix_kit/newsletters/web/layouts_index.ex:59
+#: lib/phoenix_kit/newsletters/web/layouts_index.ex:66
 #, elixir-autogen, elixir-format
 msgid "Layout archived"
 msgstr "Шаблон оформления отправлен в архив"
 
 ## --- Broadcast editor page ---
-#: lib/phoenix_kit/newsletters/web/layout_editor.ex:74
+#: lib/phoenix_kit/newsletters/web/layout_editor.ex:77
 #, elixir-autogen, elixir-format
 msgid "Layout not found"
 msgstr "Шаблон оформления не найден"
 
-#: lib/phoenix_kit/newsletters/web/layouts_index.ex:68
+#: lib/phoenix_kit/newsletters/web/layouts_index.ex:75
 #, elixir-autogen, elixir-format
 msgid "Layout restored"
 msgstr "Шаблон оформления восстановлен"
 
-#: lib/phoenix_kit/newsletters/web/layout_editor.ex:150
+#: lib/phoenix_kit/newsletters/web/layout_editor.ex:153
 #, elixir-autogen, elixir-format
 msgid "Layout saved"
 msgstr "Шаблон оформления сохранён"
 
-#: lib/phoenix_kit/newsletters/web/layouts_index.html.heex:91
+#: lib/phoenix_kit/newsletters/web/layouts_index.html.heex:100
 #, elixir-autogen, elixir-format
 msgid "Make default"
 msgstr "Сделать по умолчанию"
 
-#: lib/phoenix_kit/newsletters/web/broadcast_editor.html.heex:168
+#: lib/phoenix_kit/newsletters/web/broadcast_editor.html.heex:135
 #, elixir-autogen, elixir-format
 msgid "Manage layouts"
 msgstr "Шаблоны оформления"
 
-#: lib/phoenix_kit/newsletters/web/layout_editor.html.heex:115
+#: lib/phoenix_kit/newsletters/web/layout_editor.html.heex:123
 #, elixir-autogen, elixir-format
 msgid "Must contain {{subject}}, the broadcast's own subject. Leave blank to send the broadcast's subject unchanged."
 msgstr "Должна содержать {{subject}} — тему самого выпуска. Оставьте пустой, чтобы отправить тему выпуска без изменений."
 
 #: lib/phoenix_kit/newsletters/web/form_errors.ex:49
-#: lib/phoenix_kit/newsletters/web/layout_editor.html.heex:24
-#: lib/phoenix_kit/newsletters/web/layouts_index.html.heex:53
+#: lib/phoenix_kit/newsletters/web/layout_editor.html.heex:40
+#: lib/phoenix_kit/newsletters/web/layouts_index.html.heex:51
 #, elixir-autogen, elixir-format
 msgid "Name"
 msgstr "Имя"
 
-#: lib/phoenix_kit/newsletters/web/layouts_index.ex:98
+#: lib/phoenix_kit/newsletters/web/layouts_index.ex:105
 #, elixir-autogen, elixir-format
 msgid "New broadcasts now start with the standard layout"
 msgstr "Новые выпуски теперь начинаются со стандартного оформления"
@@ -781,53 +778,53 @@ msgstr "Новые выпуски теперь начинаются со ста�
 msgid "Newsletter broadcast"
 msgstr "Выпуск рассылки"
 
-#: lib/phoenix_kit/newsletters/web/layout_editor.html.heex:177
+#: lib/phoenix_kit/newsletters/web/layout_editor.html.heex:185
 #, elixir-autogen, elixir-format
 msgid "No HTML in this language yet"
 msgstr "Для этого языка HTML ещё нет"
 
-#: lib/phoenix_kit/newsletters/web/layouts_index.html.heex:45
+#: lib/phoenix_kit/newsletters/web/layouts_index.html.heex:65
 #, elixir-autogen, elixir-format
 msgid "No layouts found"
 msgstr "Шаблоны оформления не найдены"
 
-#: lib/phoenix_kit/newsletters/web/layouts_index.ex:89
+#: lib/phoenix_kit/newsletters/web/layouts_index.ex:96
 #, elixir-autogen, elixir-format
 msgid "Only an active layout can be the default"
 msgstr "По умолчанию может быть только активный шаблон оформления"
 
-#: lib/phoenix_kit/newsletters/render.ex:214
+#: lib/phoenix_kit/newsletters/render.ex:247
 #, elixir-autogen, elixir-format
 msgid "Our latest news"
 msgstr "Наши последние новости"
 
-#: lib/phoenix_kit/newsletters/web/layouts_index.html.heex:110
+#: lib/phoenix_kit/newsletters/web/layouts_index.html.heex:115
 #, elixir-autogen, elixir-format
 msgid "Restore"
 msgstr "Восстановить"
 
 ## --- Broadcast details page ---
-#: lib/phoenix_kit/newsletters/web/layout_editor.ex:301
+#: lib/phoenix_kit/newsletters/web/layout_editor.ex:345
 #, elixir-autogen, elixir-format
 msgid "Sample broadcast"
 msgstr "Пример выпуска"
 
-#: lib/phoenix_kit/newsletters/web/layout_editor.ex:273
+#: lib/phoenix_kit/newsletters/web/layout_editor.ex:317
 #, elixir-autogen, elixir-format
 msgid "Sample subject"
 msgstr "Пример темы"
 
-#: lib/phoenix_kit/newsletters/web/layout_editor.html.heex:159
+#: lib/phoenix_kit/newsletters/web/layout_editor.html.heex:171
 #, elixir-autogen, elixir-format
 msgid "Save layout"
 msgstr "Сохранить шаблон оформления"
 
-#: lib/phoenix_kit/newsletters/web/broadcast_editor.html.heex:155
+#: lib/phoenix_kit/newsletters/web/broadcast_editor.html.heex:129
 #, elixir-autogen, elixir-format
 msgid "Standard email layout"
 msgstr "Стандартное оформление писем"
 
-#: lib/phoenix_kit/newsletters/web/layout_editor.html.heex:104
+#: lib/phoenix_kit/newsletters/web/layout_editor.html.heex:118
 #, elixir-autogen, elixir-format
 msgid "Subject pattern (optional)"
 msgstr "Шаблон темы (необязательно)"
@@ -837,47 +834,47 @@ msgstr "Шаблон темы (необязательно)"
 msgid "Text"
 msgstr "Текст"
 
-#: lib/phoenix_kit/newsletters/web/layout_editor.html.heex:144
+#: lib/phoenix_kit/newsletters/web/layout_editor.html.heex:159
 #, elixir-autogen, elixir-format
 msgid "Text (kept for reference)"
 msgstr "Текст (хранится для справки)"
 
-#: lib/phoenix_kit/newsletters/web/layouts_index.ex:26
+#: lib/phoenix_kit/newsletters/web/layouts_index.ex:30
 #, elixir-autogen, elixir-format
 msgid "The HTML your broadcasts are sent inside"
 msgstr "HTML, в котором отправляются ваши выпуски"
 
-#: lib/phoenix_kit/newsletters/render.ex:219
-#: lib/phoenix_kit/newsletters/render.ex:225
-#: lib/phoenix_kit/newsletters/web/layout_editor.ex:303
+#: lib/phoenix_kit/newsletters/render.ex:252
+#: lib/phoenix_kit/newsletters/render.ex:258
+#: lib/phoenix_kit/newsletters/web/layout_editor.ex:347
 #, elixir-autogen, elixir-format
 msgid "This is where the broadcast's own text goes."
 msgstr "Здесь будет текст самого выпуска."
 
-#: lib/phoenix_kit/newsletters/render.ex:221
-#: lib/phoenix_kit/newsletters/render.ex:370
-#: lib/phoenix_kit/newsletters/web/layout_editor.ex:340
+#: lib/phoenix_kit/newsletters/render.ex:254
+#: lib/phoenix_kit/newsletters/render.ex:403
+#: lib/phoenix_kit/newsletters/web/layout_editor.ex:384
 #: lib/phoenix_kit/newsletters/web/unsubscribe_html/role_optout_unsubscribe.html.heex:33
 #, elixir-autogen, elixir-format
 msgid "Unsubscribe"
 msgstr "Отписаться"
 
-#: lib/phoenix_kit/newsletters/web/layouts_index.html.heex:28
+#: lib/phoenix_kit/newsletters/web/layouts_index.html.heex:40
 #, elixir-autogen, elixir-format
 msgid "Use the standard layout by default"
 msgstr "Использовать стандартное оформление по умолчанию"
 
-#: lib/phoenix_kit/newsletters/web/layout_editor.html.heex:134
+#: lib/phoenix_kit/newsletters/web/layout_editor.html.heex:144
 #, elixir-autogen, elixir-format
 msgid "{{{content}}} is the broadcast. Also available: {{{header}}}, {{{footer}}}, {{logo_url}}, {{accent_color}}, {{site_name}}, {{site_url}}, {{subject}}, {{name}}, {{email}}, {{unsubscribe_url}}, {{preferences_url}}."
 msgstr "{{{content}}} — это выпуск. Также доступны: {{{header}}}, {{{footer}}}, {{logo_url}}, {{accent_color}}, {{site_name}}, {{site_url}}, {{subject}}, {{name}}, {{email}}, {{unsubscribe_url}}, {{preferences_url}}."
 
-#: lib/phoenix_kit/newsletters/web/layouts_index.ex:75
+#: lib/phoenix_kit/newsletters/web/layouts_index.ex:82
 #, elixir-autogen, elixir-format
 msgid "A system email carried over for old broadcasts stays archived"
 msgstr "Системное письмо, перенесённое ради старых выпусков, остаётся в архиве"
 
-#: lib/phoenix_kit/newsletters/web/layouts_index.html.heex:77
+#: lib/phoenix_kit/newsletters/web/layouts_index.html.heex:85
 #, elixir-autogen, elixir-format
 msgid "System email"
 msgstr "Системное письмо"
@@ -908,12 +905,12 @@ msgstr "каждому языку должен соответствовать т
 msgid "must place the broadcast with {{{content}}} (missing in %{language})"
 msgstr "должен размещать выпуск через {{{content}}} (нет в %{language})"
 
-#: lib/phoenix_kit/newsletters/web/broadcasts.html.heex:34
+#: lib/phoenix_kit/newsletters/web/broadcasts.html.heex:36
 #, elixir-autogen, elixir-format
 msgid "Choose another status to see more broadcasts."
 msgstr "Выберите другой статус, чтобы увидеть другие выпуски."
 
-#: lib/phoenix_kit/newsletters/web/broadcasts.html.heex:33
+#: lib/phoenix_kit/newsletters/web/broadcasts.html.heex:35
 #, elixir-autogen, elixir-format
 msgid "No broadcasts with this status"
 msgstr "Нет выпусков с таким статусом"
@@ -923,17 +920,17 @@ msgstr "Нет выпусков с таким статусом"
 msgid "at least one language must place the broadcast with {{{content}}}"
 msgstr "хотя бы один язык должен размещать выпуск через {{{content}}}"
 
-#: lib/phoenix_kit/newsletters/web/layout_editor.html.heex:35
+#: lib/phoenix_kit/newsletters/web/layout_editor.html.heex:45
 #, elixir-autogen, elixir-format
 msgid "Lowercase Latin letters, numbers and underscores; starts with a letter. For example: monthly_news."
 msgstr "Строчные латинские буквы, цифры и подчёркивания; начинается с буквы. Например: monthly_news."
 
-#: lib/phoenix_kit/newsletters/web/layout_editor.html.heex:40
+#: lib/phoenix_kit/newsletters/web/layout_editor.html.heex:51
 #, elixir-autogen, elixir-format
 msgid "Suggested name:"
 msgstr "Предлагаемое имя:"
 
-#: lib/phoenix_kit/newsletters/web/layout_editor.html.heex:47
+#: lib/phoenix_kit/newsletters/web/layout_editor.html.heex:58
 #, elixir-autogen, elixir-format
 msgid "Use this name"
 msgstr "Использовать это имя"
@@ -943,30 +940,30 @@ msgstr "Использовать это имя"
 msgid "must use only lowercase Latin letters, numbers and underscores, and start with a letter (for example monthly_news)"
 msgstr "допускаются только строчные латинские буквы, цифры и подчёркивания, имя должно начинаться с буквы (например, monthly_news)"
 
-#: lib/phoenix_kit/newsletters/web/layout_editor.html.heex:71
+#: lib/phoenix_kit/newsletters/web/layout_editor.html.heex:82
 #, elixir-autogen, elixir-format
 msgid "not a site language"
 msgstr "не язык сайта"
 
-#: lib/phoenix_kit/newsletters/web/layout_editor.html.heex:99
-#: lib/phoenix_kit/newsletters/web/layout_editor.html.heex:120
-#: lib/phoenix_kit/newsletters/web/layout_editor.html.heex:139
-#: lib/phoenix_kit/newsletters/web/layout_editor.html.heex:153
+#: lib/phoenix_kit/newsletters/web/layout_editor.html.heex:109
+#: lib/phoenix_kit/newsletters/web/layout_editor.html.heex:129
+#: lib/phoenix_kit/newsletters/web/layout_editor.html.heex:150
+#: lib/phoenix_kit/newsletters/web/layout_editor.html.heex:166
 #, elixir-autogen, elixir-format
 msgid "Not editable here: in this field the language is stored under another tab."
 msgstr "Здесь не редактируется: в этом поле данный язык хранится на другой вкладке."
 
-#: lib/phoenix_kit/newsletters/web/layout_editor.html.heex:83
+#: lib/phoenix_kit/newsletters/web/layout_editor.html.heex:94
 #, elixir-autogen, elixir-format
 msgid "This subject is stored under %{key}, but a send reads the subject in the language of the HTML, so it is never used. Copy it to the right language tab, or clear it to remove it."
 msgstr "Эта тема сохранена под ключом %{key}, но при отправке тема читается на языке HTML, поэтому она никогда не используется. Скопируйте её на нужную языковую вкладку или очистите, чтобы удалить."
 
-#: lib/phoenix_kit/newsletters/web/layout_editor.html.heex:68
+#: lib/phoenix_kit/newsletters/web/layout_editor.html.heex:79
 #, elixir-autogen, elixir-format
 msgid "subject not used by sends"
 msgstr "тема не используется при отправке"
 
-#: lib/phoenix_kit/newsletters/web/verification.html.heex:105
+#: lib/phoenix_kit/newsletters/web/verification.html.heex:107
 #, elixir-autogen, elixir-format
 msgid "%{count} sendable address"
 msgid_plural "%{count} sendable addresses"
@@ -974,234 +971,224 @@ msgstr[0] "%{count} адрес для отправки"
 msgstr[1] "%{count} адреса для отправки"
 msgstr[2] "%{count} адресов для отправки"
 
-#: lib/phoenix_kit/newsletters/web/verification.html.heex:24
+#: lib/phoenix_kit/newsletters/web/verification.html.heex:26
 #, elixir-autogen, elixir-format
 msgid "Address verification is switched off. The verification engine has to be switched on for this page to work."
 msgstr "Проверка адресов выключена. Чтобы эта страница работала, нужно включить движок проверки."
 
-#: lib/phoenix_kit/newsletters/web/verification.html.heex:42
+#: lib/phoenix_kit/newsletters/web/verification.html.heex:44
 #, elixir-autogen, elixir-format
 msgid "Audience"
 msgstr "Аудитория"
 
-#: lib/phoenix_kit/newsletters/web/verification.ex:70
+#: lib/phoenix_kit/newsletters/web/verification.ex:71
 #, elixir-autogen, elixir-format
 msgid "Check the addresses of a broadcast audience"
 msgstr "Проверка адресов аудитории рассылки"
 
-#: lib/phoenix_kit/newsletters/web/verification.html.heex:200
-#: lib/phoenix_kit/newsletters/web/verification.html.heex:237
+#: lib/phoenix_kit/newsletters/web/verification.html.heex:206
+#: lib/phoenix_kit/newsletters/web/verification.html.heex:244
 #, elixir-autogen, elixir-format
 msgid "Checked"
 msgstr "Проверен"
 
-#: lib/phoenix_kit/newsletters/web/verification.ex:513
+#: lib/phoenix_kit/newsletters/web/verification.ex:514
 #, elixir-autogen, elixir-format
 msgid "Could not start the verification"
 msgstr "Не удалось запустить проверку"
 
-#: lib/phoenix_kit/newsletters/web/verification.ex:556
+#: lib/phoenix_kit/newsletters/web/verification.ex:557
 #, elixir-autogen, elixir-format
 msgid "DNS error"
 msgstr "Ошибка DNS"
 
-#: lib/phoenix_kit/newsletters/web/verification.html.heex:261
+#: lib/phoenix_kit/newsletters/web/verification.html.heex:268
 #, elixir-autogen, elixir-format
 msgid "Disposable"
 msgstr "Одноразовый"
 
-#: lib/phoenix_kit/newsletters/web/verification.ex:554
+#: lib/phoenix_kit/newsletters/web/verification.ex:555
 #, elixir-autogen, elixir-format
 msgid "Disposable domain"
 msgstr "Одноразовый домен"
 
-#: lib/phoenix_kit/newsletters/web/verification.ex:538
+#: lib/phoenix_kit/newsletters/web/verification.ex:539
 #, elixir-autogen, elixir-format
 msgid "Domain OK (no SMTP)"
 msgstr "Домен OK (без SMTP)"
 
-#: lib/phoenix_kit/newsletters/web/verification.html.heex:233
+#: lib/phoenix_kit/newsletters/web/verification.html.heex:240
 #, elixir-autogen, elixir-format
 msgid "Email"
 msgstr "Email"
 
-#: lib/phoenix_kit/newsletters/web/verification.html.heex:236
+#: lib/phoenix_kit/newsletters/web/verification.html.heex:243
 #, elixir-autogen, elixir-format
 msgid "Flags"
 msgstr "Признаки"
 
-#: lib/phoenix_kit/newsletters/web/verification.html.heex:255
+#: lib/phoenix_kit/newsletters/web/verification.html.heex:262
 #, elixir-autogen, elixir-format
 msgid "Free"
 msgstr "Бесплатный"
 
-#: lib/phoenix_kit/newsletters/web/verification.ex:534
+#: lib/phoenix_kit/newsletters/web/verification.ex:535
 #, elixir-autogen, elixir-format
 msgid "Invalid"
 msgstr "Невалидный"
 
-#: lib/phoenix_kit/newsletters/web/verification.ex:552
+#: lib/phoenix_kit/newsletters/web/verification.ex:553
 #, elixir-autogen, elixir-format
 msgid "Invalid syntax"
 msgstr "Неверный синтаксис"
 
-#: lib/phoenix_kit/newsletters/web/verification.html.heex:161
-#, elixir-autogen, elixir-format
-msgid "Last verification finished: %{at} (%{total} addresses)"
-msgstr "Последняя проверка завершена: %{at} (адресов: %{total})"
-
-#: lib/phoenix_kit/newsletters/web/verification.ex:558
+#: lib/phoenix_kit/newsletters/web/verification.ex:559
 #, elixir-autogen, elixir-format
 msgid "Mailbox not probed (SMTP check is off)"
 msgstr "Ящик не проверялся (проверка SMTP выключена)"
 
-#: lib/phoenix_kit/newsletters/web/verification.ex:560
+#: lib/phoenix_kit/newsletters/web/verification.ex:561
 #, elixir-autogen, elixir-format
 msgid "Mailbox not probed (SMTP error)"
 msgstr "Ящик не проверялся (ошибка SMTP)"
 
-#: lib/phoenix_kit/newsletters/web/verification.ex:559
+#: lib/phoenix_kit/newsletters/web/verification.ex:560
 #, elixir-autogen, elixir-format
 msgid "Mailbox not probed (SMTP unavailable)"
 msgstr "Ящик не проверялся (SMTP недоступен)"
 
-#: lib/phoenix_kit/newsletters/web/verification.html.heex:292
+#: lib/phoenix_kit/newsletters/web/verification.html.heex:299
 #, elixir-autogen, elixir-format
 msgid "Next"
 msgstr "Далее"
 
-#: lib/phoenix_kit/newsletters/web/verification.html.heex:96
+#: lib/phoenix_kit/newsletters/web/verification.html.heex:98
 #, elixir-autogen, elixir-format
 msgid "No addresses to verify"
 msgstr "Нет адресов для проверки"
 
-#: lib/phoenix_kit/newsletters/web/verification.html.heex:273
+#: lib/phoenix_kit/newsletters/web/verification.html.heex:280
 #, elixir-autogen, elixir-format
 msgid "No addresses with this status."
 msgstr "Нет адресов с таким статусом."
 
-#: lib/phoenix_kit/newsletters/web/verification.ex:537
+#: lib/phoenix_kit/newsletters/web/verification.ex:538
 #, elixir-autogen, elixir-format
 msgid "Not checked"
 msgstr "Не проверен"
 
-#: lib/phoenix_kit/newsletters/web/verification.ex:536
+#: lib/phoenix_kit/newsletters/web/verification.ex:537
 #, elixir-autogen, elixir-format
 msgid "Not sure"
 msgstr "Не уверен"
 
-#: lib/phoenix_kit/newsletters/web/verification.html.heex:285
+#: lib/phoenix_kit/newsletters/web/verification.html.heex:292
 #, elixir-autogen, elixir-format
 msgid "Page %{page} of %{total_pages}"
 msgstr "Страница %{page} из %{total_pages}"
 
-#: lib/phoenix_kit/newsletters/web/verification.html.heex:98
+#: lib/phoenix_kit/newsletters/web/verification.html.heex:100
 #, elixir-autogen, elixir-format
 msgid "Pick a CRM list or roles that have subscribed members with an email address."
 msgstr "Выберите CRM-список или роли, где есть подписанные участники с адресом email."
 
-#: lib/phoenix_kit/newsletters/web/verification.html.heex:282
+#: lib/phoenix_kit/newsletters/web/verification.html.heex:289
 #, elixir-autogen, elixir-format
 msgid "Previous"
 msgstr "Назад"
 
-#: lib/phoenix_kit/newsletters/web/verification.html.heex:199
-#: lib/phoenix_kit/newsletters/web/verification.html.heex:235
+#: lib/phoenix_kit/newsletters/web/verification.html.heex:205
+#: lib/phoenix_kit/newsletters/web/verification.html.heex:242
 #, elixir-autogen, elixir-format
 msgid "Reason"
 msgstr "Причина"
 
-#: lib/phoenix_kit/newsletters/web/verification.html.heex:258
+#: lib/phoenix_kit/newsletters/web/verification.html.heex:265
 #, elixir-autogen, elixir-format
 msgid "Role"
 msgstr "Ролевой"
 
-#: lib/phoenix_kit/newsletters/web/verification.html.heex:118
+#: lib/phoenix_kit/newsletters/web/verification.html.heex:120
 #, elixir-autogen, elixir-format
 msgid "Starting..."
 msgstr "Запуск..."
 
-#: lib/phoenix_kit/newsletters/web/verification.ex:535
+#: lib/phoenix_kit/newsletters/web/verification.ex:536
 #, elixir-autogen, elixir-format
 msgid "Temporary problem"
 msgstr "Временная ошибка"
 
-#: lib/phoenix_kit/newsletters/web/verification.ex:507
+#: lib/phoenix_kit/newsletters/web/verification.ex:508
 #, elixir-autogen, elixir-format
 msgid "The address verification engine is not available"
 msgstr "Движок проверки адресов недоступен"
 
-#: lib/phoenix_kit/newsletters/web/verification.ex:499
+#: lib/phoenix_kit/newsletters/web/verification.ex:500
 #, elixir-autogen, elixir-format
 msgid "The audience is too large for one batch (at most %{max} addresses)"
 msgstr "Аудитория слишком велика для одного пакета (не более %{max} адресов)"
 
-#: lib/phoenix_kit/newsletters/web/verification.ex:555
+#: lib/phoenix_kit/newsletters/web/verification.ex:556
 #, elixir-autogen, elixir-format
 msgid "The domain accepts no mail"
 msgstr "Домен не принимает почту"
 
-#: lib/phoenix_kit/newsletters/web/verification.html.heex:34
+#: lib/phoenix_kit/newsletters/web/verification.html.heex:36
 #, elixir-autogen, elixir-format
 msgid "The host's Oban configuration does not declare the queue the verification engine runs its batches in, so a started batch would never run. Add that queue (its name is in the engine's documentation) to the Oban queues of the host application."
 msgstr "В настройках Oban хост-приложения не объявлена очередь, в которой движок проверки выполняет пакеты, поэтому запущенный пакет никогда не выполнится. Добавьте эту очередь (её название указано в документации движка) в queues Oban хост-приложения."
 
-#: lib/phoenix_kit/newsletters/web/verification.html.heex:167
-#, elixir-autogen, elixir-format
-msgid "The last verification was cancelled after %{processed} of %{total} addresses"
-msgstr "Последняя проверка отменена после %{processed} из %{total} адресов"
-
-#: lib/phoenix_kit/newsletters/web/verification.ex:496
+#: lib/phoenix_kit/newsletters/web/verification.ex:497
 #, elixir-autogen, elixir-format
 msgid "There are no sendable addresses to verify"
 msgstr "Нет адресов, пригодных для отправки"
 
-#: lib/phoenix_kit/newsletters/web/verification.ex:553
+#: lib/phoenix_kit/newsletters/web/verification.ex:554
 #, elixir-autogen, elixir-format
 msgid "Unknown top-level domain"
 msgstr "Неизвестный домен верхнего уровня"
 
-#: lib/phoenix_kit/newsletters/web/verification.ex:533
+#: lib/phoenix_kit/newsletters/web/verification.ex:534
 #, elixir-autogen, elixir-format
 msgid "Valid"
 msgstr "Валидный"
 
-#: lib/phoenix_kit/newsletters/web/verification.ex:198
+#: lib/phoenix_kit/newsletters/web/verification.ex:199
 #, elixir-autogen, elixir-format
 msgid "Verification started"
 msgstr "Проверка запущена"
 
-#: lib/phoenix_kit/newsletters/web/verification.html.heex:120
+#: lib/phoenix_kit/newsletters/web/verification.html.heex:122
 #, elixir-autogen, elixir-format
 msgid "Verify the list"
 msgstr "Проверить список"
 
-#: lib/phoenix_kit/newsletters/web/verification.html.heex:127
+#: lib/phoenix_kit/newsletters/web/verification.html.heex:129
 #, elixir-autogen, elixir-format
 msgid "Verifying: %{processed} of %{total}"
 msgstr "Проверка: %{processed} из %{total}"
 
-#: lib/phoenix_kit/newsletters/web/verification.ex:505
+#: lib/phoenix_kit/newsletters/web/verification.ex:506
 #, elixir-autogen, elixir-format
 msgid "A verification of this audience is already running"
 msgstr "Проверка этой аудитории уже выполняется"
 
-#: lib/phoenix_kit/newsletters/web/verification.ex:511
+#: lib/phoenix_kit/newsletters/web/verification.ex:512
 #, elixir-autogen, elixir-format
 msgid "The verification failed to start: the verification engine reported an error"
 msgstr "Не удалось запустить проверку: движок проверки сообщил об ошибке"
 
-#: lib/phoenix_kit/newsletters/web/verification.ex:508
+#: lib/phoenix_kit/newsletters/web/verification.ex:509
 #, elixir-autogen, elixir-format
 msgid "Address verification is switched off"
 msgstr "Проверка адресов выключена"
 
-#: lib/phoenix_kit/newsletters/web/verification.ex:557
+#: lib/phoenix_kit/newsletters/web/verification.ex:558
 #, elixir-autogen, elixir-format
 msgid "Verification failed, will need a re-run"
 msgstr "Проверка не удалась, нужен повторный запуск"
 
-#: lib/phoenix_kit/newsletters/web/verification.html.heex:141
+#: lib/phoenix_kit/newsletters/web/verification.html.heex:143
 #, elixir-autogen, elixir-format
 msgid "%{count} address waiting for the SMTP check"
 msgid_plural "%{count} addresses waiting for the SMTP check"
@@ -1209,101 +1196,101 @@ msgstr[0] "%{count} адрес ждёт проверки SMTP"
 msgstr[1] "%{count} адреса ждут проверки SMTP"
 msgstr[2] "%{count} адресов ждут проверки SMTP"
 
-#: lib/phoenix_kit/newsletters/web/verification.ex:562
+#: lib/phoenix_kit/newsletters/web/verification.ex:563
 #, elixir-autogen, elixir-format
 msgid "Catch-all"
 msgstr "Catch-all"
 
-#: lib/phoenix_kit/newsletters/web/verification.ex:568
+#: lib/phoenix_kit/newsletters/web/verification.ex:569
 #, elixir-autogen, elixir-format
 msgid "Could not connect to the mail server"
 msgstr "Не удалось подключиться к почтовому серверу"
 
-#: lib/phoenix_kit/newsletters/web/verification.ex:565
+#: lib/phoenix_kit/newsletters/web/verification.ex:566
 #, elixir-autogen, elixir-format
 msgid "Greylisted"
 msgstr "Грейлистинг (повтор позже)"
 
-#: lib/phoenix_kit/newsletters/web/verification.ex:566
+#: lib/phoenix_kit/newsletters/web/verification.ex:567
 #, elixir-autogen, elixir-format
 msgid "Mail server blocked the check"
 msgstr "Почтовый сервер заблокировал проверку"
 
-#: lib/phoenix_kit/newsletters/web/verification.ex:569
+#: lib/phoenix_kit/newsletters/web/verification.ex:570
 #, elixir-autogen, elixir-format
 msgid "Mail server rejected the sender"
 msgstr "Почтовый сервер отклонил отправителя"
 
-#: lib/phoenix_kit/newsletters/web/verification.ex:563
+#: lib/phoenix_kit/newsletters/web/verification.ex:564
 #, elixir-autogen, elixir-format
 msgid "Mailbox does not exist"
 msgstr "Ящика не существует"
 
-#: lib/phoenix_kit/newsletters/web/verification.ex:564
+#: lib/phoenix_kit/newsletters/web/verification.ex:565
 #, elixir-autogen, elixir-format
 msgid "Mailbox is full"
 msgstr "Ящик переполнен"
 
-#: lib/phoenix_kit/newsletters/web/verification.ex:567
+#: lib/phoenix_kit/newsletters/web/verification.ex:568
 #, elixir-autogen, elixir-format
 msgid "SMTP check timed out"
 msgstr "Проверка SMTP: превышено время ожидания"
 
-#: lib/phoenix_kit/newsletters/web/verification.ex:539
+#: lib/phoenix_kit/newsletters/web/verification.ex:540
 #, elixir-autogen, elixir-format
 msgid "Waiting for SMTP"
 msgstr "Ждёт SMTP"
 
-#: lib/phoenix_kit/newsletters/web/verification.ex:561
+#: lib/phoenix_kit/newsletters/web/verification.ex:562
 #, elixir-autogen, elixir-format
 msgid "Waiting for the SMTP check"
 msgstr "Ждёт проверки SMTP"
 
-#: lib/phoenix_kit/newsletters/web/verification.ex:571
+#: lib/phoenix_kit/newsletters/web/verification.ex:572
 #, elixir-autogen, elixir-format
 msgid "Mail server reset the connection"
 msgstr "Почтовый сервер сбросил соединение"
 
-#: lib/phoenix_kit/newsletters/web/verification.ex:570
+#: lib/phoenix_kit/newsletters/web/verification.ex:571
 #, elixir-autogen, elixir-format
 msgid "Mailbox confirmed by the SMTP check"
 msgstr "Ящик подтверждён проверкой SMTP"
 
-#: lib/phoenix_kit/newsletters/web/verification.ex:59
-#: lib/phoenix_kit/newsletters/web/verification.ex:132
+#: lib/phoenix_kit/newsletters/web/verification.ex:60
+#: lib/phoenix_kit/newsletters/web/verification.ex:133
 #, elixir-autogen, elixir-format
 msgid "You don't have permission to see broadcast recipients"
 msgstr "У вас нет прав на просмотр получателей рассылок"
 
-#: lib/phoenix_kit/newsletters/web/broadcast_details.html.heex:271
+#: lib/phoenix_kit/newsletters/web/broadcast_details.html.heex:274
 #, elixir-autogen, elixir-format
 msgid "You don't have permission to see this broadcast's recipients"
 msgstr "У вас нет прав на просмотр получателей этой рассылки"
 
-#: lib/phoenix_kit/newsletters/web/broadcast_details.ex:259
-#: lib/phoenix_kit/newsletters/web/broadcast_details.ex:274
-#: lib/phoenix_kit/newsletters/web/broadcast_editor.ex:428
+#: lib/phoenix_kit/newsletters/web/broadcast_details.ex:264
+#: lib/phoenix_kit/newsletters/web/broadcast_details.ex:278
+#: lib/phoenix_kit/newsletters/web/broadcast_editor.ex:463
 #, elixir-autogen, elixir-format
 msgid "You don't have permission to send broadcasts"
 msgstr "У вас нет прав на отправку рассылок"
 
-#: lib/phoenix_kit/newsletters/web/broadcast_details.ex:278
-#: lib/phoenix_kit/newsletters/web/broadcast_editor.ex:440
+#: lib/phoenix_kit/newsletters/web/broadcast_details.ex:282
+#: lib/phoenix_kit/newsletters/web/broadcast_editor.ex:475
 #, elixir-autogen, elixir-format
 msgid "You don't have permission to use CRM lists"
 msgstr "У вас нет прав на использование списков CRM"
 
-#: lib/phoenix_kit/newsletters/web/verification.html.heex:157
+#: lib/phoenix_kit/newsletters/web/verification.html.heex:159
 #, elixir-autogen, elixir-format
 msgid "SMTP is waiting for the runner"
 msgstr "SMTP ждёт раннер"
 
-#: lib/phoenix_kit/newsletters/web/verification.html.heex:154
+#: lib/phoenix_kit/newsletters/web/verification.html.heex:156
 #, elixir-autogen, elixir-format
 msgid "SMTP is waiting for the runner - see the verification settings"
 msgstr "SMTP ждёт раннер — см. настройки проверки"
 
-#: lib/phoenix_kit/newsletters/web/verification.html.heex:15
+#: lib/phoenix_kit/newsletters/web/verification.html.heex:17
 #, elixir-autogen, elixir-format
 msgid "The address verification engine is not available. Set :email_verification_engine for :phoenix_kit_newsletters to an engine module in the host application's configuration, then come back."
 msgstr "Движок проверки адресов недоступен. Укажите модуль движка в параметре :email_verification_engine приложения :phoenix_kit_newsletters в конфигурации хост-приложения и вернитесь на эту страницу."
@@ -1371,12 +1358,12 @@ msgstr "Вы были отписаны от «%{list}»."
 msgid "You've been unsubscribed from these newsletters."
 msgstr "Вы были отписаны от этих рассылок."
 
-#: lib/phoenix_kit/newsletters/web/broadcast_details.ex:241
+#: lib/phoenix_kit/newsletters/web/broadcast_details.ex:246
 #, elixir-autogen, elixir-format
 msgid "A broadcast with status %{status} cannot be cancelled."
 msgstr "Выпуск со статусом %{status} нельзя отменить."
 
-#: lib/phoenix_kit/newsletters/web/broadcast_editor.ex:399
+#: lib/phoenix_kit/newsletters/web/broadcast_editor.ex:434
 #, elixir-autogen, elixir-format
 msgid "Only a draft can be edited"
 msgstr "Редактировать можно только черновик"
@@ -1386,7 +1373,7 @@ msgstr "Редактировать можно только черновик"
 msgid "broadcasts"
 msgstr "выпусков"
 
-#: lib/phoenix_kit/newsletters/web/broadcast_details.html.heex:359
+#: lib/phoenix_kit/newsletters/web/broadcast_details.html.heex:353
 #, elixir-autogen, elixir-format
 msgid "deliveries"
 msgstr "доставок"
@@ -1401,12 +1388,12 @@ msgstr "не существует"
 msgid "is invalid"
 msgstr "указано неверно"
 
-#: lib/phoenix_kit/newsletters/broadcast.ex:175
+#: lib/phoenix_kit/newsletters/broadcast.ex:176
 #, elixir-autogen, elixir-format
 msgid "must be a list of valid file uuids"
 msgstr "должно быть списком корректных UUID файлов"
 
-#: lib/phoenix_kit/newsletters/broadcast.ex:201
+#: lib/phoenix_kit/newsletters/broadcast.ex:202
 #, elixir-autogen, elixir-format
 msgid "select at least one role"
 msgstr "выберите хотя бы одну роль"
@@ -1426,7 +1413,7 @@ msgstr "должно содержать не более %{count} симв."
 msgid "should have at most %{count} item(s)"
 msgstr "должно содержать не более %{count} элем."
 
-#: lib/phoenix_kit/newsletters/web/broadcast_details.html.heex:253
+#: lib/phoenix_kit/newsletters/web/broadcast_details.html.heex:256
 #, elixir-autogen, elixir-format
 msgid "%{count} failed delivery may have gone out, so it cannot be resent."
 msgid_plural "%{count} failed deliveries may have gone out, so they cannot be resent."
@@ -1434,13 +1421,13 @@ msgstr[0] "%{count} неудавшаяся доставка могла всё ж
 msgstr[1] "%{count} неудавшиеся доставки могли всё же уйти, поэтому их нельзя отправить повторно."
 msgstr[2] "%{count} неудавшихся доставок могли всё же уйти, поэтому их нельзя отправить повторно."
 
-#: lib/phoenix_kit/newsletters/web/broadcast_details.ex:136
-#: lib/phoenix_kit/newsletters/web/broadcast_details.html.heex:83
+#: lib/phoenix_kit/newsletters/web/broadcast_details.ex:138
+#: lib/phoenix_kit/newsletters/web/broadcast_details.html.heex:80
 #, elixir-autogen, elixir-format
 msgid "Resend failed deliveries"
 msgstr "Отправить повторно неудавшиеся доставки"
 
-#: lib/phoenix_kit/newsletters/web/broadcast_details.ex:327
+#: lib/phoenix_kit/newsletters/web/broadcast_details.ex:354
 #, elixir-autogen, elixir-format
 msgid "Resending %{count} failed delivery"
 msgid_plural "Resending %{count} failed deliveries"
@@ -1453,7 +1440,7 @@ msgstr[2] "Повторно отправляется %{count} неудавших
 msgid "There are no failed deliveries to resend."
 msgstr "Нет неудавшихся доставок для повторной отправки."
 
-#: lib/phoenix_kit/newsletters/web/broadcast_details.ex:139
+#: lib/phoenix_kit/newsletters/web/broadcast_details.ex:141
 #, elixir-autogen, elixir-format
 msgid "This sends the broadcast again to the %{count} recipient whose delivery failed. Nobody else is mailed, and anyone who can no longer receive it is skipped."
 msgid_plural "This sends the broadcast again to the %{count} recipients whose delivery failed. Nobody else is mailed, and anyone who can no longer receive it is skipped."
@@ -1461,8 +1448,8 @@ msgstr[0] "Выпуск будет отправлен повторно %{count} 
 msgstr[1] "Выпуск будет отправлен повторно %{count} получателям, которым не удалось его доставить. Остальным он не отправляется, а те, кто больше не может его получить, будут пропущены."
 msgstr[2] "Выпуск будет отправлен повторно %{count} получателям, которым не удалось его доставить. Остальным он не отправляется, а те, кто больше не может его получить, будут пропущены."
 
-#: lib/phoenix_kit/newsletters/web/broadcast_details.html.heex:189
-#: lib/phoenix_kit/newsletters/web/broadcast_editor.html.heex:101
+#: lib/phoenix_kit/newsletters/web/broadcast_details.html.heex:186
+#: lib/phoenix_kit/newsletters/web/broadcast_editor.html.heex:76
 #, elixir-autogen, elixir-format
 msgid "%{count} member: %{sendable} sendable, %{no_email} no email, %{unsendable} unsubscribed/opted-out"
 msgid_plural "%{count} members: %{sendable} sendable, %{no_email} no email, %{unsendable} unsubscribed/opted-out"
@@ -1470,7 +1457,7 @@ msgstr[0] "%{count} участник: %{sendable} для отправки, %{no_
 msgstr[1] "%{count} участника: %{sendable} для отправки, %{no_email} без email, %{unsendable} отписавшихся"
 msgstr[2] "%{count} участников: %{sendable} для отправки, %{no_email} без email, %{unsendable} отписавшихся"
 
-#: lib/phoenix_kit/newsletters/web/broadcast_editor.html.heex:130
+#: lib/phoenix_kit/newsletters/web/broadcast_editor.html.heex:103
 #, elixir-autogen, elixir-format
 msgid "%{count} user: %{sendable} sendable, %{no_email} no email, %{unsendable} unsubscribed/opted-out"
 msgid_plural "%{count} users: %{sendable} sendable, %{no_email} no email, %{unsendable} unsubscribed/opted-out"
@@ -1478,12 +1465,12 @@ msgstr[0] "%{count} пользователь: %{sendable} для отправк�
 msgstr[1] "%{count} пользователя: %{sendable} для отправки, %{no_email} без email, %{unsendable} отписавшихся"
 msgstr[2] "%{count} пользователей: %{sendable} для отправки, %{no_email} без email, %{unsendable} отписавшихся"
 
-#: lib/phoenix_kit/newsletters/web/broadcast_details.ex:214
+#: lib/phoenix_kit/newsletters/web/broadcast_details.ex:219
 #, elixir-autogen, elixir-format
 msgid "A broadcast with status %{status} cannot go back to draft."
 msgstr "Выпуск со статусом %{status} нельзя вернуть в черновики."
 
-#: lib/phoenix_kit/newsletters/web/broadcast_details.html.heex:61
+#: lib/phoenix_kit/newsletters/web/broadcast_details.html.heex:58
 #, elixir-autogen, elixir-format
 msgid "Back to draft"
 msgstr "Вернуть в черновики"
@@ -1498,7 +1485,7 @@ msgstr "Подтвердите адрес электронной почты, ч�
 msgid "Email broadcasts and subscription management"
 msgstr "Рассылки по электронной почте и управление подписками"
 
-#: lib/phoenix_kit/newsletters/web/broadcast_details.html.heex:245
+#: lib/phoenix_kit/newsletters/web/broadcast_details.html.heex:248
 #, elixir-autogen, elixir-format
 msgid "Message"
 msgstr "Сообщение"
@@ -1508,7 +1495,7 @@ msgstr "Сообщение"
 msgid "Nobody in this audience can receive it right now, so nothing was sent."
 msgstr "Сейчас никто из этой аудитории не может его получить, поэтому ничего не отправлено."
 
-#: lib/phoenix_kit/newsletters/web/broadcast_editor.ex:291
+#: lib/phoenix_kit/newsletters/web/broadcast_editor.ex:305
 #, elixir-autogen, elixir-format
 msgid "Please choose a time in the future"
 msgstr "Выберите время в будущем"
@@ -1533,12 +1520,12 @@ msgstr "Отправка выпуска сразу, по расписанию и
 msgid "Send broadcasts"
 msgstr "Отправка выпусков"
 
-#: lib/phoenix_kit/newsletters/web/broadcast_details.ex:194
+#: lib/phoenix_kit/newsletters/web/broadcast_details.ex:199
 #, elixir-autogen, elixir-format
 msgid "This broadcast will never go out. A cancelled broadcast cannot be edited or sent."
 msgstr "Этот выпуск никогда не будет отправлен. Отменённый выпуск нельзя изменить или отправить."
 
-#: lib/phoenix_kit/newsletters/web/broadcast_details.ex:198
+#: lib/phoenix_kit/newsletters/web/broadcast_details.ex:203
 #, elixir-autogen, elixir-format
 msgid "This will stop any remaining deliveries. A cancelled broadcast cannot be resumed."
 msgstr "Оставшиеся доставки будут остановлены. Отменённый выпуск нельзя возобновить."
@@ -1552,3 +1539,26 @@ msgstr "Перед отправкой напишите текст письма."
 #, elixir-autogen, elixir-format
 msgid "archived"
 msgstr "архивный"
+
+#: lib/phoenix_kit/newsletters/web/layouts_index.html.heex:55
+#: lib/phoenix_kit/newsletters/web/layouts_index.html.heex:89
+#, elixir-autogen, elixir-format
+msgid "Actions"
+msgstr "Действия"
+
+#: lib/phoenix_kit/newsletters/web/verification.html.heex:163
+#, elixir-autogen, elixir-format
+msgid "Last verification finished: %{at} (%{count} address)"
+msgid_plural "Last verification finished: %{at} (%{count} addresses)"
+msgstr[0] "Последняя проверка завершена: %{at} (%{count} адрес)"
+msgstr[1] "Последняя проверка завершена: %{at} (%{count} адреса)"
+msgstr[2] "Последняя проверка завершена: %{at} (%{count} адресов)"
+
+#: lib/phoenix_kit/newsletters/web/verification.html.heex:171
+#, elixir-autogen, elixir-format
+msgid "The last verification was cancelled after %{processed} of %{count} address"
+msgid_plural "The last verification was cancelled after %{processed} of %{count} addresses"
+
+msgstr[0] "Последняя проверка отменена после %{processed} из %{count} адреса"
+msgstr[1] "Последняя проверка отменена после %{processed} из %{count} адресов"
+msgstr[2] "Последняя проверка отменена после %{processed} из %{count} адресов"

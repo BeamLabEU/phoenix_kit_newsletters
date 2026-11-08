@@ -292,6 +292,70 @@ defmodule PhoenixKit.Newsletters.Web.LayoutEditorLanguagesTest do
       assert socket.assigns.editor_locale == "en"
       assert html_in(socket, "en") =~ "edited"
     end
+
+    # Only the open tab's fields are inputs. An edit on another tab was in the
+    # server's state alone, and a remount reads the database.
+    test "an unsaved edit on a tab that is not open comes back too", %{socket: socket} do
+      socket =
+        socket
+        |> type(%{"html_body" => "<div>{{{content}}} en draft</div>"})
+        |> switch("et")
+
+      html = render_page(socket)
+      assert html =~ ~s(name="all[html_body][en]")
+      assert html =~ "en draft"
+      refute html =~ ~s(name="all[html_body][et]")
+
+      # The reconnect: a fresh page, then the form as the browser had it.
+      layout_uuid = socket.assigns.edited_layout.uuid
+      fresh = mounted(%{"id" => layout_uuid})
+      assert html_in(fresh, "en") =~ "first"
+
+      {:noreply, recovered} =
+        LayoutEditor.handle_event(
+          "validate",
+          %{
+            "editor_language" => "et",
+            "all" => %{"html_body" => %{"en" => "<div>{{{content}}} en draft</div>"}},
+            "fields" => %{"html_body" => "<div>{{{content}}} et draft</div>"}
+          },
+          fresh
+        )
+
+      assert html_in(recovered, "en") =~ "en draft"
+      assert html_in(recovered, "et") =~ "et draft"
+    end
+
+    test "a key no tab owns, or a value that is not text, is ignored", %{socket: socket} do
+      {:noreply, socket} =
+        LayoutEditor.handle_event(
+          "validate",
+          %{
+            "all" => %{
+              "html_body" => %{"zz" => "<div>{{{content}}}</div>", "et" => %{"a" => "b"}},
+              "bogus" => %{"en" => "x"}
+            }
+          },
+          socket
+        )
+
+      refute Map.has_key?(socket.assigns.translations["html_body"], "zz")
+      assert html_in(socket, "et") =~ "second"
+      refute Map.has_key?(socket.assigns.translations, "bogus")
+    end
+
+    test "a crafted request does not take the page down", %{socket: socket} do
+      for params <- [
+            %{"fields" => "x"},
+            %{"fields" => %{"html_body" => %{"a" => "b"}}},
+            %{"name" => %{"a" => "b"}},
+            %{"all" => "x"}
+          ] do
+        assert {:noreply, updated} = LayoutEditor.handle_event("validate", params, socket)
+        assert updated.assigns.name == socket.assigns.name
+        assert html_in(updated, "en") == html_in(socket, "en")
+      end
+    end
   end
 
   describe "the starter HTML" do

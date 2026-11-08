@@ -1,6 +1,8 @@
 <PhoenixKitWeb.Components.LayoutWrapper.app_layout
   flash={@flash}
+  socket={assigns[:socket]}
   phoenix_kit_current_scope={assigns[:phoenix_kit_current_scope]}
+  current_locale={assigns[:current_locale]}
   page_title={@page_title}
   page_subtitle={@page_subtitle}
   page_section={@page_section}
@@ -14,85 +16,58 @@
     <div class="grid grid-cols-1 xl:grid-cols-2 gap-6">
       <%!-- Left: Editor --%>
       <div class="space-y-4">
-        <%!-- Subject --%>
-        <fieldset class="fieldset">
-          <label class="label">{gettext("Subject")}</label>
-          <input
-            type="text"
-            name="subject"
-            value={@subject}
-            placeholder={gettext("Enter email subject...")}
-            class="input w-full"
-            phx-debounce="300"
-          />
-        </fieldset>
+        <.input
+          id="broadcast-subject"
+          name="subject"
+          value={@subject}
+          label={gettext("Subject")}
+          placeholder={gettext("Enter email subject...")}
+          phx-debounce="300"
+        />
 
         <%!-- Recipient source — "Roles" targets core users by role and is
              always available; "CRM list" only appears when the CRM module
-             is installed. --%>
+             is installed. Real radios drawn as buttons (daisyUI writes the
+             aria-label on them), as on the verification page, so the
+             keyboard reaches them: hidden radios inside labels it did not. --%>
         <fieldset class="fieldset">
-          <label class="label">{gettext("Send to")}</label>
+          <legend class="fieldset-legend">{gettext("Send to")}</legend>
           <div class="join">
-            <label class={["btn btn-sm join-item", @source_type == "user_group" && "btn-active"]}>
-              <input
-                type="radio"
-                name="source_type"
-                value="user_group"
-                checked={@source_type == "user_group"}
-                class="hidden"
-              />
-              {gettext("Roles")}
-            </label>
-            <label
+            <input
+              type="radio"
+              name="source_type"
+              value="user_group"
+              checked={@source_type == "user_group"}
+              class="join-item btn btn-sm"
+              aria-label={gettext("Roles")}
+            />
+            <input
               :if={@crm_available}
-              class={["btn btn-sm join-item", @source_type == "crm_list" && "btn-active"]}
-            >
-              <input
-                type="radio"
-                name="source_type"
-                value="crm_list"
-                checked={@source_type == "crm_list"}
-                class="hidden"
-              />
-              {gettext("CRM list")}
-            </label>
+              type="radio"
+              name="source_type"
+              value="crm_list"
+              checked={@source_type == "crm_list"}
+              class="join-item btn btn-sm"
+              aria-label={gettext("CRM list")}
+            />
           </div>
         </fieldset>
 
-        <fieldset :if={@source_type == "crm_list" && @crm_available} class="fieldset">
-          <label class="label">{gettext("CRM list")}</label>
-          <label class="select w-full">
-            <select name="crm_list_uuid">
-              <option value="">{gettext("Select a list...")}</option>
-              <%!-- A current selection that fell out of the picker's options
-                   (archived, or no longer subscribable) must stay visible as
-                   a disabled option: without it the browser falls back to the
-                   placeholder and the next save silently resets
-                   crm_list_uuid — the operator never learns the broadcast
-                   lost its audience. --%>
-              <option
-                :if={@stranded_crm_list}
-                value={@stranded_crm_list.uuid}
-                selected
-                disabled
-              >
-                {gettext("%{name} (no longer selectable)", name: @stranded_crm_list.name)}
-              </option>
-              <option
-                :for={list <- @crm_lists}
-                value={list.uuid}
-                selected={@crm_list_uuid == list.uuid}
-              >
-                {ngettext(
-                  "%{name} (%{count} member)",
-                  "%{name} (%{count} members)",
-                  list.subscriber_count,
-                  name: list.name,
-                  count: list.subscriber_count
-                )}
-              </option>
-            </select>
-          </label>
+        <div :if={@source_type == "crm_list" && @crm_available}>
+          <%!-- A current selection that fell out of the picker's options
+               (archived, or no longer subscribable) stays visible as a
+               disabled option (crm_list_options/2): without it the browser
+               falls back to the placeholder and the next save silently resets
+               crm_list_uuid — the operator never learns the broadcast lost its
+               audience. --%>
+          <.select
+            id="broadcast-crm-list"
+            name="crm_list_uuid"
+            value={@crm_list_uuid}
+            label={gettext("CRM list")}
+            prompt={gettext("Select a list...")}
+            options={crm_list_options(@crm_lists, @stranded_crm_list)}
+          />
           <p :if={@crm_list_archived?} class="text-xs text-warning mt-1">
             <.icon name="hero-exclamation-triangle" class="w-3 h-3 inline" />
             {gettext("This list is archived and cannot be sent to.")}
@@ -107,24 +82,22 @@
               unsendable: @preflight.unsendable
             )}
           </p>
-        </fieldset>
+        </div>
 
         <fieldset :if={@source_type == "user_group"} class="fieldset">
-          <label class="label">{gettext("Roles")}</label>
+          <legend class="fieldset-legend">{gettext("Roles")}</legend>
           <div class="flex flex-col gap-1">
-            <label
+            <%!-- No hidden fallback: an unticked role submits nothing. --%>
+            <.checkbox
               :for={role <- @available_roles}
-              class="flex items-center gap-2 cursor-pointer"
-            >
-              <input
-                type="checkbox"
-                name="role_uuids[]"
-                value={role.uuid}
-                checked={role.uuid in @role_uuids}
-                class="checkbox checkbox-sm"
-              />
-              <span>{role.name}</span>
-            </label>
+              name="role_uuids[]"
+              value={role.uuid}
+              unchecked_value={nil}
+              checked={role.uuid in @role_uuids}
+              label={role.name}
+              class="checkbox-sm"
+              wrapper_class="gap-2"
+            />
           </div>
           <p :if={@preflight} class="text-xs text-base-content/60 mt-1">
             {ngettext(
@@ -147,32 +120,30 @@
           </p>
         </fieldset>
 
-        <%!-- Layout selector --%>
-        <fieldset class="fieldset">
-          <label class="label">{gettext("Layout")}</label>
-          <label class="select w-full">
-            <select name="template_uuid">
-              <option value="">{gettext("Standard email layout")}</option>
-              <option
-                :for={template <- @templates}
-                value={template.uuid}
-                selected={@template_uuid == template.uuid}
-              >
-                {template_display_name(template, @current_locale)}
-              </option>
-            </select>
-          </label>
-          <p class="label text-xs">
+        <div>
+          <.select
+            id="broadcast-layout"
+            name="template_uuid"
+            value={@template_uuid}
+            label={gettext("Layout")}
+            prompt={gettext("Standard email layout")}
+            options={Enum.map(@templates, &{template_display_name(&1, @current_locale), &1.uuid})}
+          />
+          <p class="label text-xs mt-1">
             <%!-- A new tab: this form holds work nothing has saved yet. --%>
             <.link href={Paths.layouts_index()} target="_blank" class="link">
               {gettext("Manage layouts")}
             </.link>
           </p>
-        </fieldset>
+        </div>
 
-        <%!-- Attachments --%>
+        <%!-- Attachments. The picker sets them, but they are in the form too, so
+             form recovery after a reconnect brings them back; the marker says the
+             list is there even when it is empty. --%>
         <fieldset class="fieldset">
-          <label class="label">{gettext("Attachments")}</label>
+          <legend class="fieldset-legend">{gettext("Attachments")}</legend>
+          <input type="hidden" name="attachments_sent" value="true" />
+          <input :for={uuid <- @attachments} type="hidden" name="attachments[]" value={uuid} />
           <div class="flex flex-wrap gap-2">
             <div
               :for={{uuid, file} <- @attachment_files}
@@ -222,7 +193,7 @@
 
         <%!-- Markdown Editor --%>
         <fieldset class="fieldset">
-          <label class="label">{gettext("Content (Markdown)")}</label>
+          <legend class="fieldset-legend">{gettext("Content (Markdown)")}</legend>
           <.live_component
             module={PhoenixKitWeb.Components.Core.MarkdownEditor}
             id="broadcast-editor"
@@ -237,19 +208,18 @@
 
         <%!-- Actions --%>
         <div class="flex flex-col sm:flex-row gap-3 pt-2">
-          <.pk_link navigate="/admin/newsletters/broadcasts" class="btn btn-ghost btn-sm">
+          <.link navigate={Paths.broadcasts_index()} class="btn btn-ghost btn-sm">
             {gettext("Cancel")}
-          </.pk_link>
+          </.link>
+          <%!-- LiveView disables every button of the form while a submit is in
+               flight; @sending covers the send that runs after its answer. --%>
           <button
             type="submit"
             name="action"
             value="save_draft"
             class="btn btn-outline btn-sm"
-            disabled={@saving}
+            disabled={@sending}
           >
-            <%= if @saving do %>
-              <span class="loading loading-spinner loading-xs"></span>
-            <% end %>
             {gettext("Save draft")}
           </button>
 
@@ -264,11 +234,15 @@
             value="send_now"
             class="btn btn-primary btn-sm"
             disabled={
-              @saving or @subject == "" or blank?(@markdown_content) or
+              @sending or @subject == "" or blank?(@markdown_content) or
                 recipient_source_missing?(assigns) or nobody_to_send_to?(assigns)
             }
           >
-            <.icon name="hero-paper-airplane" class="w-4 h-4" /> {gettext("Send now")}
+            <%= if @sending do %>
+              <span class="loading loading-spinner loading-xs"></span> {gettext("Sending")}
+            <% else %>
+              <.icon name="hero-paper-airplane" class="w-4 h-4" /> {gettext("Send now")}
+            <% end %>
           </button>
 
           <div :if={@can_send} class="flex flex-col items-end gap-1 ml-auto">
@@ -285,7 +259,7 @@
                 value="schedule"
                 class="btn btn-secondary btn-sm"
                 disabled={
-                  @saving or @scheduled_at == "" or @subject == "" or
+                  @sending or @scheduled_at == "" or @subject == "" or
                     blank?(@markdown_content) or recipient_source_missing?(assigns)
                 }
               >
@@ -305,7 +279,8 @@
       <%!-- Right: Preview --%>
       <div>
         <div class="flex items-center justify-between gap-2">
-          <label class="label">{gettext("Preview")}</label>
+          <span class="label">{gettext("Preview")}</span>
+          <%!-- daisyUI's inline label, which core's select does not draw. --%>
           <label :if={length(@preview_languages) > 1} class="select select-sm">
             <span class="label">{gettext("Language")}</span>
             <select name="preview_locale">

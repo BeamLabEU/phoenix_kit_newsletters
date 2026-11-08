@@ -1,6 +1,8 @@
 <PhoenixKitWeb.Components.LayoutWrapper.app_layout
   flash={@flash}
+  socket={assigns[:socket]}
   phoenix_kit_current_scope={assigns[:phoenix_kit_current_scope]}
+  current_locale={assigns[:current_locale]}
   page_title={@page_title}
   page_subtitle={@page_subtitle}
   current_path={@url_path}
@@ -14,9 +16,9 @@
       title={gettext("No broadcasts found")}
       description={gettext("Create your first broadcast to get started.")}
     >
-      <.pk_link navigate="/admin/newsletters/broadcasts/new" class="btn btn-primary btn-lg">
+      <.link navigate={Paths.broadcast_new()} class="btn btn-primary btn-lg">
         <.icon name="hero-plus" class="w-5 h-5 mr-2" /> {gettext("Create first broadcast")}
-      </.pk_link>
+      </.link>
     </.empty_state>
   <% else %>
     <%!-- A filter that matches nothing keeps the filter on screen, so the
@@ -24,9 +26,9 @@
     <div :if={@broadcasts == []}>
       <div class="flex flex-wrap items-center justify-between gap-2 mb-4">
         <.status_filter status_filter={@status_filter} />
-        <.pk_link navigate="/admin/newsletters/broadcasts/new" class="btn btn-primary btn-sm">
+        <.link navigate={Paths.broadcast_new()} class="btn btn-primary btn-sm">
           <.icon name="hero-plus" class="w-4 h-4" /> {gettext("New broadcast")}
-        </.pk_link>
+        </.link>
       </div>
       <.empty_state
         icon="hero-funnel"
@@ -65,27 +67,24 @@
       <:toolbar_title>
         <.status_filter status_filter={@status_filter} />
       </:toolbar_title>
-      <:toolbar_actions>
-        <.pk_link navigate="/admin/newsletters/broadcasts/new" class="btn btn-primary btn-sm">
+      <:toolbar_primary>
+        <.link navigate={Paths.broadcast_new()} class="btn btn-primary btn-sm">
           <.icon name="hero-plus" class="w-4 h-4" /> {gettext("New broadcast")}
-        </.pk_link>
-      </:toolbar_actions>
+        </.link>
+      </:toolbar_primary>
 
       <:card_header :let={broadcast}>
         <div class="flex items-start justify-between gap-2">
           <span class="font-medium text-sm truncate">{broadcast.subject}</span>
-          <span class={"badge badge-sm #{status_badge_class(broadcast.status)}"}>
+          <span class={"badge badge-sm #{StatusLabel.broadcast_badge_class(broadcast.status)}"}>
             {status_label(broadcast.status)}
           </span>
         </div>
       </:card_header>
       <:card_actions :let={broadcast}>
-        <.pk_link
-          navigate={"/admin/newsletters/broadcasts/#{broadcast.uuid}"}
-          class="btn btn-xs btn-outline"
-        >
+        <.link navigate={Paths.broadcast_show(broadcast.uuid)} class="btn btn-xs btn-outline">
           {gettext("View")}
-        </.pk_link>
+        </.link>
       </:card_actions>
 
       <.table_default_header>
@@ -105,20 +104,21 @@
       </.table_default_header>
 
       <.table_default_body>
+        <%!-- A real link across the row, so it opens in a new tab and takes the
+             keyboard; `transform-gpu` keeps Safari's overlay on its own row. --%>
         <.table_default_row
           :for={broadcast <- @broadcasts}
-          class="hover cursor-pointer"
-          phx-click="view_broadcast"
-          phx-value-uuid={broadcast.uuid}
+          class="relative transform-gpu cursor-pointer"
         >
           <.table_default_cell class="font-medium max-w-xs truncate">
+            <.row_link navigate={Paths.broadcast_show(broadcast.uuid)} label={broadcast.subject} />
             {broadcast.subject}
           </.table_default_cell>
           <.table_default_cell>
             {source_label(broadcast.source_type)}
           </.table_default_cell>
           <.table_default_cell>
-            <span class={"badge badge-sm #{status_badge_class(broadcast.status)}"}>
+            <span class={"badge badge-sm #{StatusLabel.broadcast_badge_class(broadcast.status)}"}>
               {status_label(broadcast.status)}
             </span>
           </.table_default_cell>

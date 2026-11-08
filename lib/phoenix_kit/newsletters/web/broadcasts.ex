@@ -9,13 +9,15 @@ defmodule PhoenixKit.Newsletters.Web.Broadcasts do
   import PhoenixKitWeb.Components.Core.EmptyState
   import PhoenixKitWeb.Components.Core.Icon
   import PhoenixKitWeb.Components.Core.Pagination
-  import PhoenixKitWeb.Components.Core.PkLink
+  import PhoenixKitWeb.Components.Core.RowLink, only: [row_link: 1]
+  import PhoenixKitWeb.Components.Core.Select
   import PhoenixKitWeb.Components.Core.TableDefault
 
   import PhoenixKit.Newsletters.Web.Timezone, only: [format_datetime: 2]
 
   alias PhoenixKit.Newsletters
   alias PhoenixKit.Newsletters.Broadcast
+  alias PhoenixKit.Newsletters.Paths
   alias PhoenixKit.Newsletters.Web.Paging
   alias PhoenixKit.Newsletters.Web.StatusLabel
   alias PhoenixKit.Newsletters.Web.Timezone
@@ -75,8 +77,8 @@ defmodule PhoenixKit.Newsletters.Web.Broadcasts do
     params = Enum.reject([status: status, page: page], fn {_k, v} -> v in ["", 1] end)
 
     case URI.encode_query(params) do
-      "" -> Routes.path("/admin/newsletters/broadcasts")
-      query -> Routes.path("/admin/newsletters/broadcasts?#{query}")
+      "" -> Paths.broadcasts_index()
+      query -> Paths.broadcasts_index() <> "?" <> query
     end
   end
 
@@ -93,22 +95,12 @@ defmodule PhoenixKit.Newsletters.Web.Broadcasts do
   end
 
   @impl true
-  def handle_event("filter_status", %{"status" => status}, socket) do
-    params = if status == "", do: %{}, else: %{"status" => status}
-    query = URI.encode_query(params)
-
-    path =
-      if query == "",
-        do: "/admin/newsletters/broadcasts",
-        else: "/admin/newsletters/broadcasts?#{query}"
-
-    {:noreply, push_patch(socket, to: Routes.path(path))}
+  # handle_params judges the value; only a string can go into the address.
+  def handle_event("filter_status", %{"status" => status}, socket) when is_binary(status) do
+    {:noreply, push_patch(socket, to: page_url(1, status))}
   end
 
-  @impl true
-  def handle_event("view_broadcast", %{"uuid" => uuid}, socket) do
-    {:noreply, push_navigate(socket, to: Routes.path("/admin/newsletters/broadcasts/#{uuid}"))}
-  end
+  def handle_event("filter_status", _params, socket), do: {:noreply, socket}
 
   attr(:status_filter, :string, required: true)
 
@@ -116,39 +108,16 @@ defmodule PhoenixKit.Newsletters.Web.Broadcasts do
   defp status_filter(assigns) do
     ~H"""
     <form id="broadcasts-status-filter" phx-change="filter_status">
-      <label class="select select-sm">
-        <select name="status">
-          <option value="" selected={@status_filter == ""}>{gettext("All statuses")}</option>
-          <option value="draft" selected={@status_filter == "draft"}>{gettext("Draft")}</option>
-          <option value="scheduled" selected={@status_filter == "scheduled"}>
-            {gettext("Scheduled")}
-          </option>
-          <option value="sending" selected={@status_filter == "sending"}>
-            {gettext("Sending")}
-          </option>
-          <option value="sent" selected={@status_filter == "sent"}>{gettext("Sent")}</option>
-          <option value="cancelled" selected={@status_filter == "cancelled"}>
-            {gettext("Cancelled")}
-          </option>
-          <option value="failed" selected={@status_filter == "failed"}>
-            {gettext("Failed")}
-          </option>
-        </select>
-      </label>
+      <.select
+        name="status"
+        value={@status_filter}
+        prompt={gettext("All statuses")}
+        options={Enum.map(Broadcast.valid_statuses(), &{StatusLabel.broadcast(&1), &1})}
+        class="select-sm"
+        aria-label={gettext("Status")}
+      />
     </form>
     """
-  end
-
-  defp status_badge_class(status) do
-    case status do
-      "draft" -> "badge-ghost"
-      "scheduled" -> "badge-info"
-      "sending" -> "badge-warning"
-      "sent" -> "badge-success"
-      "cancelled" -> "badge-error"
-      "failed" -> "badge-error"
-      _ -> "badge-ghost"
-    end
   end
 
   def status_label(status), do: StatusLabel.broadcast(status)

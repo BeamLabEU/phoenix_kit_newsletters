@@ -7,8 +7,12 @@ defmodule PhoenixKit.Newsletters.Web.LayoutsIndex do
   use Phoenix.LiveView
   use Gettext, backend: PhoenixKit.Newsletters.Gettext
 
+  import PhoenixKitWeb.Components.Core.Badge, only: [status_badge: 1]
   import PhoenixKitWeb.Components.Core.EmptyState
   import PhoenixKitWeb.Components.Core.Icon
+  import PhoenixKitWeb.Components.Core.Select
+  import PhoenixKitWeb.Components.Core.TableDefault
+  import PhoenixKitWeb.Components.Core.TableRowMenu
 
   alias PhoenixKit.Newsletters
   alias PhoenixKit.Newsletters.Layout
@@ -48,10 +52,13 @@ defmodule PhoenixKit.Newsletters.Web.LayoutsIndex do
   end
 
   @impl true
-  def handle_event("filter_status", %{"status" => status}, socket) do
+  # handle_params judges the value; only a string can go into the address.
+  def handle_event("filter_status", %{"status" => status}, socket) when is_binary(status) do
     {:noreply,
      push_patch(socket, to: Paths.layouts_index() <> "?status=#{URI.encode_www_form(status)}")}
   end
+
+  def handle_event("filter_status", _params, socket), do: {:noreply, socket}
 
   def handle_event("archive", %{"uuid" => uuid}, socket) do
     with %Layout{} = layout <- Layouts.get_layout(uuid),
