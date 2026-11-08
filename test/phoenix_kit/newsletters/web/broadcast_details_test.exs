@@ -203,10 +203,17 @@ defmodule PhoenixKit.Newsletters.Web.BroadcastDetailsTest do
       {:ok, broadcast} =
         Newsletters.update_broadcast(broadcast, %{status: "failed", markdown_body: "Hello"})
 
-      {:noreply, updated} =
+      {:noreply, confirmed} =
         BroadcastDetails.handle_event("confirm_action", %{}, confirm_socket(broadcast))
 
-      refute updated.assigns.show_confirm_modal
+      refute confirmed.assigns.show_confirm_modal
+      # The answer comes first; the send runs after it, with the buttons off.
+      assert confirmed.assigns.sending
+      assert Newsletters.get_broadcast!(broadcast.uuid).status == "failed"
+
+      updated = run_confirmed_send(confirmed)
+
+      refute updated.assigns.sending
       assert updated.assigns.broadcast.status == "sending"
       assert Newsletters.get_broadcast!(broadcast.uuid).status == "sending"
     end
@@ -350,7 +357,7 @@ defmodule PhoenixKit.Newsletters.Web.BroadcastDetailsTest do
 
     defp confirm_resend(socket) do
       {:noreply, updated} = BroadcastDetails.handle_event("confirm_action", %{}, socket)
-      updated
+      run_confirmed_send(updated)
     end
 
     defp loaded(broadcast) do
@@ -617,6 +624,19 @@ defmodule PhoenixKit.Newsletters.Web.BroadcastDetailsTest do
         )
 
       assert updated.assigns.flash["error"] =~ "not found"
+    end
+  end
+
+  # The confirm answers, then the page sends from a message to itself (see
+  # BroadcastDetails.handle_info/2); a hand-built socket is given it here. A
+  # refusal sends no message, and the socket comes back as it was.
+  defp run_confirmed_send(socket) do
+    receive do
+      {:send_confirmed, _action, _broadcast} = message ->
+        {:noreply, updated} = BroadcastDetails.handle_info(message, socket)
+        updated
+    after
+      0 -> socket
     end
   end
 end

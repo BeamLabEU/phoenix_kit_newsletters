@@ -65,6 +65,7 @@ defmodule PhoenixKit.Newsletters.Web.BroadcastDetails do
         |> assign(:attachment_files, [])
         |> assign(:loading, true)
         |> assign(:show_confirm_modal, false)
+        |> assign(:sending, false)
         |> assign(:confirm_action, nil)
         |> assign(:confirm_target, nil)
         |> assign(:confirm_title, "")
@@ -170,7 +171,7 @@ defmodule PhoenixKit.Newsletters.Web.BroadcastDetails do
 
       :resend_failed ->
         with :ok <- authorize_retry(socket, socket.assigns.broadcast),
-             do: resend_failed(socket)
+             do: start_sending(socket, :resend_failed)
 
       _ ->
         {:noreply, socket}
@@ -191,7 +192,27 @@ defmodule PhoenixKit.Newsletters.Web.BroadcastDetails do
      |> load_broadcast_data()}
   end
 
+  # Retry and Resend resolve and enqueue an audience, which can outlast the 30
+  # seconds the browser waits for an event's answer; it then reloads the page,
+  # with no word of what happened. So the confirm answers once the checks pass,
+  # and the send runs from here, after the answer, with the buttons off.
+  @impl true
+  def handle_info({:send_confirmed, :retry_send, broadcast}, socket) do
+    socket |> assign(:sending, false) |> run_retry(broadcast)
+  end
+
+  def handle_info({:send_confirmed, :resend_failed, _broadcast}, socket) do
+    socket |> assign(:sending, false) |> resend_failed()
+  end
+
+  def handle_info(_message, socket), do: {:noreply, socket}
+
   # --- Private ---
+
+  defp start_sending(socket, action, broadcast \\ nil) do
+    send(self(), {:send_confirmed, action, broadcast})
+    {:noreply, assign(socket, :sending, true)}
+  end
 
   # Cancelling is final, so the dialog says so: there is no way back from it, and
   # a scheduled broadcast has no deliveries yet for it to stop.
@@ -303,7 +324,7 @@ defmodule PhoenixKit.Newsletters.Web.BroadcastDetails do
 
     with :ok <- authorize_retry(socket, broadcast),
          :ok <- require_failed(socket, broadcast) do
-      run_retry(socket, broadcast)
+      start_sending(socket, :retry_send, broadcast)
     end
   rescue
     Ecto.NoResultsError ->

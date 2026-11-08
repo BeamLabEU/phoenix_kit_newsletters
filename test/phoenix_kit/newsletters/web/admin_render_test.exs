@@ -85,8 +85,14 @@ defmodule PhoenixKit.Newsletters.Web.AdminRenderTest do
 
     html = render_page(LayoutsIndex, %{"status" => "archived"})
 
+    # Any attribute order: core's menu button writes these from its `rest` map, and
+    # a small map's atom keys come out in the order the VM created the atoms (OTP
+    # 28 here), which follows module load order and so differs between runs.
     restore_for = fn uuid ->
-      Regex.scan(~r{<button[^>]*phx-click="restore"[^>]*phx-value-uuid="#{uuid}"}, html)
+      for [button] <- Regex.scan(~r{<button[^>]*>}, html),
+          button =~ ~s(phx-click="restore"),
+          button =~ ~s(phx-value-uuid="#{uuid}"),
+          do: button
     end
 
     assert [] = restore_for.(system.uuid)

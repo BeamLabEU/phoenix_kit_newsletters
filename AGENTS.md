@@ -1,8 +1,8 @@
 # AGENTS.md
 
 Guidance for AI agents working on `phoenix_kit_newsletters`. Keep this file
-below 32 KiB and focused on working rules and invariants; use module docs for
-implementation history and detailed API descriptions. Avoid repeating rules.
+below 32 KiB, to working rules and invariants; module docs hold history and
+API detail. Avoid repeating rules.
 
 ## Project & navigation
 
@@ -130,9 +130,9 @@ and revert **both** `mix.exs` and `mix.lock` before committing.
 - No JS hooks currently. New hooks ship via `js_sources/0` under a namespaced
   global, never inline `<script>` (morphdom does not execute inserted scripts).
   `css_sources/0` returns `[:phoenix_kit_newsletters]`.
-- Store UTC; display through `Web.Timezone.viewer_tz/1` (profile
-  `user_timezone` → setting `time_zone` → `"0"`) and core's per-instant
-  helpers. Use `Settings.get_timezone_label/1`, never a private timezone list.
+- Store UTC; display in `Web.Timezone.viewer_tz/1` (profile `user_timezone` →
+  setting `time_zone` → `"0"`) through `Timezone.format_datetime/2`, in the
+  site's date/time formats. Label zones with `Settings.get_timezone_label/1`.
 
 ## Permissions
 
@@ -177,8 +177,8 @@ Tables are `phoenix_kit_newsletters_{broadcasts,deliveries,layouts}`:
   the body from the form's `editor_content`: key events miss a mouse paste and a
   reconnect; attachments and the layout editor's other tabs are hidden inputs for
   form recovery. Send now saves, patches `/new` to `/edit`, then sends in
-  `handle_info/2`: a big audience outlasts the 30 s event timeout. Scheduling
-  refuses a past time. `file_references/0`
+  `handle_info/2`, as Retry and Resend do: a big audience outlasts the 30 s
+  event timeout. Scheduling refuses a past time. `file_references/0`
   protects `attachments` from core's orphan check; list any new file column
   there, because supplying a list takes over this module's tables.
 - `Delivery`: `pending` is the **only non-terminal status**; terminal statuses

@@ -2,9 +2,9 @@ defmodule PhoenixKit.Newsletters.Web.Timezone do
   @moduledoc """
   Shared timezone resolution and display formatting for the
   newsletters admin LiveViews — used by the broadcast composer's schedule
-  field (`BroadcastEditor`) and the broadcasts list/details pages, so the
-  resolution logic lives in one place instead of being reimplemented per
-  LiveView.
+  field (`BroadcastEditor`), the broadcasts list/details pages and the
+  verification page, so every time on them is resolved and written the same
+  way.
   """
 
   alias PhoenixKit.Settings
@@ -53,16 +53,27 @@ defmodule PhoenixKit.Newsletters.Web.Timezone do
   end
 
   @doc """
-  Displays a stored UTC datetime in the given timezone. Storage stays UTC —
-  this is display-only, via `PhoenixKit.Utils.Date.shift_to_offset/2`, which
-  resolves the zone for the instant shown. Returns `"-"` for `nil`.
+  Displays a stored UTC datetime in the given timezone, in the site's own date
+  and time formats: Settings' `date_format` (or the viewer's country format, as
+  core resolves it) and `time_format`, as core's admin pages show them. With the
+  defaults, `Y-m-d` and `H:i`, that reads `2026-07-20 21:58`.
+
+  Storage stays UTC — this is display-only, via
+  `PhoenixKit.Utils.Date.shift_to_offset/2`, which resolves the zone for the
+  instant shown. Returns `"-"` for `nil`.
   """
   @spec format_datetime(DateTime.t() | nil, String.t()) :: String.t()
   def format_datetime(nil, _tz), do: "-"
 
   def format_datetime(dt, tz) do
-    dt
-    |> DateUtils.shift_to_offset(tz)
-    |> Calendar.strftime("%Y-%m-%d %H:%M")
+    local = DateUtils.shift_to_offset(dt, tz)
+
+    date_format =
+      DateUtils.viewer_date_format(Settings.get_setting_cached("date_format", "Y-m-d"))
+
+    time_format = Settings.get_setting_cached("time_format", "H:i")
+
+    DateUtils.format_date(DateTime.to_date(local), date_format) <>
+      " " <> DateUtils.format_time(DateTime.to_time(local), time_format)
   end
 end

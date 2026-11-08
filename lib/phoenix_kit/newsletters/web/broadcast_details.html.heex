@@ -44,6 +44,7 @@
             phx-click="show_confirm"
             phx-value-action="cancel_broadcast"
             class="btn btn-error btn-sm"
+            disabled={@sending}
           >
             <.icon name="hero-x-circle" class="w-4 h-4" /> {gettext("Cancel broadcast")}
           </button>
@@ -64,6 +65,7 @@
             phx-click="show_confirm"
             phx-value-action="retry_send"
             class="btn btn-primary btn-sm"
+            disabled={@sending}
           >
             <.icon name="hero-arrow-path" class="w-4 h-4" /> {gettext("Retry send")}
           </button>
@@ -75,11 +77,16 @@
             phx-click="show_confirm"
             phx-value-action="resend_failed"
             class="btn btn-primary btn-sm"
+            disabled={@sending}
           >
             <.icon name="hero-paper-airplane" class="w-4 h-4" />
             {gettext("Resend failed deliveries")}
           </button>
         <% end %>
+
+        <span :if={@sending} class="flex items-center gap-2 text-sm text-base-content/70">
+          <span class="loading loading-spinner loading-xs"></span> {gettext("Sending")}
+        </span>
 
         <button type="button" phx-click="refresh" class="btn btn-ghost btn-sm ml-auto">
           <.icon name="hero-arrow-path" class="w-4 h-4" /> {gettext("Refresh")}

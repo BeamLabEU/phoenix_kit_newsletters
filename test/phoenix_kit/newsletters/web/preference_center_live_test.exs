@@ -370,4 +370,31 @@ defmodule PhoenixKit.Newsletters.Web.PreferenceCenterLiveTest do
       end
     end
   end
+
+  describe "the list toggles" do
+    # A bare toggle beside the name had no accessible name at all: the name is
+    # its label now, so a screen reader reads it and a click on it toggles.
+    test "each is core's toggle, labelled by its list, and still sends toggle_list" do
+      contact = add_contact()
+      list = subscribable_list(%{description: "Monthly news"})
+      {:ok, _} = CRMSource.subscribe(contact, list)
+
+      {:ok, socket} =
+        mount_and_resolve(%{"token" => PreferenceToken.sign(contact.uuid)}, %{}, socket())
+
+      html =
+        socket.assigns
+        |> PreferenceCenterLive.render()
+        |> Phoenix.LiveViewTest.rendered_to_string()
+
+      [label] =
+        Regex.run(~r{<label[^>]*>(?:(?!</label>).)*#{list.uuid}(?:(?!</label>).)*</label>}s, html)
+
+      assert label =~ list.name
+      assert label =~ "Monthly news"
+      assert label =~ ~r{<input[^>]*type="checkbox"[^>]*checked[^>]*class="toggle}s
+      assert label =~ ~s(phx-click="toggle_list")
+      assert label =~ ~s(phx-value-list_uuid="#{list.uuid}")
+    end
+  end
 end

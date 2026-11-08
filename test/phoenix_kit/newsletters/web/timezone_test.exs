@@ -6,6 +6,7 @@ defmodule PhoenixKit.Newsletters.Web.TimezoneTest do
 
   use PhoenixKitNewsletters.DataCase, async: false
 
+  alias PhoenixKit.Newsletters.Web.BroadcastEditor
   alias PhoenixKit.Newsletters.Web.Timezone
   alias PhoenixKit.Settings
   alias PhoenixKit.Users.Auth.User
@@ -68,6 +69,21 @@ defmodule PhoenixKit.Newsletters.Web.TimezoneTest do
 
     test "shifts a UTC datetime backward for a negative offset, including a day rollback" do
       assert Timezone.format_datetime(~U[2026-07-20 02:00:00Z], "-5") == "2026-07-19 21:00"
+    end
+
+    # As core's admin pages write times: a site set to day-first dates and a
+    # 12-hour clock sees them so here too.
+    test "follows the site's date and time formats" do
+      Settings.update_setting("date_format", "d.m.Y")
+      Settings.update_setting("time_format", "h:i A")
+
+      assert Timezone.format_datetime(~U[2026-07-20 18:58:00Z], "3") == "20.07.2026 09:58 PM"
+
+      assert BroadcastEditor.schedule_preview(
+               "2026-07-20T21:58",
+               "3",
+               "UTC+03:00"
+             ) == "Sends at 20.07.2026 09:58 PM (UTC+03:00) · 20.07.2026 06:58 PM UTC"
     end
   end
 

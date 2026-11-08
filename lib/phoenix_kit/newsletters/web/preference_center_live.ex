@@ -27,6 +27,7 @@ defmodule PhoenixKit.Newsletters.Web.PreferenceCenterLive do
   use Phoenix.LiveView
   use Gettext, backend: PhoenixKit.Newsletters.Gettext
 
+  import PhoenixKitWeb.Components.Core.Checkbox
   import PhoenixKitWeb.Components.Core.Icon
 
   alias PhoenixKit.Newsletters

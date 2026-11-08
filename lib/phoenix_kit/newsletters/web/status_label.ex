@@ -11,7 +11,9 @@ defmodule PhoenixKit.Newsletters.Web.StatusLabel do
   def broadcast("draft"), do: gettext("Draft")
   def broadcast("scheduled"), do: gettext("Scheduled")
   def broadcast("sending"), do: gettext("Sending")
-  def broadcast("sent"), do: gettext("Sent")
+  # A context of its own: a broadcast is sent (ru "Отправлен") where a delivery,
+  # and the counters, say sent of a message (ru "Отправлено").
+  def broadcast("sent"), do: pgettext("broadcast status", "Sent")
   def broadcast("cancelled"), do: gettext("Cancelled")
   def broadcast("failed"), do: gettext("Failed")
   def broadcast(other), do: other

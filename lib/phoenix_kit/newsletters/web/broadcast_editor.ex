@@ -881,16 +881,19 @@ defmodule PhoenixKit.Newsletters.Web.BroadcastEditor do
   def schedule_preview("", _tz, _tz_label), do: nil
 
   # With the date: a slip of a month or a year is what this line is there to show.
+  # Written as every other time on these pages is (`Timezone.format_datetime/2`),
+  # in the site's formats, so the line reads like the list it will appear in.
   def schedule_preview(scheduled_at_str, tz, tz_label) do
-    with [date, local_time] <- String.split(scheduled_at_str, "T", parts: 2),
-         {:ok, utc_dt} <- DateUtils.parse_datetime_local(scheduled_at_str, tz) do
-      gettext("Sends at %{local} (%{tz}) · %{utc} UTC",
-        local: date <> " " <> String.slice(local_time, 0, 5),
-        tz: tz_label,
-        utc: Calendar.strftime(utc_dt, "%Y-%m-%d %H:%M")
-      )
-    else
-      _ -> nil
+    case DateUtils.parse_datetime_local(scheduled_at_str, tz) do
+      {:ok, utc_dt} ->
+        gettext("Sends at %{local} (%{tz}) · %{utc} UTC",
+          local: Timezone.format_datetime(utc_dt, tz),
+          tz: tz_label,
+          utc: Timezone.format_datetime(utc_dt, "0")
+        )
+
+      {:error, _reason} ->
+        nil
     end
   end
 end

@@ -126,8 +126,11 @@ label, which core's `select` does not draw).
 - **Mutation check:** each of these, undone, fails its test: the text signature, the
   re-read contact, the other tabs' hidden inputs, Retry's `failed` gate, the form's
   attachments, and the patch to `/edit`.
-- Once, the layouts render test failed while the layouts page was being converted; it
-  did not recur in seven runs of the file and the suite.
+- The layouts render test failed twice in about 25 full runs, never alone. Its regex
+  wanted `phx-click` before `phx-value-uuid`, and core's row-menu button writes both
+  from its `rest` map, whose atom keys come out in atom-creation order on OTP 28: a
+  test order that loads modules differently flips them. The page was right; the
+  regex now accepts either order.
 
 ## Behaviour that changed
 
@@ -139,21 +142,40 @@ label, which core's `select` does not draw).
 - The layout list's actions are in a ⋮ menu, and its rows' Edit is a link there.
 - The editor's subject, CRM list and layout fields are core's, labelled above the field.
 
-## Left open
+## Left open, and what became of it
 
-- **Retry and Resend still run inside the click's event.** A large audience can outlast
-  the client's 30 s timeout there too, and the page reloads. The row lock and the
-  status check make a second click refuse, so it is a worse experience, not a second
-  send. The editor's two-step pattern would fix it.
-- **Core's link-mode pager prints "« Prev" / "Next »" in English** at every tag,
-  including `v3.4.0` (`pagination.ex`, the `build_url` branch), on the broadcast list
-  and the deliveries. The fix is two `gettext` calls in core. The verification page
-  keeps its own translated pager for that reason.
-- **Times ignore the site's date format.** `Web.Timezone` formats with `strftime`. Core
-  has no absolute-time component; its `format_date_with_cached_settings/2` helpers would
-  change what every site sees, so it is a decision, not a fix.
-- **The preference page's list toggle is still a raw `toggle`.** Core's `checkbox`
-  variant puts it left of the text; on a public page that is a design call.
-- `pagination_bar` and `PageSize` exist only on core's main after `v3.4.0`.
-- `AGENTS.md` is 32,745 bytes, just under its 32 KiB limit.
-- The new Estonian and Russian strings, like the last review's, have had no native review.
+Worked through after `4447ddc`.
+
+- **Retry and Resend ran inside the click's event — FIXED.** They now answer the
+  confirm once its checks pass and send from `handle_info/2`, as Send now does, with
+  the buttons off and a "Sending" line while it runs. A refusal still answers at once.
+- **Core's link-mode pager printed "« Prev" / "Next »" in English — fixed in core.**
+  Core's `a0fefa731` (2026-11-08, not yet released) puts both through `gettext`, and
+  core's et and ru catalogs have them. Nothing to change here: the broadcast list and
+  deliveries pick it up with the next core release. The verification page keeps its
+  own pager until then.
+- **Times ignored the site's date format — FIXED.** `Timezone.format_datetime/2`, which
+  every time on these pages goes through, uses core's `format_date/2` and
+  `format_time/2` with Settings' `date_format` (or the viewer's country format,
+  `viewer_date_format/1`) and `time_format`. The defaults, `Y-m-d` and `H:i`, give
+  what was shown before, so only a site that chose a format sees a change. The
+  editor's "Sends at" line uses it too.
+- **The preference page's list toggle — FIXED.** Core's `checkbox` with
+  `variant="toggle"`, reversed so the switch stays at the end of the row. The raw
+  toggle had no accessible name at all: the list's name beside it was not its label.
+- **Translations reviewed (not natively).** Russian: a broadcast's status "Sent" has a
+  context of its own (`pgettext("broadcast status", "Sent")`, "Отправлен"), so the
+  delivery counters and statuses read "Отправлено" beside "Доставлено" and "Открыто";
+  a layout's name is "Название", not a person's "Имя"; "archived" reads "в архиве"
+  inside a sentence; a few phrasings. Estonian: four strings used the formal "teie"
+  where every other uses "sina", and two said "nimekiri" where the rest say "loend".
+  A native speaker's pass is still worth having.
+- `pagination_bar` and `PageSize` exist only on core's main after `v3.4.0`: they need a
+  core release and a floor raise, so they wait.
+- `AGENTS.md` stays just under its 32 KiB limit.
+
+The older reviews' open items, which need a decision or a change in another package,
+are as they were: `phoenix_kit_emails` counting every provider event, disabling the
+module not stopping a running send, a base-key user editing a scheduled broadcast's
+layout or browsing Storage through the picker, re-imports after an opt-out, two
+accounts sharing an address, and an `exit` in core's after-send hook.

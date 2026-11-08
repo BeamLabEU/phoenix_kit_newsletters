@@ -53,18 +53,23 @@
           </p>
         <% else %>
           <ul class="flex flex-col gap-2 mb-4">
-            <li :for={%{list: list, subscribed?: subscribed?} <- @lists} class="flex items-center justify-between gap-3 py-2 border-b border-base-200 last:border-none">
-              <div class="min-w-0">
-                <p class="font-medium truncate">{list.name}</p>
-                <p :if={list.description} class="text-xs text-base-content/60 truncate">{list.description}</p>
-              </div>
-              <input
-                type="checkbox"
-                class="toggle toggle-primary shrink-0"
+            <%!-- Core's toggle, inside a label holding the list's name: the name is
+                 what a screen reader announces and a click on it toggles too.
+                 Reversed, so the switch stays at the end of the row. --%>
+            <li :for={%{list: list, subscribed?: subscribed?} <- @lists} class="py-2 border-b border-base-200 last:border-none">
+              <.checkbox
+                id={"list-#{list.uuid}"}
+                variant="toggle"
+                name={"list-#{list.uuid}"}
+                unchecked_value={nil}
                 checked={subscribed?}
                 phx-click="toggle_list"
                 phx-value-list_uuid={list.uuid}
-              />
+                wrapper_class="flex-row-reverse justify-between gap-3"
+              >
+                {list.name}
+                <:description :if={list.description}>{list.description}</:description>
+              </.checkbox>
             </li>
           </ul>
         <% end %>
