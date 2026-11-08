@@ -1,5 +1,27 @@
 # Changelog
 
+## 0.8.0 - 2026-11-08
+
+No migration. Admin pages draw core's components, so they look a little different, and times follow the site's date and time formats.
+
+### Fixed
+
+- **A send profile's signature broke the plain-text unsubscribe link.** It was appended to the finished email: in the text part it ran on from the unsubscribe address (`…?token=XYZBest, Acme`), and in HTML it landed after `</html>`, outside the layout. It is now part of the body, inside the layout's `{{{content}}}` and above the unsubscribe line, on lines of its own in the text part, and its placeholders are filled in. The editor preview shows it.
+- **Send now on a new broadcast could mail the audience twice.** A large audience can take longer to enqueue than the browser waits for an answer, after which it reloaded to an empty form while the send went on, and a second click sent a second broadcast. The page now saves the draft, moves to its edit address and only then sends; a reload reopens the same draft, which refuses a second send. Retry and Resend on the details page answer first and send afterwards too.
+- **A reconnect lost unsaved work:** a broadcast's attachments, and the layout editor's edits on every tab but the open one. Both now travel with the form.
+- **The preference page wrote consent from the tab's copy of the contact**, which could overwrite an opt-out an email link had recorded since. Every write reads the contact again, and a list already switched the way the visitor clicked is no longer an error.
+- **A crafted Retry on the details page started a draft or scheduled broadcast at once.** Retry sends only a broadcast that is still `failed`, with permissions checked on that row.
+- **No notifications bell on any Newsletters page,** because the admin layout was never given the socket; it now gets the socket and the current locale.
+- The details page's message panel closed on every refresh.
+- Send now kept a draft's old schedule time, which then showed on a broadcast that went out at once. A new broadcast now records its author.
+- "(1 addresses)" on the verification page, and Russian and Estonian wording: a broadcast's status "Sent" has a context of its own, so delivery counters read correctly in Russian, and Estonian addresses the reader one way throughout.
+- Crafted filter and form values no longer crash the broadcast list, the layouts list or the layout editor.
+
+### Changed
+
+- **Times follow the site's date and time formats** (Settings' `date_format`, or the viewer's country format, and `time_format`). The defaults show what was shown before.
+- **Admin pages use core's components:** confirm dialog, accordion, card-capable tables and row links on the broadcast pages; table, ⋮ row menu and status badge on the layouts list; core's input, select, checkbox, textarea and form footer in both editors. Broadcast rows are real links, the editor's audience choice is reachable by keyboard, and the preference page's toggles are labelled by their list's name.
+
 ## 0.7.1 - 2026-11-06
 
 ### Added
