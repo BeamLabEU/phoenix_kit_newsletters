@@ -754,13 +754,10 @@ defmodule PhoenixKit.Newsletters.Web.BroadcastEditor do
     gettext("Validation failed: %{errors}", errors: FormErrors.summary(changeset))
   end
 
-  # Snapshots the CURRENTLY-live name of each selected role uuid alongside
-  # it — resolution always goes through role_uuids (stable), the snapshot
-  # is display-only (see Broadcast.role_names_snapshot/1's moduledoc).
-  # @available_roles was loaded once for this LiveView session, so a role
-  # renamed by someone else mid-edit won't be reflected here — an
-  # accepted, narrow race; refreshing it defeats the point of loading it
-  # once per session like @crm_lists already does.
+  # Snapshots the name of each selected role alongside its uuid. Resolution
+  # always goes through role_uuids; the snapshot is display-only (see
+  # Broadcast.role_names_snapshot/1) and keeps the name, the role's fixed key
+  # since core 3.5, so the details page can show its label in any language.
   defp role_group_source_params(%{source_type: "user_group"} = assigns) do
     names =
       assigns.available_roles

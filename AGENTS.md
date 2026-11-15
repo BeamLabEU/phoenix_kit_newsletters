@@ -31,9 +31,9 @@ Most source lives under `lib/phoenix_kit/newsletters/`:
   `expected_schema.ex`: generated manifest exposed through `expected_schema/0`.
 
 Dependency versions live in `mix.exs`. Keep core's range `>= 3.5.0 and
-< 4.0.0` (3.5.0 is the ecosystem-wide minimum). Do not narrow to one minor with a three-segment
-`~>` or commit a `path:` dependency (`CorePinConformanceTest`). Raise the floor
-only for a required core API/migration. `phoenix_kit_templates` is a direct
+< 4.0.0` (ecosystem-wide minimum). Do not narrow to one minor with a
+three-segment `~>` or commit a `path:` dependency (`CorePinConformanceTest`).
+Raise the floor only for a required core API/migration. `phoenix_kit_templates` is a direct
 dependency because rendering calls its substitution API.
 
 CRM (`PhoenixKitCRM.*`) and core's Emails module are runtime soft dependencies:
@@ -162,9 +162,10 @@ Tables are `phoenix_kit_newsletters_{broadcasts,deliveries,layouts}`:
 
 - `Broadcast`: `draft → scheduled → sending → sent`, plus `cancelled`, `failed`.
   `crm_list` needs `crm_list_uuid`; `user_group` needs
-  `source_params["role_uuids"]`. Resolve roles by UUID, never mutable names;
-  `role_names_snapshot` is display-only. Attachments: up to 10 distinct Storage
-  file UUIDs in send order. `template_uuid` → layouts, `ON DELETE SET NULL`;
+  `source_params["role_uuids"]`. Resolve roles by UUID; show via
+  `UserGroupSource.role_label/1`, or `role_labels/1` for the display-only
+  `role_names_snapshot`, never `role.name`. Attachments: up to 10 distinct
+  Storage file UUIDs in send order. `template_uuid` → layouts, `ON DELETE SET NULL`;
   `crm_list_uuid` and `send_profile_uuid` are soft references without FKs.
   `delete_broadcast/1` deletes only drafts; otherwise
   `{:error, :cannot_delete_non_draft}`. No soft-delete sentinel.
@@ -240,10 +241,11 @@ footer), with Branding logo/accent. Never rebuild core chrome here or read/write
   list not `active` with `{:crm_list_not_active, status}` **before** status
   changes. Resolve recipients once, outside the transaction: CRM subscribed/not
   opted out/not trashed/with email, deduplicated by downcased email; role users
-  active/not opted out/with a `delivery_address/1`, deduplicated by user, then by
-  address (`contact_email` is not unique). An audience of nobody or a blank body
-  is refused (`:no_recipients`, `:blank_body`): either would end `sent` with no
-  retry. A scheduled tick marks those `failed`, as it does an inactive list.
+  active/confirmed (core's `unsolicited_mail_allowed?/1`)/not opted out/with a
+  `delivery_address/1`, deduplicated by user, then by address (`contact_email`
+  is not unique). An audience of nobody or a blank body is refused
+  (`:no_recipients`, `:blank_body`): either would end `sent` with no retry. A
+  scheduled tick marks those `failed`, as it does an inactive list.
 - **One transaction** locks the row, judges its status, flips to `sending` and
   inserts every delivery and job, with an explicit `timeout:`. The sweep finishes
   any `sending` broadcast with nothing pending, so a `sending` row must never be
@@ -460,7 +462,6 @@ installs (core 3.0 no longer creates module tables).
   enables manual sandbox, PubSub manager, ModuleRegistry and dead-render
   endpoint. No reachable DB excludes `:integration`; the attachments probe
   excludes `:requires_v158` when absent (its warning usually means no DB).
-  Builds-alone/manifest tests also skip if required core test support is absent.
 - `PhoenixKitNewsletters.DataCase` tags integration tests, checks out sandbox
   and supplies `errors_on/1` and `TestScopes` (`full_scope`, `scope_with`,
   `enable_crm`). Hand-built admin sockets need `phoenix_kit_current_scope`;

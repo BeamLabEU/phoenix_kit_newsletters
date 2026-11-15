@@ -21,6 +21,7 @@ defmodule PhoenixKit.Newsletters.Web.Verification do
 
   import PhoenixKitWeb.Components.Core.EmptyState
   import PhoenixKitWeb.Components.Core.Icon
+  import PhoenixKitWeb.Components.Core.Pagination
   import PhoenixKitWeb.Components.Core.Select
   import PhoenixKitWeb.Components.Core.TableDefault
 
@@ -87,6 +88,7 @@ defmodule PhoenixKit.Newsletters.Web.Verification do
     |> assign(:page, 1)
     |> assign(:total_pages, 1)
     |> assign(:total, 0)
+    |> assign(:per_page, VerificationRows.per_page())
     |> assign(:summary, nil)
     |> assign(:batch, nil)
     |> assign(:subscribed_batches, MapSet.new())
@@ -589,5 +591,13 @@ defmodule PhoenixKit.Newsletters.Web.Verification do
   @doc false
   def page_params(source, crm_list_uuid, role_uuids, status) do
     %{"source" => source, "list" => crm_list_uuid, "roles" => role_uuids, "status" => status}
+  end
+
+  @doc false
+  def page_url(page, source, crm_list_uuid, role_uuids, status) do
+    source
+    |> page_params(crm_list_uuid, role_uuids, status)
+    |> Map.put("page", page)
+    |> Paths.verification_index()
   end
 end

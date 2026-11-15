@@ -18,6 +18,7 @@ defmodule PhoenixKit.Newsletters.Web.VerificationTest do
   alias PhoenixKitCRM.Lists
   alias PhoenixKitNewsletters.Test.FakeVerificationEngine, as: Fake
   alias PhoenixKitNewsletters.Test.Repo
+  alias PhoenixKitNewsletters.Test.Users, as: TestUsers
 
   @engine_key :email_verification_engine
   @role_uuid "11111111-1111-4111-8111-111111111111"
@@ -90,7 +91,7 @@ defmodule PhoenixKit.Newsletters.Web.VerificationTest do
   end
 
   defp create_user(role, email) do
-    {:ok, user} = %User{} |> User.guest_user_changeset(%{email: email}) |> Repo.insert()
+    {:ok, user} = %User{} |> TestUsers.confirmed_guest_changeset(%{email: email}) |> Repo.insert()
     {:ok, _} = Roles.assign_role(user, role.name)
     user
   end
@@ -1221,13 +1222,23 @@ defmodule PhoenixKit.Newsletters.Web.VerificationTest do
     test "pagination links keep the audience and the filter" do
       role = audience(for i <- 1..3, do: "p#{i}@example.com")
       socket = visit(%{"source" => "user_group", "roles" => [role.uuid], "status" => "unchecked"})
-      socket = %{socket | assigns: %{socket.assigns | total_pages: 2}}
+      socket = %{socket | assigns: %{socket.assigns | total_pages: 2, per_page: 2}}
 
       html = render_page(socket)
       assert html =~ ~s(id="verification-pagination")
       assert html =~ "page=2"
       assert html =~ "status=unchecked"
-      assert html =~ "Page 1 of 2"
+      assert html =~ role.uuid
+      assert html =~ "Showing 1 to 2 of 3 addresses"
+    end
+
+    test "page_url/5 builds the page's address with the audience and the filter" do
+      url = Verification.page_url(3, "user_group", "", [@role_uuid], "valid")
+
+      assert url =~ "/admin/newsletters/verification?"
+      assert url =~ "page=3"
+      assert url =~ "status=valid"
+      assert url =~ "source=user_group"
     end
   end
 end

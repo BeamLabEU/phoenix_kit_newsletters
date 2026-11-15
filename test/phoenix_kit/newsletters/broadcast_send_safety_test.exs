@@ -24,6 +24,7 @@ defmodule PhoenixKit.Newsletters.BroadcastSendSafetyTest do
   alias PhoenixKit.Users.Auth.User
   alias PhoenixKit.Users.Roles
   alias PhoenixKitNewsletters.Test.Repo
+  alias PhoenixKitNewsletters.Test.Users, as: TestUsers
 
   defp role_with_users(count) do
     {:ok, role} = Roles.create_role(%{name: "Audience #{System.unique_integer([:positive])}"})
@@ -31,7 +32,7 @@ defmodule PhoenixKit.Newsletters.BroadcastSendSafetyTest do
     for _ <- 1..count//1 do
       {:ok, user} =
         %User{}
-        |> User.guest_user_changeset(%{
+        |> TestUsers.confirmed_guest_changeset(%{
           email: "reader-#{System.unique_integer([:positive])}@example.com"
         })
         |> Repo.insert()

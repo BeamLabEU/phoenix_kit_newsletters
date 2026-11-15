@@ -7,10 +7,11 @@ defmodule PhoenixKit.Newsletters.UserGroupSourceTest do
   "linked contact opted out" path is real, not simulated.
 
   Resolution is by role uuid (see `Broadcast.role_uuids/1`'s moduledoc
-  for why names aren't used) — the rename/delete tests below are the
-  reason that decision was made: a renamed role must not lose its
+  for why names aren't used): a relabelled role must not lose its
   audience, and a deleted (or simply stale/garbage) uuid must not crash
-  the resolver, only shrink what it returns.
+  the resolver, only shrink what it returns. Members are confirmed
+  accounts (`PhoenixKitNewsletters.Test.Users`), as a role broadcast mails
+  only those; "an address nobody confirmed" covers the others.
   """
 
   use PhoenixKitNewsletters.DataCase, async: false
@@ -23,15 +24,23 @@ defmodule PhoenixKit.Newsletters.UserGroupSourceTest do
   alias PhoenixKitCRM.Lists
   alias PhoenixKitCRM.Schemas.Contact
   alias PhoenixKitNewsletters.Test.Repo
+  alias PhoenixKitNewsletters.Test.Users, as: TestUsers
 
   defp create_user(attrs \\ %{}) do
     base = %{email: "ug-user-#{System.unique_integer([:positive])}@example.com"}
 
     {:ok, user} =
       %User{}
-      |> User.guest_user_changeset(Map.merge(base, attrs))
+      |> TestUsers.confirmed_guest_changeset(Map.merge(base, attrs))
       |> Repo.insert()
 
+    user
+  end
+
+  # What a sign-up is before its holder clicks the confirmation link.
+  defp create_unconfirmed_user(attrs \\ %{}) do
+    base = %{email: "ug-unconfirmed-#{System.unique_integer([:positive])}@example.com"}
+    {:ok, user} = %User{} |> User.guest_user_changeset(Map.merge(base, attrs)) |> Repo.insert()
     user
   end
 
@@ -186,6 +195,7 @@ defmodule PhoenixKit.Newsletters.UserGroupSourceTest do
              sendable: 0,
              no_email: 0,
              unsendable: 0,
+             unconfirmed: 0,
              stale_roles: 1
            }
   end
@@ -199,6 +209,7 @@ defmodule PhoenixKit.Newsletters.UserGroupSourceTest do
              sendable: 1,
              no_email: 0,
              unsendable: 0,
+             unconfirmed: 0,
              stale_roles: 1
            }
 
@@ -212,10 +223,11 @@ defmodule PhoenixKit.Newsletters.UserGroupSourceTest do
     assert %{stale_roles: 0} = UserGroupSource.preflight([role.uuid])
   end
 
-  test "preflight/1 reconciles total = sendable + no_email + unsendable" do
+  test "preflight/1 reconciles total = sendable + no_email + unsendable + unconfirmed" do
     role = create_role()
 
     sendable_user = create_user() |> assign(role)
+    _unconfirmed_user = create_unconfirmed_user() |> assign(role)
 
     inactive_user = create_user() |> assign(role)
     {:ok, _} = Auth.update_user_status(inactive_user, %{"is_active" => false})
@@ -225,10 +237,11 @@ defmodule PhoenixKit.Newsletters.UserGroupSourceTest do
     {:ok, _} = Lists.opt_out(opted_out_contact)
 
     assert UserGroupSource.preflight([role.uuid]) == %{
-             total: 3,
+             total: 4,
              sendable: 1,
              no_email: 0,
              unsendable: 2,
+             unconfirmed: 1,
              stale_roles: 0
            }
 
@@ -243,8 +256,76 @@ defmodule PhoenixKit.Newsletters.UserGroupSourceTest do
              sendable: 0,
              no_email: 0,
              unsendable: 0,
+             unconfirmed: 0,
              stale_roles: 0
            }
+  end
+
+  describe "an address nobody confirmed" do
+    test "is left out of the audience, and the worker's recheck refuses it" do
+      role = create_role()
+      confirmed = create_user() |> assign(role)
+      unconfirmed = create_unconfirmed_user() |> assign(role)
+
+      assert UserGroupSource.sendable_recipients([role.uuid]) == [
+               %{user_uuid: confirmed.uuid, email: confirmed.email}
+             ]
+
+      assert UserGroupSource.sendable_recipient?([role.uuid], confirmed.uuid)
+      refute UserGroupSource.sendable_recipient?([role.uuid], unconfirmed.uuid)
+    end
+
+    test "counts only users it alone holds back: an inactive one stays unsendable" do
+      role = create_role()
+      inactive = create_unconfirmed_user() |> assign(role)
+      {:ok, _} = Auth.update_user_status(inactive, %{"is_active" => false})
+      _waiting = create_unconfirmed_user() |> assign(role)
+
+      assert %{total: 2, sendable: 0, unsendable: 1, unconfirmed: 1} =
+               UserGroupSource.preflight([role.uuid])
+    end
+
+    test "does not hold back a managed organization, whose managers set its address" do
+      role = create_role()
+
+      {:ok, organization} =
+        create_unconfirmed_user()
+        |> Ecto.Changeset.change(
+          account_type: "organization",
+          managed_by_members: true,
+          contact_email: "office@example.com"
+        )
+        |> Repo.update()
+
+      assign(organization, role)
+
+      assert UserGroupSource.sendable_recipients([role.uuid]) == [
+               %{user_uuid: organization.uuid, email: "office@example.com"}
+             ]
+    end
+
+    test "is mailed on a site that does not ask for confirmation" do
+      role = create_role()
+      unconfirmed = create_unconfirmed_user() |> assign(role)
+      {:ok, _} = PhoenixKit.Settings.update_boolean_setting("require_email_confirmation", false)
+
+      assert UserGroupSource.sendable_recipients([role.uuid]) == [
+               %{user_uuid: unconfirmed.uuid, email: unconfirmed.email}
+             ]
+
+      assert %{sendable: 1, unconfirmed: 0} = UserGroupSource.preflight([role.uuid])
+    end
+  end
+
+  describe "role labels" do
+    test "role_label/1 is the role's label, and role_labels/1 keeps a deleted role's name" do
+      role = create_role("Before")
+      {:ok, role} = Roles.update_role(role, %{label: "Shown"})
+
+      assert UserGroupSource.role_label(role) == "Shown"
+      assert UserGroupSource.role_labels([role.name, "Gone"]) == ["Shown", "Gone"]
+      assert UserGroupSource.role_labels([]) == []
+    end
   end
 
   describe "CRM contact lookup is batched, not N+1" do

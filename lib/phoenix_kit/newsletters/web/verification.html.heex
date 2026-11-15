@@ -86,7 +86,7 @@
               checked={role.uuid in @role_uuids}
               class="checkbox checkbox-sm"
             />
-            <span>{role.name}</span>
+            <span>{UserGroupSource.role_label(role)}</span>
           </label>
         </div>
       </fieldset>
@@ -280,24 +280,22 @@
         {gettext("No addresses with this status.")}
       </p>
 
-      <div :if={@total_pages > 1} id="verification-pagination" class="flex items-center justify-center gap-2 mt-4">
-        <.link
-          :if={@page > 1}
-          patch={Paths.verification_index(Map.put(page_params(@source, @crm_list_uuid, @role_uuids, @status_filter), "page", @page - 1))}
-          class="btn btn-sm"
-        >
-          {gettext("Previous")}
-        </.link>
-        <span class="text-sm">
-          {gettext("Page %{page} of %{total_pages}", page: @page, total_pages: @total_pages)}
-        </span>
-        <.link
-          :if={@page < @total_pages}
-          patch={Paths.verification_index(Map.put(page_params(@source, @crm_list_uuid, @role_uuids, @status_filter), "page", @page + 1))}
-          class="btn btn-sm"
-        >
-          {gettext("Next")}
-        </.link>
+      <div
+        :if={@total_pages > 1}
+        id="verification-pagination"
+        class="flex flex-wrap items-center justify-between gap-2 mt-4"
+      >
+        <.pagination_info
+          page={@page}
+          per_page={@per_page}
+          total_count={@total}
+          noun_plural={gettext("addresses")}
+        />
+        <.pagination_controls
+          page={@page}
+          total_pages={@total_pages}
+          build_url={&page_url(&1, @source, @crm_list_uuid, @role_uuids, @status_filter)}
+        />
       </div>
     </div>
   </div>

@@ -20,6 +20,7 @@ defmodule PhoenixKit.Newsletters.Web.BroadcastEditorTest do
   alias PhoenixKit.Users.Roles
   alias PhoenixKitCRM.Lists
   alias PhoenixKitNewsletters.Test.Repo
+  alias PhoenixKitNewsletters.Test.Users, as: TestUsers
 
   setup do
     Newsletters.enable_system()
@@ -62,7 +63,7 @@ defmodule PhoenixKit.Newsletters.Web.BroadcastEditorTest do
 
     {:ok, user} =
       %User{}
-      |> User.guest_user_changeset(%{
+      |> TestUsers.confirmed_guest_changeset(%{
         email: "reader-#{System.unique_integer([:positive])}@example.com"
       })
       |> Repo.insert()

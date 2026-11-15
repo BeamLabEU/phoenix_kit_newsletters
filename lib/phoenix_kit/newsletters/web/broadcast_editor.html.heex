@@ -94,7 +94,7 @@
               value={role.uuid}
               unchecked_value={nil}
               checked={role.uuid in @role_uuids}
-              label={role.name}
+              label={UserGroupSource.role_label(role)}
               class="checkbox-sm"
               wrapper_class="gap-2"
             />
@@ -107,6 +107,13 @@
               sendable: @preflight.sendable,
               no_email: @preflight.no_email,
               unsendable: @preflight.unsendable
+            )}
+          </p>
+          <p :if={@preflight && @preflight.unconfirmed > 0} class="text-xs text-base-content/60 mt-1">
+            {ngettext(
+              "%{count} user is left out: their email address is not confirmed",
+              "%{count} users are left out: their email addresses are not confirmed",
+              @preflight.unconfirmed
             )}
           </p>
           <p :if={@preflight && @preflight.stale_roles > 0} class="text-xs text-warning mt-1">

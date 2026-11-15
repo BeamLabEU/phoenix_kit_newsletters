@@ -21,6 +21,7 @@ defmodule PhoenixKit.Newsletters.Web.BroadcastDetailsTest do
   alias PhoenixKit.Users.Auth.User
   alias PhoenixKit.Users.Roles
   alias PhoenixKitNewsletters.Test.Repo
+  alias PhoenixKitNewsletters.Test.Users, as: TestUsers
 
   setup do
     Newsletters.enable_system()
@@ -113,10 +114,13 @@ defmodule PhoenixKit.Newsletters.Web.BroadcastDetailsTest do
     updated
   end
 
-  describe "role_names_snapshot/1" do
-    test "delegates to Broadcast.role_names_snapshot/1" do
-      broadcast = create_user_group_broadcast([Ecto.UUID.generate()], ["Marketing", "Sales"])
-      assert BroadcastDetails.role_names_snapshot(broadcast) == ["Marketing", "Sales"]
+  describe "handle_params/3 — role labels" do
+    test "shows each saved role by its label, and a deleted one by its saved name" do
+      role = create_role("Marketing")
+      {:ok, _role} = Roles.update_role(role, %{label: "Marketing team"})
+      broadcast = create_user_group_broadcast([role.uuid], ["Marketing", "Gone"])
+
+      assert load(broadcast.uuid).assigns.role_labels == ["Marketing team", "Gone"]
     end
   end
 
@@ -191,7 +195,7 @@ defmodule PhoenixKit.Newsletters.Web.BroadcastDetailsTest do
 
       {:ok, user} =
         %User{}
-        |> User.guest_user_changeset(%{
+        |> TestUsers.confirmed_guest_changeset(%{
           email: "retry-#{System.unique_integer([:positive])}@example.com"
         })
         |> Repo.insert()

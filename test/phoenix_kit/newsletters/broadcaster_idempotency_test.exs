@@ -31,11 +31,12 @@ defmodule PhoenixKit.Newsletters.BroadcasterIdempotencyTest do
   alias PhoenixKitCRM.Contacts
   alias PhoenixKitCRM.Lists
   alias PhoenixKitNewsletters.Test.Repo
+  alias PhoenixKitNewsletters.Test.Users, as: TestUsers
 
   defp create_user do
     {:ok, user} =
       %User{}
-      |> User.guest_user_changeset(%{
+      |> TestUsers.confirmed_guest_changeset(%{
         email: "idem-recipient-#{System.unique_integer([:positive])}@example.com"
       })
       |> Repo.insert()

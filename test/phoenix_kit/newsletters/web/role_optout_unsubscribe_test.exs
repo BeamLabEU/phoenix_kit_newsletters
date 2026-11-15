@@ -27,6 +27,7 @@ defmodule PhoenixKit.Newsletters.Web.RoleOptoutUnsubscribeTest do
   alias PhoenixKitCRM.Contacts
   alias PhoenixKitCRM.Schemas.Contact
   alias PhoenixKitNewsletters.Test.Repo
+  alias PhoenixKitNewsletters.Test.Users, as: TestUsers
 
   defp sign_token(user_uuid) do
     endpoint = PhoenixKit.Config.get(:endpoint, PhoenixKitWeb.Endpoint)
@@ -67,7 +68,7 @@ defmodule PhoenixKit.Newsletters.Web.RoleOptoutUnsubscribeTest do
 
     {:ok, user} =
       %User{}
-      |> User.guest_user_changeset(Map.merge(base, attrs))
+      |> TestUsers.confirmed_guest_changeset(Map.merge(base, attrs))
       |> Repo.insert()
 
     user

@@ -10,26 +10,29 @@ defmodule PhoenixKit.Newsletters.UserGroupSource do
   guarded — is the only place this module reaches toward
   `phoenix_kit_crm`, which stays a genuinely optional module.
 
-  Resolution is by role **uuid**, not name — a role's `name` is mutable
-  (`Roles.update_role/2` doesn't protect it, not even for system roles),
-  so a broadcast that stored names would silently re-target (or empty
-  out) whatever the role gets renamed to. `Broadcast.role_uuids/1` is
-  the only input these functions take; `Broadcast.role_names_snapshot/1`
-  is a separate, display-only concern this module never touches. A
-  stale uuid (its role renamed-and-since-untracked is impossible — see
-  above — but genuinely deleted, or simply garbage) contributes nothing
-  and does not raise; the direct `role_uuid in ^role_uuids` query below
-  has no dependency on the role even still existing.
+  Resolution is by role **uuid**, not name. Since core 3.5 a role's `name` is a
+  fixed key and people see its translated label (`Roles.display_name/2`), but
+  broadcasts saved earlier, when a name could still change, hold uuids, and a
+  uuid is the key every other module uses. `Broadcast.role_uuids/1` is the only
+  input the resolvers take; `Broadcast.role_names_snapshot/1` holds the names,
+  for display only, through `role_labels/1`. A stale uuid (a deleted role, or
+  garbage) contributes nothing and does not raise; the direct
+  `role_uuid in ^role_uuids` query below has no dependency on the role still
+  existing.
 
   Deduplication is by user (`distinct: u.uuid` in `users_query/1`), then by
   address, as `CRMSource` does: a login is unique, but the address mail goes to is
   not. A managed organization's `contact_email` can be shared with another
   organization or with a member's own login, and one inbox gets one copy.
 
-  A user is sendable when active (`is_active`), reachable and not opted
-  out. Reachable means `delivery_address/1` finds an address: a managed
+  A user is sendable when active (`is_active`), reachable, confirmed and not
+  opted out. Reachable means `delivery_address/1` finds an address: a managed
   organization's mail goes to its `contact_email`, and an account's
-  reserved `.invalid` login address never receives any.
+  reserved `.invalid` login address never receives any. Confirmed is core's rule
+  for mail nobody asked for (`Auth.unsolicited_mail_allowed?/1`, core 3.6),
+  repeated in `confirmed?/2` so the floor stays at 3.5: an address nobody proved
+  may be a typo or made up, and every newsletter to it is a bounce or a
+  complaint against the sender.
   Opt-out is checked two ways, since a role-sourced recipient may have
   no CRM contact at all: the user's own
   `custom_fields["newsletters_opted_out_at"]` (always checked — this is
@@ -60,9 +63,28 @@ defmodule PhoenixKit.Newsletters.UserGroupSource do
   # custom_fields values already use (see Auth.update_user_locale_preference/2).
   @opted_out_custom_field "newsletters_opted_out_at"
 
-  @doc "Every role, for the broadcast editor's role multi-select (uuid + live name)."
+  @doc """
+  Every role, for the role pickers of the editor and the verification page. Show
+  each one with `role_label/1`; `name` is the key a broadcast's snapshot keeps.
+  """
   @spec list_roles() :: [Role.t()]
   def list_roles, do: Roles.list_roles()
+
+  @doc "What people call `role` in the current language (core's translated label)."
+  @spec role_label(Role.t()) :: String.t()
+  def role_label(%Role{} = role), do: Roles.display_name(role)
+
+  @doc """
+  The labels of the roles a broadcast's `role_names_snapshot` names, in the
+  current language. A role deleted since keeps the name it was saved with.
+  """
+  @spec role_labels([String.t()]) :: [String.t()]
+  def role_labels([]), do: []
+
+  def role_labels(names) when is_list(names) do
+    labels = Roles.display_names()
+    Enum.map(names, &Map.get(labels, &1, &1))
+  end
 
   @doc """
   Sendable recipients across one or more roles — active, not-opted-out
@@ -75,10 +97,10 @@ defmodule PhoenixKit.Newsletters.UserGroupSource do
   @spec sendable_recipients([String.t()]) :: [%{user_uuid: String.t(), email: String.t()}]
   def sendable_recipients(role_uuids) when is_list(role_uuids) do
     users = users_for_role_uuids(role_uuids)
-    contacts_by_user_uuid = batch_contacts_by_user_uuid(users)
+    context = sendable_context(users)
 
     users
-    |> Enum.filter(&sendable?(&1, contacts_by_user_uuid))
+    |> Enum.filter(&sendable?(&1, context))
     |> Enum.map(&%{user_uuid: &1.uuid, email: delivery_address(&1)})
     |> Enum.sort_by(&{String.downcase(&1.email), &1.user_uuid})
     |> Enum.uniq_by(&String.downcase(&1.email))
@@ -103,7 +125,7 @@ defmodule PhoenixKit.Newsletters.UserGroupSource do
     |> users_query()
     |> where([u], u.uuid == ^user_uuid)
     |> RepoHelper.repo().all()
-    |> Enum.any?(fn user -> sendable?(user, batch_contacts_by_user_uuid([user])) end)
+    |> Enum.any?(fn user -> sendable?(user, sendable_context([user])) end)
   end
 
   @doc """
@@ -130,35 +152,43 @@ defmodule PhoenixKit.Newsletters.UserGroupSource do
   @doc """
   Preflight breakdown across one or more roles, for the broadcast
   editor's "N users: M sendable, K no email, L unsendable" summary —
-  same shape as `CRMSource.preflight/1`, plus `stale_roles`: how many of
+  same shape as `CRMSource.preflight/1`, plus `unconfirmed` and `stale_roles`.
+  `unconfirmed` counts the users who would be sendable but for an address they
+  never confirmed (see the moduledoc); `stale_roles` is how many of
   the given uuids no longer match any role at all (renamed roles are
   never stale — only genuinely deleted/garbage uuids are — see the
   moduledoc). `role_uuids` is deduplicated first — a uuid repeated in
   the input must not inflate the stale count against
   `existing_role_count/1`, which already reports distinct matches.
   `unsendable` covers both deactivated users and opted-out ones (either
-  opt-out path — see the moduledoc).
+  opt-out path — see the moduledoc). `sendable + no_email + unconfirmed +
+  unsendable` is `total`.
   """
   @spec preflight([String.t()]) :: %{
           total: non_neg_integer(),
           sendable: non_neg_integer(),
           no_email: non_neg_integer(),
           unsendable: non_neg_integer(),
+          unconfirmed: non_neg_integer(),
           stale_roles: non_neg_integer()
         }
   def preflight(role_uuids) when is_list(role_uuids) do
     role_uuids = Enum.uniq(role_uuids)
     users = users_for_role_uuids(role_uuids)
-    contacts_by_user_uuid = batch_contacts_by_user_uuid(users)
+    context = sendable_context(users)
     total = length(users)
-    sendable = Enum.count(users, &sendable?(&1, contacts_by_user_uuid))
+    sendable = Enum.count(users, &sendable?(&1, context))
     no_email = Enum.count(users, &is_nil(delivery_address(&1)))
+    # Would be sendable if confirmation were not asked: the users it alone holds back.
+    unconfirmed =
+      Enum.count(users, &sendable?(&1, %{context | confirmation_required: false})) - sendable
 
     %{
       total: total,
       sendable: sendable,
       no_email: no_email,
-      unsendable: total - sendable - no_email,
+      unsendable: total - sendable - no_email - unconfirmed,
+      unconfirmed: unconfirmed,
       stale_roles: stale_role_count(role_uuids)
     }
   end
@@ -333,12 +363,32 @@ defmodule PhoenixKit.Newsletters.UserGroupSource do
     |> RepoHelper.repo().aggregate(:count)
   end
 
-  defp sendable?(%User{is_active: false}, _contacts_by_user_uuid), do: false
+  # What sendable?/2 needs besides the user, read once for a whole batch.
+  defp sendable_context(users) do
+    %{
+      contacts_by_user_uuid: batch_contacts_by_user_uuid(users),
+      confirmation_required: confirmation_required?()
+    }
+  end
 
-  defp sendable?(%User{} = user, contacts_by_user_uuid) do
+  defp sendable?(%User{is_active: false}, _context), do: false
+
+  defp sendable?(%User{} = user, context) do
     not is_nil(delivery_address(user)) and
+      confirmed?(user, context.confirmation_required) and
       not custom_field_opted_out?(user) and
-      not batch_contact_opted_out?(user, contacts_by_user_uuid)
+      not batch_contact_opted_out?(user, context.contacts_by_user_uuid)
+  end
+
+  # Core's `Auth.unsolicited_mail_allowed?/1` (3.6), for a 3.5 floor: a managed
+  # organization's address is set by its managers, and a site that does not ask
+  # for confirmation has no confirmed accounts to tell apart.
+  defp confirmed?(%User{managed_by_members: true}, _required), do: true
+  defp confirmed?(%User{confirmed_at: %DateTime{}}, _required), do: true
+  defp confirmed?(%User{}, required), do: not required
+
+  defp confirmation_required? do
+    PhoenixKit.Settings.get_boolean_setting("require_email_confirmation", true)
   end
 
   defp custom_field_opted_out?(%User{custom_fields: fields}) do

@@ -44,14 +44,13 @@ defmodule PhoenixKit.Newsletters.Broadcast do
     # so no soft-reference is needed there, but a broadcast can target
     # more than one role, so a scalar uuid column doesn't fit; see
     # UserGroupSource. `source_params` stores `%{"role_uuids" => [...],
-    # "role_names_snapshot" => [...]}` — uuids because a role's `name`
-    # is mutable (Roles.update_role/2 doesn't protect it even for system
-    # roles), so resolving by name would let a rename silently re-point
-    # (or empty out) an already-saved broadcast; the name snapshot is
-    # display-only, same precedent as `recipient_email`/
-    # `supplier_name_snapshot` elsewhere in this ecosystem — it shows
-    # what the broadcast targeted even after a role is renamed or
-    # deleted, while resolution stays on the stable uuid.
+    # "role_names_snapshot" => [...]}` — uuids, because a role's `name`
+    # could change before core 3.5 and broadcasts saved then must keep
+    # resolving to the same people. The name snapshot is display-only,
+    # same precedent as `recipient_email`/`supplier_name_snapshot`
+    # elsewhere in this ecosystem: the details page shows each name by
+    # its translated label (`UserGroupSource.role_labels/1`), and a role
+    # deleted since by the name it was saved with.
     #
     # A third source_type, "newsletters_list", existed here until this
     # module's own List/ListMember tables (and the list_uuid field that

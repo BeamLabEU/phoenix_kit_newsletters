@@ -61,6 +61,7 @@ defmodule PhoenixKit.Newsletters.Web.BroadcastDetails do
         |> assign(:crm_list, nil)
         |> assign(:crm_preflight, nil)
         |> assign(:stale_roles, 0)
+        |> assign(:role_labels, [])
         |> assign(:can_start, false)
         |> assign(:attachment_files, [])
         |> assign(:loading, true)
@@ -422,6 +423,7 @@ defmodule PhoenixKit.Newsletters.Web.BroadcastDetails do
       |> assign(:crm_list, crm_list)
       |> assign(:crm_preflight, if(crm?, do: crm_preflight(broadcast)))
       |> assign(:stale_roles, stale_roles(broadcast))
+      |> assign(:role_labels, role_labels(broadcast))
       |> assign(:can_start, can_start?(socket, broadcast, crm?, crm_list))
       |> assign(:attachment_files, load_attachment_files(broadcast.attachments || []))
       |> assign(:loading, false)
@@ -475,8 +477,13 @@ defmodule PhoenixKit.Newsletters.Web.BroadcastDetails do
     Access.can_send?(Access.scope(socket))
   end
 
-  @doc "Display-only role names a `user_group` broadcast targeted — see `Broadcast.role_names_snapshot/1`."
-  def role_names_snapshot(broadcast), do: Broadcast.role_names_snapshot(broadcast)
+  # The roles a `user_group` broadcast targeted, by their label in the viewer's
+  # language. Display only: see `Broadcast.role_names_snapshot/1`.
+  defp role_labels(%{source_type: "user_group"} = broadcast) do
+    broadcast |> Broadcast.role_names_snapshot() |> UserGroupSource.role_labels()
+  end
+
+  defp role_labels(_broadcast), do: []
 
   def status_label(status), do: StatusLabel.broadcast(status)
 

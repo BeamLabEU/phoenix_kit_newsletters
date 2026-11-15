@@ -28,6 +28,7 @@ defmodule PhoenixKit.Newsletters.BroadcastResendTest do
   alias PhoenixKit.Utils.Date, as: UtilsDate
   alias PhoenixKitCRM.Lists, as: CRMLists
   alias PhoenixKitNewsletters.Test.Repo
+  alias PhoenixKitNewsletters.Test.Users, as: TestUsers
 
   setup :set_swoosh_global
 
@@ -42,7 +43,7 @@ defmodule PhoenixKit.Newsletters.BroadcastResendTest do
       for _ <- 1..count//1 do
         {:ok, user} =
           %User{}
-          |> User.guest_user_changeset(%{
+          |> TestUsers.confirmed_guest_changeset(%{
             email: "reader-#{System.unique_integer([:positive])}@example.com"
           })
           |> Repo.insert()

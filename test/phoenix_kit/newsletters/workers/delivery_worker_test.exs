@@ -39,6 +39,7 @@ defmodule PhoenixKit.Newsletters.Workers.DeliveryWorkerTest do
   alias PhoenixKitCRM.Contacts, as: CRMContacts
   alias PhoenixKitCRM.Lists, as: CRMLists
   alias PhoenixKitNewsletters.Test.Repo
+  alias PhoenixKitNewsletters.Test.Users, as: TestUsers
 
   defp add_integration(provider \\ "smtp", name \\ "test connection") do
     {:ok, %{uuid: uuid}} = Integrations.add_connection(provider, name)
@@ -58,7 +59,7 @@ defmodule PhoenixKit.Newsletters.Workers.DeliveryWorkerTest do
   defp create_user do
     {:ok, user} =
       %User{}
-      |> User.guest_user_changeset(%{
+      |> TestUsers.confirmed_guest_changeset(%{
         email: "recipient-#{System.unique_integer([:positive])}@example.com"
       })
       |> Repo.insert()
@@ -1764,7 +1765,7 @@ defmodule PhoenixKit.Newsletters.Workers.DeliveryWorkerTest do
     defp create_user_in(locale) do
       {:ok, user} =
         %User{}
-        |> User.guest_user_changeset(%{
+        |> TestUsers.confirmed_guest_changeset(%{
           email: "reader-#{System.unique_integer([:positive])}@example.com"
         })
         |> Ecto.Changeset.put_change(:custom_fields, %{"preferred_locale" => locale})

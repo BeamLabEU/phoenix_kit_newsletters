@@ -27,6 +27,7 @@ defmodule PhoenixKit.Newsletters.BroadcasterUserGroupTest do
   alias PhoenixKit.Users.Auth.User
   alias PhoenixKit.Users.Roles
   alias PhoenixKitNewsletters.Test.Repo
+  alias PhoenixKitNewsletters.Test.Users, as: TestUsers
 
   defp create_user_group_broadcast(role_uuids) do
     {:ok, broadcast} =
@@ -59,7 +60,7 @@ defmodule PhoenixKit.Newsletters.BroadcasterUserGroupTest do
         for _ <- 1..2 do
           {:ok, user} =
             %User{}
-            |> User.guest_user_changeset(%{
+            |> TestUsers.confirmed_guest_changeset(%{
               email: "sendable-#{System.unique_integer([:positive])}@example.com"
             })
             |> Repo.insert()
@@ -70,7 +71,9 @@ defmodule PhoenixKit.Newsletters.BroadcasterUserGroupTest do
 
       {:ok, inactive_user} =
         %User{}
-        |> User.guest_user_changeset(%{email: "inactive-#{System.unique_integer()}@example.com"})
+        |> TestUsers.confirmed_guest_changeset(%{
+          email: "inactive-#{System.unique_integer()}@example.com"
+        })
         |> Repo.insert()
 
       {:ok, _assignment} = Roles.assign_role(inactive_user, role.name)

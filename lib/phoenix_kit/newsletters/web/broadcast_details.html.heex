@@ -111,7 +111,7 @@
               <p class="font-medium">
                 <%= cond do %>
                   <% @broadcast.source_type == "user_group" -> %>
-                    <%= case role_names_snapshot(@broadcast) do %>
+                    <%= case @role_labels do %>
                       <% [] -> %>
                         <span class="badge badge-ghost badge-xs">{gettext("Roles")}</span>
                       <% names -> %>
