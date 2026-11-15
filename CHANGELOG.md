@@ -1,5 +1,23 @@
 # Changelog
 
+## 0.9.0 - 2026-11-15
+
+No migration. Requires PhoenixKit core 3.5.0 or later (`>= 3.5.0 and < 4.0.0`); hosts on core 2.x stay on 0.8.
+
+### Changed
+
+- **A role broadcast no longer mails accounts that never confirmed their address.** Such an address may be a typo or made up, and every newsletter to it is a bounce or a complaint against the sender. This is core 3.6's rule for mail nobody asked for (`Auth.unsolicited_mail_allowed?/1`), applied on core 3.5 too: a confirmed account, a managed organization (its managers set its address), or anyone on a site with `require_email_confirmation` off. The check runs again just before each email, so a queued send records such an account as `blocked`. The editor's role summary counts the accounts left out. CRM-list audiences are unchanged.
+- **Roles are shown by their translated label** (core 3.5's `Roles.display_name/2`) in the editor's and the verification page's role pickers, and on a broadcast's details page. A role deleted since shows the name it was saved with.
+- **The verification page uses core's pager**, with "Showing 1 to 50 of N addresses", like the broadcast and delivery lists.
+- The core floor is 3.5.0, the ecosystem-wide minimum; compatibility code for older cores is gone. `phoenix_kit_templates` 0.2.5.
+
+### Fixed
+
+- **"Unsubscribe from all newsletters" missed accounts sharing the address.** It opted out only the account linked to the contact, or the one whose login matched, so role mail kept reaching a managed organization delivering to the same inbox. It now reaches every account delivering there, and opting back in clears them all.
+- **A delivery's status could be walked back by concurrent provider events.** Each event judged the change on its own copy of the row; the change is now decided on the locked row, so a late "delivered" cannot undo an "opened" or a bounce.
+- **Deleting a broadcast trusted the page's copy of it**, so a stale tab could delete a broadcast that had since been scheduled or sent. Only a row that is still a draft is deleted.
+- **A crashed delivery job could store the recipient's address in Oban's job errors and logs.** The error is masked before it leaves the worker, as `delivery.error` already was.
+
 ## 0.8.0 - 2026-11-08
 
 No migration. Admin pages draw core's components, so they look a little different, and times follow the site's date and time formats.
