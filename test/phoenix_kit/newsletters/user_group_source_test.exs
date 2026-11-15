@@ -521,6 +521,35 @@ defmodule PhoenixKit.Newsletters.UserGroupSourceTest do
       refute UserGroupSource.opted_out?(Repo.get(User, user.uuid))
     end
 
+    test "global consent reaches every account delivering to the address, even with a linked account" do
+      role = create_role()
+      user = create_user() |> assign(role)
+      contact = link_contact(user, %{email: user.email})
+
+      organizations =
+        for _ <- 1..2 do
+          organization(contact_email: String.upcase(user.email)) |> assign(role)
+        end
+
+      other = organization(contact_email: "elsewhere@example.com") |> assign(role)
+
+      {:ok, opted_out} = UserGroupSource.opt_out_contact(contact)
+
+      for account <- [user | organizations] do
+        assert UserGroupSource.opted_out?(Repo.get!(User, account.uuid))
+        refute UserGroupSource.sendable_recipient?([role.uuid], account.uuid)
+      end
+
+      refute UserGroupSource.opted_out?(Repo.get!(User, other.uuid))
+
+      {:ok, _contact} = UserGroupSource.opt_in_contact(opted_out)
+
+      for account <- [user | organizations] do
+        refute UserGroupSource.opted_out?(Repo.get!(User, account.uuid))
+        assert UserGroupSource.sendable_recipient?([role.uuid], account.uuid)
+      end
+    end
+
     test "a role opt-out can be undone from the preference page too" do
       user = create_user()
       contact = contact_at(user.email)

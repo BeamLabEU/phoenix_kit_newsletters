@@ -303,8 +303,8 @@ defmodule PhoenixKit.Newsletters do
   def migration_module, do: PhoenixKitNewsletters.Migrations
 
   @doc """
-  The manifest of this module's tables, for `mix phoenix_kit.repair` and
-  `mix phoenix_kit.doctor`; see `PhoenixKit.Newsletters.ExpectedSchema`.
+  The generated manifest module for this module's tables, used by
+  `mix phoenix_kit.repair` and `mix phoenix_kit.doctor`.
   """
   @impl PhoenixKit.Module
   def expected_schema, do: PhoenixKit.Newsletters.ExpectedSchema
@@ -494,8 +494,30 @@ defmodule PhoenixKit.Newsletters do
     :ok
   end
 
-  def delete_broadcast(%Broadcast{status: "draft"} = broadcast), do: repo().delete(broadcast)
+  @doc "Deletes a broadcast only while its current row is still a draft."
+  def delete_broadcast(%Broadcast{uuid: uuid}) do
+    repo().transaction(fn ->
+      case lock_broadcast(uuid) do
+        %Broadcast{status: "draft"} = draft ->
+          delete_draft_or_rollback(draft)
+
+        %Broadcast{} ->
+          repo().rollback(:cannot_delete_non_draft)
+
+        nil ->
+          repo().rollback(:not_found)
+      end
+    end)
+  end
+
   def delete_broadcast(_), do: {:error, :cannot_delete_non_draft}
+
+  defp delete_draft_or_rollback(draft) do
+    case repo().delete(draft) do
+      {:ok, deleted} -> deleted
+      {:error, changeset} -> repo().rollback(changeset)
+    end
+  end
 
   def render_broadcast_html(%Broadcast{} = broadcast) do
     Content.render_markdown_strict(broadcast.markdown_body)
@@ -543,12 +565,22 @@ defmodule PhoenixKit.Newsletters do
   Writes a delivery's status and `attrs`. An event a provider reports out of order
   still records its timestamp, but cannot walk the status back.
   """
-  def update_delivery_status(%Delivery{} = delivery, status, attrs \\ %{}) do
-    status = Delivery.next_status(delivery.status, status)
+  def update_delivery_status(%Delivery{uuid: uuid}, status, attrs \\ %{}) do
+    repo().transaction(fn ->
+      # Concurrent provider events can each hold an older struct. Judge the
+      # transition on the locked row so a late event cannot undo a newer one.
+      delivery = Delivery |> where([d], d.uuid == ^uuid) |> lock("FOR UPDATE") |> repo().one()
+      if is_nil(delivery), do: repo().rollback(:not_found)
 
-    delivery
-    |> Delivery.changeset(Map.merge(attrs, %{status: status}))
-    |> repo().update()
+      status = Delivery.next_status(delivery.status, status)
+
+      case delivery
+           |> Delivery.changeset(Map.merge(attrs, %{status: status}))
+           |> repo().update() do
+        {:ok, updated} -> updated
+        {:error, changeset} -> repo().rollback(changeset)
+      end
+    end)
   end
 
   def find_delivery_by_message_id(message_id) do

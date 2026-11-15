@@ -189,7 +189,6 @@ defmodule PhoenixKit.Newsletters.Web.BroadcastEditorTest do
         socket(%{
           subject: "Hello",
           markdown_content: "Body",
-          markdown_content: "Body",
           crm_list_uuid: Ecto.UUID.generate(),
           scheduled_at: "not-a-date",
           tz: "3"

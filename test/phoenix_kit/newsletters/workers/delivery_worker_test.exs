@@ -1051,6 +1051,29 @@ defmodule PhoenixKit.Newsletters.Workers.DeliveryWorkerTest do
       assert Repo.get(Delivery, delivery.uuid).status == "pending"
       assert Repo.get(Broadcast, delivery.broadcast_uuid).status == "sending"
     end
+
+    test "a raised error masks addresses before Oban can store or log it" do
+      delivery = doomed_delivery()
+      address = "private-recipient@example.com"
+
+      Repo.get!(Broadcast, delivery.broadcast_uuid)
+      |> Ecto.Changeset.change(source_params: %{"role_uuids" => [address]})
+      |> Repo.update!()
+
+      error =
+        assert_raise RuntimeError, fn ->
+          DeliveryWorker.perform(job_for(delivery, attempt: 3, max_attempts: 3))
+        end
+
+      message = Exception.message(error)
+      refute message =~ address
+      assert message =~ "p***@example.com"
+      assert message =~ "CastError"
+
+      assert %Delivery{status: "failed", error: stored} = Repo.get!(Delivery, delivery.uuid)
+      refute stored =~ address
+      assert stored =~ "p***@example.com"
+    end
   end
 
   describe "backoff/1" do

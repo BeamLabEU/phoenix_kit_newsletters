@@ -58,6 +58,7 @@ defmodule PhoenixKit.Newsletters.UserGroupSource do
   alias PhoenixKit.Utils.Date, as: UtilsDate
 
   alias PhoenixKit.Newsletters.CRMSource
+  alias PhoenixKit.Newsletters.EmailVerification
 
   # Written/read as an ISO 8601 timestamp string, same shape core's own
   # custom_fields values already use (see Auth.update_user_locale_preference/2).
@@ -252,8 +253,9 @@ defmodule PhoenixKit.Newsletters.UserGroupSource do
   @doc """
   The opt-out behind "unsubscribed from all newsletters", which promises more
   than a contact row can hold: `CRMSource.opt_out/2` covers every contact at the
-  address, and this adds the account, so role mail stops too. That account may
-  have no linked contact for the role check to find.
+  address, and this adds every account delivering there, so role mail stops too.
+  This includes managed organizations sharing an inbox and accounts with no
+  linked contact for the role check to find.
 
   The contact side is what the result reports. An account that cannot be written
   is logged, as in `record_opt_out/1`.
@@ -261,7 +263,7 @@ defmodule PhoenixKit.Newsletters.UserGroupSource do
   @spec opt_out_contact(struct(), keyword()) :: {:ok, struct()} | {:error, term()}
   def opt_out_contact(contact, opts \\ []) do
     with {:ok, updated} <- CRMSource.opt_out(contact, opts) do
-      with_account(contact, &set_custom_field_opted_out/1)
+      with_accounts(contact, &set_custom_field_opted_out/1)
       {:ok, updated}
     end
   end
@@ -274,26 +276,57 @@ defmodule PhoenixKit.Newsletters.UserGroupSource do
   @spec opt_in_contact(struct(), keyword()) :: {:ok, struct()} | {:error, term()}
   def opt_in_contact(contact, opts \\ []) do
     with {:ok, updated} <- CRMSource.opt_in(contact, opts) do
-      with_account(contact, &clear_custom_field_opted_out/1)
+      with_accounts(contact, &clear_custom_field_opted_out/1)
       {:ok, updated}
     end
   end
 
-  defp with_account(contact, write) do
-    with %User{} = user <- account_of(contact),
-         {:error, reason} <- write.(user) do
-      Logger.warning(
-        "UserGroupSource: could not update the opt-out of user #{user.uuid}: #{inspect(reason)}"
-      )
-    end
+  defp with_accounts(contact, write) do
+    Enum.each(accounts_of(contact), fn user ->
+      case write.(user) do
+        {:ok, _user} ->
+          :ok
+
+        {:error, reason} ->
+          Logger.warning(
+            "UserGroupSource: could not update the opt-out of user #{user.uuid}: " <>
+              EmailVerification.mask_addresses(inspect(reason))
+          )
+      end
+    end)
   end
 
-  defp account_of(%{user_uuid: user_uuid}) when is_binary(user_uuid) do
-    Auth.get_user(user_uuid)
-  end
+  # A delivery address is not unique: several managed organizations and a
+  # personal account can share it. A contact link must not hide those accounts.
+  defp accounts_of(contact) do
+    linked =
+      case Map.get(contact, :user_uuid) do
+        uuid when is_binary(uuid) -> dynamic([u], u.uuid == ^uuid)
+        _ -> dynamic(false)
+      end
 
-  defp account_of(%{email: email}) when is_binary(email), do: Auth.get_user_by_email(email)
-  defp account_of(_contact), do: nil
+    address =
+      case Map.get(contact, :email) do
+        email when is_binary(email) and email != "" ->
+          dynamic(
+            [u],
+            fragment(
+              "lower(CASE WHEN ? THEN ? ELSE ? END) = lower(?)",
+              u.managed_by_members,
+              u.contact_email,
+              u.email,
+              ^email
+            )
+          )
+
+        _ ->
+          dynamic(false)
+      end
+
+    User
+    |> where(^dynamic(^linked or ^address))
+    |> RepoHelper.repo().all()
+  end
 
   # The merge and delete writers, not update_user_custom_fields/3: this column is
   # shared with core's own keys, and a whole-map write can lose a concurrent one.

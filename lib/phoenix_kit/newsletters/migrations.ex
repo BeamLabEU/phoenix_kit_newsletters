@@ -183,7 +183,7 @@ defmodule PhoenixKitNewsletters.Migrations do
   A dedicated test (`migrations_renamed_host_test.exs`) reproduces this
   exact host shape — copies of both tables with every V135-era
   constraint/index renamed to its `phoenix_kit_mailing_*` equivalent — and
-  runs a real `up/1` through `Ecto.Migration.Runner` against it: no error,
+  runs a real `up/1` through Ecto's migration runner against it: no error,
   no duplicate constraint or index of any kind, and the version marker
   still lands correctly.
 

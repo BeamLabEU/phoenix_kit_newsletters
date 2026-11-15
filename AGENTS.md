@@ -284,9 +284,9 @@ footer), with Branding logo/accent. Never rebuild core chrome here or read/write
 - **Recheck the recipient too** (`guard_recipient_sendable/2`, last before
   `send_email/7`): a throttled send runs for days. It asks the same source
   query that resolved the audience (`sendable_recipient?/2`), so an opt-out,
-  removal, deactivation or trashed contact stops the mail. A role audience
-  stops the same way when the address is no longer confirmed. Record `blocked`, no
-  counter, so the broadcast still finishes. No CRM means no consent to read: blocked.
+  removal, deactivation, trashed contact or unconfirmed role address stops the
+  mail: `blocked`, no counter, so the broadcast still finishes. No CRM, no
+  consent: blocked.
 - Sending uses the enabled broadcast profile, else default profile, else
   legacy `PhoenixKit.Mailer.deliver_email/1`. Sender falls back to
   `from_email` / `from_name` (`noreply@example.com` / `Newsletter`). Add
@@ -478,8 +478,8 @@ installs (core 3.0 no longer creates module tables).
   finds the test owner through `$callers` from the async task.
 - `config/test.exs` supplies host Repo, encryption secret, Swoosh test adapter
   and a raw endpoint secret for `Phoenix.Token` without a running endpoint.
-  Pure unit tests and statement-only `migrations_test.exs` run without
-  Postgres; real-DDL migration tests need it.
+  Pure unit tests and statement-only `migrations_test.exs` need no Postgres;
+  real-DDL migration tests do.
   Worker helpers marked `@doc false` provide direct unit-test seams.
 
 ## Commits & releases

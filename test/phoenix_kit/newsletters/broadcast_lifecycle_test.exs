@@ -95,6 +95,33 @@ defmodule PhoenixKit.Newsletters.BroadcastLifecycleTest do
     end
   end
 
+  describe "delete_broadcast/1" do
+    for status <- ~w(scheduled sending sent cancelled failed) do
+      test "a stale draft cannot delete a broadcast that is now #{status}" do
+        draft = create_broadcast()
+        {:ok, _broadcast} = Newsletters.update_broadcast(draft, %{status: unquote(status)})
+
+        assert {:error, :cannot_delete_non_draft} = Newsletters.delete_broadcast(draft)
+        assert Newsletters.get_broadcast!(draft.uuid).status == unquote(status)
+      end
+    end
+
+    test "a stale status does not prevent deleting a row that is now a draft" do
+      broadcast = create_broadcast(%{status: "scheduled"})
+      {:ok, _draft} = Newsletters.unschedule_broadcast(broadcast)
+
+      assert {:ok, %Broadcast{status: "draft"}} = Newsletters.delete_broadcast(broadcast)
+      refute Repo.get(Broadcast, broadcast.uuid)
+    end
+
+    test "reports a broadcast that is gone" do
+      broadcast = create_broadcast()
+      {:ok, _deleted} = Newsletters.delete_broadcast(broadcast)
+
+      assert {:error, :not_found} = Newsletters.delete_broadcast(broadcast)
+    end
+  end
+
   describe "increment_broadcast_counter/2, as the emails package calls it" do
     test "is found the way that package looks for it" do
       assert function_exported?(Newsletters, :increment_broadcast_counter, 2)
@@ -184,6 +211,33 @@ defmodule PhoenixKit.Newsletters.BroadcastLifecycleTest do
 
       assert {:ok, %Delivery{status: "bounced"}} =
                Newsletters.update_delivery_status(delivery, "opened")
+    end
+
+    test "an event using a stale delivery cannot take back an Open" do
+      stale = delivery_at(create_broadcast(), "sent")
+      opened_at = ~U[2026-01-01 10:01:00Z]
+      delivered_at = ~U[2026-01-01 10:00:00Z]
+
+      {:ok, _opened} =
+        Newsletters.update_delivery_status(stale, "opened", %{opened_at: opened_at})
+
+      assert {:ok,
+              %Delivery{
+                status: "opened",
+                opened_at: ^opened_at,
+                delivered_at: ^delivered_at
+              }} =
+               Newsletters.update_delivery_status(stale, "delivered", %{
+                 delivered_at: delivered_at
+               })
+    end
+
+    test "a stale event cannot take back a bounce" do
+      stale = delivery_at(create_broadcast(), "sent")
+      {:ok, _bounced} = Newsletters.update_delivery_status(stale, "bounced")
+
+      assert {:ok, %Delivery{status: "bounced"}} =
+               Newsletters.update_delivery_status(stale, "opened")
     end
 
     test "the worker's own statuses are not held back" do
