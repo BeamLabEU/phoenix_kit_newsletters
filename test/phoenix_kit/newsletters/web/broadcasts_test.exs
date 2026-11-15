@@ -19,6 +19,7 @@ defmodule PhoenixKit.Newsletters.Web.BroadcastsTest do
   alias PhoenixKit.Newsletters.Web.LayoutsIndex
   alias PhoenixKit.Settings
   alias PhoenixKit.Users.Auth.User
+  alias PhoenixKitNewsletters.Test.UrlStateHarness
 
   setup do
     Newsletters.enable_system()
@@ -37,7 +38,12 @@ defmodule PhoenixKit.Newsletters.Web.BroadcastsTest do
     user = %User{user_timezone: "3"}
 
     {:noreply, socket} =
-      Broadcasts.handle_params(%{}, "/admin/newsletters/broadcasts", socket_with_user(user))
+      UrlStateHarness.handle_params(
+        Broadcasts,
+        %{},
+        "/admin/newsletters/broadcasts",
+        socket_with_user(user)
+      )
 
     assert socket.assigns.tz == "3"
   end
@@ -47,14 +53,20 @@ defmodule PhoenixKit.Newsletters.Web.BroadcastsTest do
     user = %User{user_timezone: nil}
 
     {:noreply, socket} =
-      Broadcasts.handle_params(%{}, "/admin/newsletters/broadcasts", socket_with_user(user))
+      UrlStateHarness.handle_params(
+        Broadcasts,
+        %{},
+        "/admin/newsletters/broadcasts",
+        socket_with_user(user)
+      )
 
     assert socket.assigns.tz == "-5"
   end
 
   test "handle_params falls back to UTC when there's no viewer at all" do
     {:noreply, socket} =
-      Broadcasts.handle_params(
+      UrlStateHarness.handle_params(
+        Broadcasts,
         %{},
         "/admin/newsletters/broadcasts",
         %Phoenix.LiveView.Socket{assigns: %{__changed__: %{}}}
@@ -84,7 +96,8 @@ defmodule PhoenixKit.Newsletters.Web.BroadcastsTest do
 
     defp at(params) do
       {:noreply, socket} =
-        Broadcasts.handle_params(
+        UrlStateHarness.handle_params(
+          Broadcasts,
           params,
           "/admin/newsletters/broadcasts",
           %Phoenix.LiveView.Socket{assigns: %{__changed__: %{}}}
@@ -94,12 +107,73 @@ defmodule PhoenixKit.Newsletters.Web.BroadcastsTest do
     end
 
     test "older broadcasts are reachable past the first page" do
-      create_broadcasts(51)
+      create_broadcasts(26)
 
-      assert %{broadcasts: first, total_count: 51, total_pages: 2} = at(%{})
-      assert length(first) == 50
+      assert %{broadcasts: first, total_count: 26, total_pages: 2, per_page: 25} = at(%{})
+      assert length(first) == 25
 
       assert %{broadcasts: [_oldest], page: 2} = at(%{"page" => "2"})
+    end
+
+    test "the page size comes from the URL, and only one the selector offers" do
+      create_broadcasts(26)
+
+      assert %{broadcasts: first, total_pages: 3, per_page: 10} = at(%{"per_page" => "10"})
+      assert length(first) == 10
+      assert %{per_page: 25} = at(%{"per_page" => "1000"})
+    end
+
+    test "a status that does not exist lists everything" do
+      create_broadcasts(1)
+
+      assert %{status_filter: "", total_count: 1} = at(%{"status" => "bogus"})
+    end
+
+    test "a page past the end replaces the address with the last page" do
+      create_broadcasts(1)
+
+      {:noreply, short} =
+        UrlStateHarness.handle_params(
+          Broadcasts,
+          %{"page" => "9"},
+          "/admin/newsletters/broadcasts",
+          %Phoenix.LiveView.Socket{assigns: %{__changed__: %{}}}
+        )
+
+      assert short.assigns.page == 1
+      assert {:live, :patch, %{to: dropped, kind: :replace}} = short.redirected
+      assert URI.parse(dropped).path == "/admin/newsletters/broadcasts"
+      refute dropped =~ "page="
+
+      create_broadcasts(25)
+
+      {:noreply, long} =
+        UrlStateHarness.handle_params(
+          Broadcasts,
+          %{"page" => "9"},
+          "/admin/newsletters/broadcasts",
+          %Phoenix.LiveView.Socket{assigns: %{__changed__: %{}}}
+        )
+
+      assert long.assigns.page == 2
+      assert {:live, :patch, %{to: kept, kind: :replace}} = long.redirected
+      assert URI.parse(kept).path == "/admin/newsletters/broadcasts"
+      assert URI.decode_query(URI.parse(kept).query)["page"] == "2"
+    end
+
+    test "a page the list has is left in the address" do
+      create_broadcasts(26)
+
+      {:noreply, socket} =
+        UrlStateHarness.handle_params(
+          Broadcasts,
+          %{"page" => "2"},
+          "/admin/newsletters/broadcasts",
+          %Phoenix.LiveView.Socket{assigns: %{__changed__: %{}}}
+        )
+
+      assert socket.assigns.page == 2
+      assert socket.redirected == nil
     end
 
     test "the count follows the status filter" do
@@ -112,7 +186,10 @@ defmodule PhoenixKit.Newsletters.Web.BroadcastsTest do
 
   # A crafted `status[]=` used to raise in URI encoding and take the page down.
   test "a status filter that is not a string is ignored" do
-    socket = %Phoenix.LiveView.Socket{assigns: %{__changed__: %{}}}
+    socket =
+      UrlStateHarness.prepare(Broadcasts, %{}, %Phoenix.LiveView.Socket{
+        assigns: %{__changed__: %{}, url_path: "/admin/newsletters/broadcasts"}
+      })
 
     assert {:noreply, %{redirected: nil}} =
              Broadcasts.handle_event("filter_status", %{"status" => ["sent"]}, socket)
@@ -132,5 +209,22 @@ defmodule PhoenixKit.Newsletters.Web.BroadcastsTest do
                %{"status" => %{"a" => "b"}},
                socket
              )
+  end
+
+  test "the layouts filter drops a status that does not exist, and keeps one that does" do
+    socket =
+      UrlStateHarness.prepare(LayoutsIndex, %{}, %Phoenix.LiveView.Socket{
+        assigns: %{__changed__: %{}, url_path: "/admin/newsletters/layouts"}
+      })
+
+    assert {:noreply, %{redirected: {:live, :patch, %{to: dropped}}}} =
+             LayoutsIndex.handle_event("filter_status", %{"status" => "nope"}, socket)
+
+    refute dropped =~ "status="
+
+    assert {:noreply, %{redirected: {:live, :patch, %{to: archived}}}} =
+             LayoutsIndex.handle_event("filter_status", %{"status" => "archived"}, socket)
+
+    assert archived =~ "status=archived"
   end
 end

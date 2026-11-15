@@ -6,6 +6,11 @@ defmodule PhoenixKit.Newsletters.Web.BroadcastDetails do
   use Phoenix.LiveView
   use Gettext, backend: PhoenixKit.Newsletters.Gettext
 
+  # The deliveries' page and its size live in the query string; the size is the
+  # person's own, remembered across the admin's lists (`PhoenixKitWeb.PageSize`).
+  use PhoenixKitWeb.Live.UrlState,
+    params: [page: [default: 1, cast: :integer, min: 1]] ++ PhoenixKitWeb.PageSize.url_params()
+
   import PhoenixKitWeb.Components.Core.Accordion
   import PhoenixKitWeb.Components.Core.EmptyState
   import PhoenixKitWeb.Components.Core.Icon
@@ -53,9 +58,8 @@ defmodule PhoenixKit.Newsletters.Web.BroadcastDetails do
         |> assign(:delivery_stats, %{})
         |> assign(:resendable_count, 0)
         |> assign(:unresendable_count, 0)
-        |> assign(:page_param, nil)
-        |> assign(:page, 1)
-        |> assign(:per_page, Paging.per_page())
+        # :page and :per_page come from the URL, assigned by UrlState before
+        # mount: assigning them here would lose a shared link's.
         |> assign(:total_count, 0)
         |> assign(:total_pages, 1)
         |> assign(:crm_list, nil)
@@ -73,6 +77,7 @@ defmodule PhoenixKit.Newsletters.Web.BroadcastDetails do
         |> assign(:confirm_message, "")
         |> assign(:can_send, Access.can_send?(Access.scope(socket)))
         |> assign(:can_see_audiences, Access.can_see_audiences?(Access.scope(socket)))
+        |> PhoenixKitWeb.PageSize.mount()
 
       {:ok, socket}
     else
@@ -83,16 +88,22 @@ defmodule PhoenixKit.Newsletters.Web.BroadcastDetails do
     end
   end
 
+  # UrlState's own hook has already put the page and its size in the assigns by
+  # the time this runs, on the first render and on every patch.
   @impl true
-  def handle_params(%{"id" => id} = params, _url, socket) do
+  def handle_params(%{"id" => id}, _url, socket) do
     {:noreply,
      socket
      |> assign_tz()
      |> assign(:broadcast_id, id)
-     |> assign(:page_param, params["page"])
      |> assign(:loading, true)
      |> load_broadcast_data()}
   end
+
+  # The page loads in handle_params/3, which needs the broadcast's id from the
+  # path and runs after every change too.
+  @impl true
+  def handle_url_state(_state, socket), do: socket
 
   # Resolves and assigns the viewer's timezone from handle_params (not
   # mount, which runs twice per connection — once for the disconnected
@@ -148,6 +159,11 @@ defmodule PhoenixKit.Newsletters.Web.BroadcastDetails do
        )
      )}
   end
+
+  # Saved for the person and applied to every list; the page goes back to 1.
+  @impl true
+  def handle_event("change_per_page", params, socket),
+    do: {:noreply, PhoenixKitWeb.PageSize.handle_change(params, socket)}
 
   @impl true
   def handle_event("hide_confirm", _params, socket) do
@@ -397,13 +413,15 @@ defmodule PhoenixKit.Newsletters.Web.BroadcastDetails do
       broadcast = Newsletters.get_broadcast_with_template!(id)
       stats = Newsletters.get_delivery_stats(id)
       total = stats |> Map.values() |> Enum.sum()
-      {page, offset} = Paging.resolve(socket.assigns.page_param, total)
+      per_page = socket.assigns.per_page
+      requested = socket.assigns.page
+      {page, offset} = Paging.resolve(requested, total, per_page)
       {resendable, unresendable} = resend_counts(broadcast, stats)
 
       # Recipient addresses only with `newsletters.audiences`.
       deliveries =
         if Access.can_see_audiences?(Access.scope(socket)),
-          do: Newsletters.list_deliveries(id, %{limit: Paging.per_page(), offset: offset}),
+          do: Newsletters.list_deliveries(id, %{limit: per_page, offset: offset}),
           else: []
 
       # The CRM list behind a broadcast is resolved only for a viewer who
@@ -419,7 +437,7 @@ defmodule PhoenixKit.Newsletters.Web.BroadcastDetails do
       |> assign(:unresendable_count, unresendable)
       |> assign(:page, page)
       |> assign(:total_count, total)
-      |> assign(:total_pages, Paging.total_pages(total))
+      |> assign(:total_pages, Paging.total_pages(total, per_page))
       |> assign(:crm_list, crm_list)
       |> assign(:crm_preflight, if(crm?, do: crm_preflight(broadcast)))
       |> assign(:stale_roles, stale_roles(broadcast))
@@ -428,6 +446,7 @@ defmodule PhoenixKit.Newsletters.Web.BroadcastDetails do
       |> assign(:attachment_files, load_attachment_files(broadcast.attachments || []))
       |> assign(:loading, false)
       |> assign(:page_title, broadcast.subject)
+      |> replace_clamped_page(requested, page)
     rescue
       _ in [Ecto.NoResultsError, Ecto.Query.CastError] ->
         socket
@@ -435,6 +454,14 @@ defmodule PhoenixKit.Newsletters.Web.BroadcastDetails do
         |> put_flash(:error, gettext("Broadcast not found"))
         |> push_navigate(to: Paths.broadcasts_index())
     end
+  end
+
+  # A page past the end is clamped in the assigns. Replace the URL once, so a
+  # shared link does not keep a page the list does not have.
+  defp replace_clamped_page(socket, requested, page) when requested == page, do: socket
+
+  defp replace_clamped_page(socket, _requested, page) do
+    push_patch(socket, to: url_state_path(socket, page: page), replace: true)
   end
 
   # Only a finished broadcast can resend. Failed rows left out of the count stay
@@ -448,11 +475,6 @@ defmodule PhoenixKit.Newsletters.Web.BroadcastDetails do
 
   defp list_sendable?(%{status: status}), do: status == "active"
   defp list_sendable?(_list), do: true
-
-  defp page_url(page, broadcast_uuid) do
-    query = if page > 1, do: "?page=#{page}", else: ""
-    Paths.broadcast_show(broadcast_uuid) <> query
-  end
 
   defp crm_preflight(%{source_type: "crm_list", crm_list_uuid: crm_list_uuid})
        when is_binary(crm_list_uuid) do

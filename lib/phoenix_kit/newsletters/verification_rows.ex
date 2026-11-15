@@ -20,7 +20,11 @@ defmodule PhoenixKit.Newsletters.VerificationRows do
   @spec statuses() :: [String.t()]
   def statuses, do: @statuses
 
-  @doc "The page size."
+  @doc """
+  Fallback page size for `table/5` and `paginate/2` when the caller does not
+  pass one. The verification page passes the viewer's own size
+  (`PhoenixKitWeb.PageSize`) instead.
+  """
   @spec per_page() :: pos_integer()
   def per_page, do: @default_per_page
 
@@ -118,19 +122,6 @@ defmodule PhoenixKit.Newsletters.VerificationRows do
   @spec parse_status(term()) :: String.t()
   def parse_status(status) when status in @statuses, do: status
   def parse_status(_status), do: ""
-
-  @doc "A `?page=` value as a positive integer; `1` for anything else."
-  @spec parse_page(term()) :: pos_integer()
-  def parse_page(page) when is_integer(page) and page > 0, do: page
-
-  def parse_page(page) when is_binary(page) do
-    case Integer.parse(page) do
-      {n, ""} when n > 0 -> n
-      _ -> 1
-    end
-  end
-
-  def parse_page(_page), do: 1
 
   @doc """
   One page of `rows`. A page past the end is clamped to the last one, so a

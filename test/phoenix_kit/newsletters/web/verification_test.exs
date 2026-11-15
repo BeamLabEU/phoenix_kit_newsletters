@@ -11,6 +11,7 @@ defmodule PhoenixKit.Newsletters.Web.VerificationTest do
   import Phoenix.LiveViewTest, only: [rendered_to_string: 1]
 
   alias PhoenixKit.Newsletters
+  alias PhoenixKit.Newsletters.Paths
   alias PhoenixKit.Newsletters.Web.Verification
   alias PhoenixKit.Users.Auth.User
   alias PhoenixKit.Users.Roles
@@ -18,6 +19,7 @@ defmodule PhoenixKit.Newsletters.Web.VerificationTest do
   alias PhoenixKitCRM.Lists
   alias PhoenixKitNewsletters.Test.FakeVerificationEngine, as: Fake
   alias PhoenixKitNewsletters.Test.Repo
+  alias PhoenixKitNewsletters.Test.UrlStateHarness
   alias PhoenixKitNewsletters.Test.Users, as: TestUsers
 
   @engine_key :email_verification_engine
@@ -39,7 +41,8 @@ defmodule PhoenixKit.Newsletters.Web.VerificationTest do
             __changed__: %{},
             flash: %{},
             phoenix_kit_current_user: nil,
-            phoenix_kit_current_scope: full_scope()
+            phoenix_kit_current_scope: full_scope(),
+            url_path: "/admin/newsletters/verification"
           },
           extra
         )
@@ -49,13 +52,33 @@ defmodule PhoenixKit.Newsletters.Web.VerificationTest do
   defp connected_socket(extra \\ %{}), do: %{socket(extra) | transport_pid: self()}
 
   defp mounted(socket \\ socket()) do
-    {:ok, socket} = Verification.mount(%{}, %{}, socket)
+    {:ok, socket} = UrlStateHarness.mount(Verification, %{}, socket)
     socket
   end
 
+  # Roles travel comma-separated in the URL; a test may give them as a list of
+  # binaries. A mixed list is an old `roles[]` link and is left for the page
+  # to move, the way a request would hand it over. Joining that list would
+  # call `to_string/1` on a `nil`.
   defp visit(params, socket \\ nil) do
+    params =
+      Map.new(params, fn
+        {key, values} when is_list(values) ->
+          if Enum.all?(values, &is_binary/1),
+            do: {key, Enum.join(values, ",")},
+            else: {key, values}
+
+        pair ->
+          pair
+      end)
+
     {:noreply, socket} =
-      Verification.handle_params(params, "/", socket || mounted())
+      UrlStateHarness.handle_params(
+        Verification,
+        params,
+        "/admin/newsletters/verification",
+        socket || mounted()
+      )
 
     socket
   end
@@ -120,7 +143,7 @@ defmodule PhoenixKit.Newsletters.Web.VerificationTest do
   describe "mount/3" do
     test "redirects with a flash when the module is disabled" do
       Newsletters.disable_system()
-      assert {:ok, socket} = Verification.mount(%{}, %{}, socket())
+      assert {:ok, socket} = UrlStateHarness.mount(Verification, %{}, socket())
       assert {:live, :redirect, _} = socket.redirected
       assert socket.assigns.flash["error"] =~ "not enabled"
     end
@@ -402,10 +425,15 @@ defmodule PhoenixKit.Newsletters.Web.VerificationTest do
     end
 
     test "garbage in the URL shows an empty audience instead of crashing" do
+      # A mixed `roles[]` list is an old link. It moves once; the page it
+      # lands on is what a visitor sees, and it has nothing to verify.
       socket = visit(%{"source" => "user_group", "roles" => ["not-a-uuid", 7, nil]})
-      assert socket.assigns.role_uuids == []
-      assert socket.assigns.emails == []
-      assert render_page(socket) =~ "No addresses to verify"
+      assert {:live, :patch, %{to: to, kind: :replace}} = socket.redirected
+
+      followed = visit(URI.decode_query(URI.parse(to).query || ""), %{socket | redirected: nil})
+      assert followed.assigns.role_uuids == []
+      assert followed.assigns.emails == []
+      assert render_page(followed) =~ "No addresses to verify"
     end
 
     test "a deleted role contributes nothing" do
@@ -413,10 +441,17 @@ defmodule PhoenixKit.Newsletters.Web.VerificationTest do
       assert socket.assigns.emails == []
     end
 
-    test "a page past the end is clamped" do
+    test "a page past the end is clamped and replaced in the address" do
       role = audience(["a@example.com"])
       socket = visit(%{"source" => "user_group", "roles" => [role.uuid], "page" => "9"})
+
       assert socket.assigns.page == 1
+      assert {:live, :patch, %{to: to, kind: :replace}} = socket.redirected
+      assert URI.parse(to).path == "/admin/newsletters/verification"
+      query = URI.decode_query(URI.parse(to).query)
+      refute Map.has_key?(query, "page")
+      assert query["roles"] == role.uuid
+      assert query["source"] == "user_group"
     end
   end
 
@@ -488,7 +523,7 @@ defmodule PhoenixKit.Newsletters.Web.VerificationTest do
 
       assert URI.decode_query(URI.parse(to).query) == %{
                "source" => "user_group",
-               "roles[]" => @role_uuid
+               "roles" => @role_uuid
              }
     end
 
@@ -519,7 +554,7 @@ defmodule PhoenixKit.Newsletters.Web.VerificationTest do
       query = URI.decode_query(URI.parse(to).query)
       assert query["status"] == "valid"
       assert query["source"] == "user_group"
-      assert query["roles[]"] == role.uuid
+      assert query["roles"] == role.uuid
       refute Map.has_key?(query, "page")
     end
 
@@ -1209,14 +1244,71 @@ defmodule PhoenixKit.Newsletters.Web.VerificationTest do
       assert html =~ "verification-status-filter"
     end
 
-    test "page_params/4 takes explicit values, not the assigns" do
-      assert Verification.page_params("user_group", "", [@role_uuid], "valid") ==
-               %{
-                 "source" => "user_group",
-                 "list" => "",
-                 "roles" => [@role_uuid],
-                 "status" => "valid"
-               }
+    test "roles travel comma-separated, so the page's patches keep every one" do
+      other = Ecto.UUID.generate()
+
+      assert Paths.verification_index(%{"source" => "user_group", "roles" => [@role_uuid, other]}) =~
+               "roles=" <> URI.encode_www_form("#{@role_uuid},#{other}")
+
+      socket = visit(%{"source" => "user_group", "roles" => "#{@role_uuid},#{other}"})
+      assert socket.assigns.role_uuids == [@role_uuid, other]
+    end
+
+    test "a link from before, with roles[], moves once to the current form" do
+      {:noreply, socket} =
+        UrlStateHarness.handle_params(
+          Verification,
+          %{"source" => "user_group", "roles" => [@role_uuid, "garbage"], "status" => "valid"},
+          "/admin/newsletters/verification",
+          mounted()
+        )
+
+      assert {:live, :patch, %{to: to, kind: :replace}} = socket.redirected
+
+      assert URI.decode_query(URI.parse(to).query) == %{
+               "source" => "user_group",
+               "roles" => @role_uuid,
+               "status" => "valid"
+             }
+    end
+
+    test "that move keeps the path, the page and the size the link had" do
+      path = "/ru/admin/newsletters/verification"
+
+      {:noreply, socket} =
+        UrlStateHarness.handle_params(
+          Verification,
+          %{
+            "source" => "user_group",
+            "roles" => [@role_uuid],
+            "status" => "valid",
+            "page" => "2",
+            "per_page" => "10",
+            "fit" => "true",
+            "locale" => "ru"
+          },
+          path,
+          mounted()
+        )
+
+      assert {:live, :patch, %{to: to, kind: :replace}} = socket.redirected
+      parsed = URI.parse(to)
+      assert parsed.path == path
+
+      assert URI.decode_query(parsed.query) == %{
+               "source" => "user_group",
+               "roles" => @role_uuid,
+               "status" => "valid",
+               "page" => "2",
+               "per_page" => "10",
+               "fit" => "true"
+             }
+    end
+
+    test "spaces around a comma still select every role" do
+      other = Ecto.UUID.generate()
+      socket = visit(%{"source" => "user_group", "roles" => "#{@role_uuid}, #{other}"})
+      assert socket.assigns.role_uuids == [@role_uuid, other]
     end
 
     test "pagination links keep the audience and the filter" do
@@ -1232,13 +1324,37 @@ defmodule PhoenixKit.Newsletters.Web.VerificationTest do
       assert html =~ "Showing 1 to 2 of 3 addresses"
     end
 
-    test "page_url/5 builds the page's address with the audience and the filter" do
-      url = Verification.page_url(3, "user_group", "", [@role_uuid], "valid")
+    test "a page size from the URL sizes the table, and one it does not offer is refused" do
+      role = audience(for i <- 1..12, do: "s#{i}@example.com")
+      params = %{"source" => "user_group", "roles" => [role.uuid]}
 
-      assert url =~ "/admin/newsletters/verification?"
-      assert url =~ "page=3"
-      assert url =~ "status=valid"
-      assert url =~ "source=user_group"
+      assert %{per_page: 10, total_pages: 2} =
+               visit(Map.put(params, "per_page", "10")).assigns
+
+      assert %{per_page: 25, total_pages: 1} = visit(Map.put(params, "per_page", "3")).assigns
+    end
+
+    # A size picked by hand becomes the person's default (`PhoenixKitWeb.PageSize`),
+    # so the address leaves it out and the next load reads it from there.
+    test "change_per_page moves to the first page at the new size" do
+      role = audience(for i <- 1..12, do: "c#{i}@example.com")
+
+      # Page 2 of twelve is past the end, so the load replaces the address
+      # first. The size change is the next request, on that socket.
+      socket =
+        visit(%{"source" => "user_group", "roles" => [role.uuid], "page" => "2"})
+        |> then(&%{&1 | redirected: nil})
+
+      {:noreply, socket} =
+        Verification.handle_event("change_per_page", %{"per_page" => "10"}, socket)
+
+      assert {:live, :patch, %{to: to}} = socket.redirected
+      query = URI.decode_query(URI.parse(to).query)
+      assert query["roles"] == role.uuid
+      refute Map.has_key?(query, "page")
+
+      assert %{per_page: 10, page: 1, total_pages: 2} =
+               visit(query, %{socket | redirected: nil}).assigns
     end
   end
 end

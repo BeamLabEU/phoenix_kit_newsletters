@@ -57,19 +57,16 @@ are handled externally via `find_delivery_by_message_id/1` and
 mix deps.get
 createdb phoenix_kit_newsletters_test  # once; DB tests auto-skip without it
 mix test
-mix format
-mix precommit                        # required before every commit
+mix format && mix precommit  # before every commit
 ```
 
-`precommit` runs compile with warnings as errors, `deps.unlock --check-unused`,
-`hex.audit`, and `quality.ci` (format check, strict Credo, Dialyzer).
-`mix quality` applies formatting then runs strict Credo and Dialyzer;
-`mix quality.ci` only checks formatting, so run `mix format` first.
+`precommit`: warnings-as-errors compile, `deps.unlock --check-unused`,
+`hex.audit`, `quality.ci` (format check, strict Credo, Dialyzer).
+`mix quality` formats first.
 
-Dependencies resolve from Hex; this repo has no `pk_dep/3` helper. To test
-local core, temporarily use
-`{:phoenix_kit, path: "../phoenix_kit", override: true}`, run `mix deps.get`,
-and revert **both** `mix.exs` and `mix.lock` before committing.
+Deps come from Hex (no `pk_dep/3`). To test local core, use
+`{:phoenix_kit, path: "../phoenix_kit", override: true}` and `mix deps.get`,
+then revert **both** `mix.exs` and `mix.lock` before committing.
 
 ## Web conventions
 
@@ -114,6 +111,9 @@ and revert **both** `mix.exs` and `mix.lock` before committing.
   tracked `@phoenix_kit_current_user` in templates; `assigns[...]` makes the
   media picker re-render on every keystroke. Never `assign(:layout, _)`:
   dead rendering reserves `:layout` for the page layout.
+- Admin lists keep filters, page and size in the URL (core `UrlState`,
+  `PageSize`): load in `handle_params/3`, never assign them in `mount/3`; join
+  multi-valued keys with commas.
 - Put token verification, timezone resolution and account contact find/link
   in `handle_params/3`, not `mount/3` (mount runs twice). `handle_params/3` runs
   on the plain GET too, so a write there waits for `connected?/1`.
@@ -462,14 +462,15 @@ installs (core 3.0 no longer creates module tables).
   `test_helper.exs` starts `Test.Repo`, migrates core, CRM and this chain,
   enables manual sandbox, PubSub manager, ModuleRegistry and dead-render
   endpoint. No reachable DB excludes `:integration`; the attachments probe
-  excludes `:requires_v158` when absent (its warning usually means no DB).
+  excludes `:requires_v158` when absent.
 - `PhoenixKitNewsletters.DataCase` tags integration tests, checks out sandbox
   and supplies `errors_on/1` and `TestScopes` (`full_scope`, `scope_with`,
   `enable_crm`). Hand-built admin sockets need `phoenix_kit_current_scope`;
   registry registration matters because `Scope.can?/2` checks module state.
-- LiveView tests call lifecycle/events directly; controller tests use cookie
-  sessions and `fetch_flash`. Both miss browser-render failures. Add every new LiveView to `test/support/dead_render_router.ex`
-  and cover it in `web/dead_render_test.exs`; never use a content `:layout`
+- LiveView tests call lifecycle/events directly (UrlState ones via
+  `Test.UrlStateHarness`); controller tests use cookie sessions and
+  `fetch_flash`. Both miss browser-render failures. Add every new LiveView to
+  `test/support/dead_render_router.ex` and cover it in `web/dead_render_test.exs`; never use a content `:layout`
   assign (see Web conventions). Its endpoint has no parser, so pass params to
   `get/3`: a query string in the path is ignored.
 - Verification tests use `test/support/fake_verification_engine.ex` via

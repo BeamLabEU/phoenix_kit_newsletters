@@ -10,8 +10,10 @@ defmodule PhoenixKit.Newsletters.Web.Verification do
   through `PhoenixKit.Newsletters.EmailVerification`; without an engine (or with it
   switched off) the page says so instead of failing.
 
-  The whole state lives in the URL (`?source=&list=&roles[]=&status=&page=`),
-  so a filtered page can be linked and every change is a `push_patch`.
+  The whole state lives in the URL (`?source=&list=&roles=&status=&page=&per_page=`,
+  roles comma-separated), through `PhoenixKitWeb.Live.UrlState`, so a filtered
+  page can be linked and every change is a patch. The page size is the person's
+  own, remembered across the admin's lists (`PhoenixKitWeb.PageSize`).
   Progress of a running batch arrives over PubSub; the table is re-read when
   the batch ends, not on every message.
   """
@@ -37,6 +39,23 @@ defmodule PhoenixKit.Newsletters.Web.Verification do
   alias PhoenixKit.Newsletters.Web.Timezone
   alias PhoenixKit.Settings
   alias PhoenixKit.Utils.Routes
+
+  # The `url_*` assigns hold the audience and the filter as the URL spells them;
+  # handle_params/3 judges them into `source`, `crm_list_uuid`, `role_uuids` and
+  # `status_filter`, and writes the judged values back so the next URL is clean.
+  use PhoenixKitWeb.Live.UrlState,
+    params:
+      [
+        url_source: [default: "", url_key: "source", in: ["", "user_group", "crm_list"]],
+        url_list: [default: "", url_key: "list"],
+        url_roles: [default: "", url_key: "roles"],
+        url_status: [
+          default: "",
+          url_key: "status",
+          in: ["" | VerificationRows.statuses()]
+        ],
+        page: [default: 1, cast: :integer, min: 1]
+      ] ++ PhoenixKitWeb.PageSize.url_params()
 
   @active_batch_states ~w(queued running)
   @terminal_batch_states ~w(done cancelled)
@@ -85,10 +104,10 @@ defmodule PhoenixKit.Newsletters.Web.Verification do
     |> assign(:audience_key, nil)
     |> assign(:emails, [])
     |> assign(:rows, [])
-    |> assign(:page, 1)
+    # :page, :per_page and the url_* assigns come from the URL, assigned by
+    # UrlState before mount: assigning them here would lose a shared link's.
     |> assign(:total_pages, 1)
     |> assign(:total, 0)
-    |> assign(:per_page, VerificationRows.per_page())
     |> assign(:summary, nil)
     |> assign(:batch, nil)
     |> assign(:subscribed_batches, MapSet.new())
@@ -97,34 +116,65 @@ defmodule PhoenixKit.Newsletters.Web.Verification do
     |> assign(:smtp_wait, false)
     |> assign(:settings_path, nil)
     |> assign(:runner_tick, false)
+    |> PhoenixKitWeb.PageSize.mount()
   end
 
+  # A link from before roles were comma-separated (`roles[]=…`) moves once to
+  # the current form: left as it is, its `roles[]` would ride along in every
+  # later URL as an unknown key, and Plug lets the last `roles` key win.
+  # The path is the one this request used, so a locale segment stays, and the
+  # page and its size come along.
   @impl true
-  def handle_params(params, _url, %{assigns: %{engine: :ready}} = socket) do
-    source = parse_source(params["source"], socket.assigns.crm_available)
+  def handle_params(%{"roles" => [_ | _] = roles} = params, uri, socket) do
+    {:noreply, push_patch(socket, to: legacy_roles_path(params, roles, uri), replace: true)}
+  end
+
+  # UrlState's own hook has already put the URL's state in the assigns by the
+  # time this runs, on the first render and on every patch.
+  def handle_params(_params, _url, %{assigns: %{engine: :ready}} = socket) do
+    %{url_source: url_source, url_list: url_list, url_roles: url_roles} = socket.assigns
+    source = parse_source(url_source, socket.assigns.crm_available)
+    crm_list_uuid = if source == "crm_list", do: parse_uuid(url_list), else: ""
+    role_uuids = if source == "user_group", do: parse_roles(url_roles), else: []
+    status = VerificationRows.parse_status(socket.assigns.url_status)
 
     socket =
       socket
       |> assign_tz()
       |> assign_audience_options()
       |> assign(:source, source)
-      |> assign(
-        :crm_list_uuid,
-        if(source == "crm_list", do: parse_uuid(params["list"]), else: "")
-      )
-      |> assign(
-        :role_uuids,
-        if(source == "user_group", do: parse_roles(params["roles"]), else: [])
-      )
-      |> assign(:status_filter, VerificationRows.parse_status(params["status"]))
+      |> assign(:crm_list_uuid, crm_list_uuid)
+      |> assign(:role_uuids, role_uuids)
+      |> assign(:status_filter, status)
+      |> assign(:url_source, source)
+      |> assign(:url_list, crm_list_uuid)
+      |> assign(:url_roles, Enum.join(role_uuids, ","))
+      |> assign(:url_status, status)
 
-    {:noreply,
-     socket
-     |> refresh_audience()
-     |> load_table(VerificationRows.parse_page(params["page"]))}
+    requested = socket.assigns.page
+
+    socket =
+      socket
+      |> refresh_audience()
+      |> load_table(requested)
+
+    # A page past the end is clamped above. Replace the URL once, so a shared
+    # link does not keep a page the list does not have.
+    socket =
+      if socket.assigns.page == requested do
+        socket
+      else
+        push_patch(socket, to: url_state_path(socket, page: socket.assigns.page), replace: true)
+      end
+
+    {:noreply, socket}
   end
 
   def handle_params(_params, _url, socket), do: {:noreply, assign_tz(socket)}
+
+  # The page loads in handle_params/3, which runs after every change too.
+  @impl true
+  def handle_url_state(_state, socket), do: socket
 
   @impl true
   def handle_event(event, params, socket) do
@@ -136,26 +186,30 @@ defmodule PhoenixKit.Newsletters.Web.Verification do
     end
   end
 
+  # A new audience starts without a filter, on its first page.
   defp verification_event("select_audience", params, socket) do
     source = parse_source(params["source"], socket.assigns.crm_available)
 
-    query = %{
-      "source" => source,
-      "list" => if(source == "crm_list", do: params["list"]),
-      "roles" => if(source == "user_group", do: parse_roles(params["roles"]))
-    }
-
-    {:noreply, push_patch(socket, to: Paths.verification_index(query))}
-  end
-
-  defp verification_event("filter_status", %{"status" => status}, socket) do
-    %{source: source, crm_list_uuid: list_uuid, role_uuids: role_uuids} = socket.assigns
-
     {:noreply,
-     push_patch(socket,
-       to: Paths.verification_index(page_params(source, list_uuid, role_uuids, status))
+     push_url_state(socket,
+       url_source: source,
+       url_list: if(source == "crm_list", do: parse_uuid(params["list"]), else: ""),
+       url_roles:
+         if(source == "user_group", do: Enum.join(parse_roles(params["roles"]), ","), else: ""),
+       url_status: ""
      )}
   end
+
+  defp verification_event("filter_status", %{"status" => status}, socket)
+       when is_binary(status) do
+    {:noreply, push_url_state(socket, url_status: status)}
+  end
+
+  defp verification_event("filter_status", _params, socket), do: {:noreply, socket}
+
+  # Saved for the person and applied to every list; the page goes back to 1.
+  defp verification_event("change_per_page", params, socket),
+    do: {:noreply, PhoenixKitWeb.PageSize.handle_change(params, socket)}
 
   defp verification_event("start_batch", _params, %{assigns: %{engine: :ready}} = socket) do
     case engine_state() do
@@ -297,6 +351,37 @@ defmodule PhoenixKit.Newsletters.Web.Verification do
 
   defp parse_uuid(_value), do: ""
 
+  # The request's own path, not one rebuilt from `Paths`: that would resolve
+  # the locale again and can drop the segment the visitor is actually on.
+  defp legacy_roles_path(params, roles, uri) do
+    path =
+      case URI.parse(uri) do
+        %URI{path: path} when is_binary(path) and path != "" -> path
+        _ -> Paths.verification_index()
+      end
+
+    query =
+      ~w(source list status page per_page fit)
+      |> Map.new(fn key -> {key, binary_param(params[key])} end)
+      |> Map.put("roles", Enum.join(parse_roles(roles), ","))
+      |> Enum.reject(fn {_key, value} -> value in [nil, ""] end)
+      |> Map.new()
+
+    case query do
+      empty when map_size(empty) == 0 -> path
+      query -> path <> "?" <> URI.encode_query(query)
+    end
+  end
+
+  defp binary_param(value) when is_binary(value) and value != "", do: value
+  defp binary_param(_value), do: nil
+
+  # Comma-separated in the URL; a list from the form's checkboxes or an old link.
+  # Spaces around a comma are ignored, so a hand-edited link still selects.
+  defp parse_roles(roles) when is_binary(roles) do
+    roles |> String.split(",") |> Enum.map(&String.trim/1) |> parse_roles()
+  end
+
   defp parse_roles(roles) when is_list(roles) do
     roles |> Enum.map(&parse_uuid/1) |> Enum.reject(&(&1 == "")) |> Enum.uniq()
   end
@@ -339,7 +424,8 @@ defmodule PhoenixKit.Newsletters.Web.Verification do
         socket.assigns.status_filter,
         page,
         &EmailVerification.statuses_for/1,
-        &EmailVerification.results_for/1
+        &EmailVerification.results_for/1,
+        socket.assigns.per_page
       )
 
     socket
@@ -587,17 +673,4 @@ defmodule PhoenixKit.Newsletters.Web.Verification do
     do: format_datetime(Map.get(result, :checked_at), tz)
 
   def checked_at(_row, _tz), do: "-"
-
-  @doc false
-  def page_params(source, crm_list_uuid, role_uuids, status) do
-    %{"source" => source, "list" => crm_list_uuid, "roles" => role_uuids, "status" => status}
-  end
-
-  @doc false
-  def page_url(page, source, crm_list_uuid, role_uuids, status) do
-    source
-    |> page_params(crm_list_uuid, role_uuids, status)
-    |> Map.put("page", page)
-    |> Paths.verification_index()
-  end
 end

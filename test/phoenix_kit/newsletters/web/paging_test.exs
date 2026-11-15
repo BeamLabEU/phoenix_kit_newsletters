@@ -3,22 +3,20 @@ defmodule PhoenixKit.Newsletters.Web.PagingTest do
 
   alias PhoenixKit.Newsletters.Web.Paging
 
-  test "total_pages/1 is never less than one" do
-    assert Paging.total_pages(0) == 1
-    assert Paging.total_pages(50) == 1
-    assert Paging.total_pages(51) == 2
+  test "total_pages/2 is never less than one" do
+    assert Paging.total_pages(0, 25) == 1
+    assert Paging.total_pages(25, 25) == 1
+    assert Paging.total_pages(26, 25) == 2
+    assert Paging.total_pages(120, 50) == 3
   end
 
-  test "resolve/2 gives the page and where it starts" do
-    assert Paging.resolve("2", 120) == {2, 50}
-    assert Paging.resolve(nil, 120) == {1, 0}
+  test "resolve/3 gives the page and where it starts" do
+    assert Paging.resolve(2, 120, 50) == {2, 50}
+    assert Paging.resolve(3, 120, 10) == {3, 20}
   end
 
-  test "resolve/2 lands on a real page whatever the URL says" do
-    assert Paging.resolve("99", 120) == {3, 100}
-
-    for param <- ["0", "-1", "abc", "2x", "", 7, %{}] do
-      assert Paging.resolve(param, 120) == {1, 0}
-    end
+  test "resolve/3 lands on a real page past the end, or of an empty list" do
+    assert Paging.resolve(99, 120, 50) == {3, 100}
+    assert Paging.resolve(4, 0, 25) == {1, 0}
   end
 end

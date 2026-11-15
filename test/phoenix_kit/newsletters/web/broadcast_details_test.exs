@@ -21,6 +21,7 @@ defmodule PhoenixKit.Newsletters.Web.BroadcastDetailsTest do
   alias PhoenixKit.Users.Auth.User
   alias PhoenixKit.Users.Roles
   alias PhoenixKitNewsletters.Test.Repo
+  alias PhoenixKitNewsletters.Test.UrlStateHarness
   alias PhoenixKitNewsletters.Test.Users, as: TestUsers
 
   setup do
@@ -42,7 +43,12 @@ defmodule PhoenixKit.Newsletters.Web.BroadcastDetailsTest do
     broadcast = create_user_group_broadcast([Ecto.UUID.generate()], ["Marketing"])
 
     {:noreply, updated} =
-      BroadcastDetails.handle_params(%{"id" => broadcast.uuid}, "/", socket_with_user(user))
+      UrlStateHarness.handle_params(
+        BroadcastDetails,
+        %{"id" => broadcast.uuid},
+        "/",
+        socket_with_user(user)
+      )
 
     assert updated.assigns.tz == "3"
   end
@@ -53,7 +59,12 @@ defmodule PhoenixKit.Newsletters.Web.BroadcastDetailsTest do
     broadcast = create_user_group_broadcast([Ecto.UUID.generate()], ["Marketing"])
 
     {:noreply, updated} =
-      BroadcastDetails.handle_params(%{"id" => broadcast.uuid}, "/", socket_with_user(user))
+      UrlStateHarness.handle_params(
+        BroadcastDetails,
+        %{"id" => broadcast.uuid},
+        "/",
+        socket_with_user(user)
+      )
 
     assert updated.assigns.tz == "-5"
   end
@@ -62,7 +73,7 @@ defmodule PhoenixKit.Newsletters.Web.BroadcastDetailsTest do
     broadcast = create_user_group_broadcast([Ecto.UUID.generate()], ["Marketing"])
 
     {:noreply, updated} =
-      BroadcastDetails.handle_params(%{"id" => broadcast.uuid}, "/", socket())
+      UrlStateHarness.handle_params(BroadcastDetails, %{"id" => broadcast.uuid}, "/", socket())
 
     assert updated.assigns.tz == "0"
   end
@@ -72,6 +83,7 @@ defmodule PhoenixKit.Newsletters.Web.BroadcastDetailsTest do
   # warning for source_type = "user_group" broadcasts, exercised via
   # the same direct-callback pattern as the timezone tests above.
 
+  # Prepared as LiveView would, so the page and its size are in the assigns.
   defp socket do
     %Phoenix.LiveView.Socket{
       assigns: %{
@@ -88,6 +100,7 @@ defmodule PhoenixKit.Newsletters.Web.BroadcastDetailsTest do
         __changed__: %{}
       }
     }
+    |> then(&UrlStateHarness.prepare(BroadcastDetails, %{}, &1))
   end
 
   defp create_role(name) do
@@ -109,7 +122,7 @@ defmodule PhoenixKit.Newsletters.Web.BroadcastDetailsTest do
 
   defp load(broadcast_uuid) do
     {:noreply, updated} =
-      BroadcastDetails.handle_params(%{"id" => broadcast_uuid}, "/", socket())
+      UrlStateHarness.handle_params(BroadcastDetails, %{"id" => broadcast_uuid}, "/", socket())
 
     updated
   end
@@ -366,7 +379,7 @@ defmodule PhoenixKit.Newsletters.Web.BroadcastDetailsTest do
 
     defp loaded(broadcast) do
       {:noreply, updated} =
-        BroadcastDetails.handle_params(%{"id" => broadcast.uuid}, "/", socket())
+        UrlStateHarness.handle_params(BroadcastDetails, %{"id" => broadcast.uuid}, "/", socket())
 
       updated
     end
@@ -595,17 +608,22 @@ defmodule PhoenixKit.Newsletters.Web.BroadcastDetailsTest do
 
     defp at_page(broadcast, params) do
       {:noreply, updated} =
-        BroadcastDetails.handle_params(Map.put(params, "id", broadcast.uuid), "/", socket())
+        UrlStateHarness.handle_params(
+          BroadcastDetails,
+          Map.put(params, "id", broadcast.uuid),
+          "/",
+          socket()
+        )
 
       updated
     end
 
     test "shows a page at a time, and knows how many there are" do
-      broadcast = with_deliveries(51)
+      broadcast = with_deliveries(26)
 
       first = at_page(broadcast, %{})
-      assert length(first.assigns.deliveries) == 50
-      assert first.assigns.total_count == 51
+      assert length(first.assigns.deliveries) == 25
+      assert first.assigns.total_count == 26
       assert first.assigns.total_pages == 2
 
       second = at_page(broadcast, %{"page" => "2"})
@@ -613,15 +631,35 @@ defmodule PhoenixKit.Newsletters.Web.BroadcastDetailsTest do
       assert second.assigns.page == 2
     end
 
-    test "a page past the end lands on the last one" do
-      broadcast = with_deliveries(51)
+    test "the page size comes from the URL, and only one the selector offers" do
+      broadcast = with_deliveries(26)
 
-      assert %{page: 2, deliveries: [_one]} = at_page(broadcast, %{"page" => "9"}).assigns
+      assert %{per_page: 10, total_pages: 3} = at_page(broadcast, %{"per_page" => "10"}).assigns
+      assert %{per_page: 25, total_pages: 2} = at_page(broadcast, %{"per_page" => "7"}).assigns
+    end
+
+    test "a page past the end lands on the last one and replaces the address" do
+      broadcast = with_deliveries(26)
+      updated = at_page(broadcast, %{"page" => "9"})
+
+      assert %{page: 2, deliveries: [_one]} = updated.assigns
+      assert {:live, :patch, %{to: to, kind: :replace}} = updated.redirected
+      assert URI.parse(to).path == "/"
+      assert URI.decode_query(URI.parse(to).query)["page"] == "2"
+    end
+
+    test "a page the list has is left in the address" do
+      broadcast = with_deliveries(26)
+      updated = at_page(broadcast, %{"page" => "2"})
+
+      assert updated.assigns.page == 2
+      assert updated.redirected == nil
     end
 
     test "an id that is not a uuid is reported, not crashed on" do
       {:noreply, updated} =
-        BroadcastDetails.handle_params(
+        UrlStateHarness.handle_params(
+          BroadcastDetails,
           %{"id" => "garbage"},
           "/",
           %{socket() | assigns: Map.put(socket().assigns, :flash, %{})}

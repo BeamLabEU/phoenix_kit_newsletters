@@ -21,6 +21,17 @@ defmodule PhoenixKit.Newsletters.Web.LayoutsIndex do
   alias PhoenixKit.Settings
   alias PhoenixKit.Utils.Routes
 
+  # The status filter lives in the query string. Active is the default, so an
+  # unfiltered list has no `?status=`. A value that is not a status is dropped.
+  use PhoenixKitWeb.Live.UrlState,
+    params: [
+      status_filter: [
+        default: "active",
+        url_key: "status",
+        in: ~w(active archived all)
+      ]
+    ]
+
   @impl true
   def mount(_params, _session, socket) do
     if Newsletters.enabled?() do
@@ -32,7 +43,7 @@ defmodule PhoenixKit.Newsletters.Web.LayoutsIndex do
        |> assign(:page_section_path, Paths.broadcasts_index())
        |> assign(:project_title, Settings.get_project_title())
        |> assign_new(:current_locale, fn -> nil end)
-       |> assign(:status_filter, "active")
+       # :status_filter comes from the URL, assigned by UrlState before mount.
        |> assign(:layouts, [])
        |> assign(:default_uuid, nil)}
     else
@@ -43,19 +54,19 @@ defmodule PhoenixKit.Newsletters.Web.LayoutsIndex do
     end
   end
 
+  # UrlState has already judged the status by the time this runs.
   @impl true
-  def handle_params(params, _url, socket) do
-    status =
-      if params["status"] in ["active", "archived", "all"], do: params["status"], else: "active"
-
-    {:noreply, socket |> assign(:status_filter, status) |> load()}
+  def handle_params(_params, _url, socket) do
+    {:noreply, load(socket)}
   end
 
   @impl true
-  # handle_params judges the value; only a string can go into the address.
+  def handle_url_state(_state, socket), do: socket
+
+  @impl true
+  # UrlState drops a status that does not exist; only a string gets that far.
   def handle_event("filter_status", %{"status" => status}, socket) when is_binary(status) do
-    {:noreply,
-     push_patch(socket, to: Paths.layouts_index() <> "?status=#{URI.encode_www_form(status)}")}
+    {:noreply, push_url_state(socket, status_filter: status)}
   end
 
   def handle_event("filter_status", _params, socket), do: {:noreply, socket}

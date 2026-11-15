@@ -354,8 +354,9 @@ defmodule PhoenixKit.Newsletters.UserGroupSource do
             Logger.warning(
               "UserGroupSource.record_opt_out/1: role opt-out for user #{user.uuid} " <>
                 "succeeded, but opting out its linked CRM contact #{contact.uuid} failed: " <>
-                "#{inspect(reason)}. That contact's opted_out_at was not updated — CRM-list " <>
-                "sends to it won't reflect this opt-out until it's retried."
+                "#{EmailVerification.mask_addresses(inspect(reason))}. That contact's " <>
+                "opted_out_at was not updated — CRM-list sends to it won't reflect this " <>
+                "opt-out until it's retried."
             )
         end
 

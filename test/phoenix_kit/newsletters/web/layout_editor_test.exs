@@ -11,17 +11,27 @@ defmodule PhoenixKit.Newsletters.Web.LayoutEditorTest do
   alias PhoenixKit.Newsletters.Layouts
   alias PhoenixKit.Newsletters.Web.LayoutEditor
   alias PhoenixKit.Newsletters.Web.LayoutsIndex
+  alias PhoenixKitNewsletters.Test.UrlStateHarness
 
   setup do
     PhoenixKit.Settings.update_boolean_setting("newsletters_enabled", true)
     :ok
   end
 
+  # A list on UrlState has its filter assigned by the hook, before mount.
+  # Calling mount and handle_params on a bare socket never does that.
   defp mounted(module, params) do
     socket = %Phoenix.LiveView.Socket{assigns: %{__changed__: %{}, flash: %{}}}
-    {:ok, socket} = module.mount(params, %{}, socket)
-    {:noreply, socket} = module.handle_params(params, "/", socket)
-    socket
+
+    if Code.ensure_loaded?(module) and function_exported?(module, :__phoenix_kit_url_state__, 0) do
+      {:ok, socket} = UrlStateHarness.mount(module, params, socket)
+      {:noreply, socket} = UrlStateHarness.handle_params(module, params, "/", socket)
+      socket
+    else
+      {:ok, socket} = module.mount(params, %{}, socket)
+      {:noreply, socket} = module.handle_params(params, "/", socket)
+      socket
+    end
   end
 
   describe "LayoutEditor" do

@@ -352,19 +352,17 @@
           </.table_default_body>
         </.table_default>
 
-        <div :if={@total_pages > 1} class="flex flex-wrap items-center justify-between gap-2 mt-4">
-          <.pagination_info
-            page={@page}
-            per_page={@per_page}
-            total_count={@total_count}
-            noun_plural={gettext("deliveries")}
-          />
-          <.pagination_controls
-            page={@page}
-            total_pages={@total_pages}
-            build_url={&page_url(&1, @broadcast.uuid)}
-          />
-        </div>
+        <.pagination_bar
+          id="deliveries-pagination"
+          page={@page}
+          total_pages={@total_pages}
+          total_count={@total_count}
+          per_page={@per_page}
+          auto={@auto_fit}
+          table_id="deliveries-table"
+          noun_plural={gettext("deliveries")}
+          build_url={&url_state_path(assigns, page: &1)}
+        />
       <% end %>
     <% end %>
   <% end %>

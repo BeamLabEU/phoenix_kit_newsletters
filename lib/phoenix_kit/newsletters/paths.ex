@@ -17,9 +17,12 @@ defmodule PhoenixKit.Newsletters.Paths do
   def layout_new, do: Routes.path("#{@base}/layouts/new")
   def layout_edit(id), do: Routes.path("#{@base}/layouts/#{id}/edit")
 
-  # Address verification
+  # Address verification. Roles go comma-separated, as the page reads them
+  # (`Web.Verification`): repeated `roles[]` keys would not survive its patches.
   def verification_index(params \\ %{}) do
-    case params |> Enum.reject(fn {_k, v} -> v in [nil, "", []] end) |> Map.new() do
+    params = Map.new(params, fn {k, v} -> {k, if(is_list(v), do: Enum.join(v, ","), else: v)} end)
+
+    case params |> Enum.reject(fn {_k, v} -> v in [nil, ""] end) |> Map.new() do
       query when map_size(query) == 0 -> Routes.path("#{@base}/verification")
       query -> Routes.path("#{@base}/verification") <> "?" <> Query.encode(query)
     end

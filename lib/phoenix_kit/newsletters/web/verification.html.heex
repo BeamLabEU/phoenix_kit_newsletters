@@ -181,7 +181,7 @@
         <.link
           :for={status <- ~w(valid invalid temp not_sure unchecked)a}
           id={"verification-summary-#{status}"}
-          patch={Paths.verification_index(page_params(@source, @crm_list_uuid, @role_uuids, Atom.to_string(status)))}
+          patch={url_state_path(assigns, url_status: Atom.to_string(status))}
           class={["stat hover:bg-base-200", @status_filter == Atom.to_string(status) && "bg-base-200"]}
         >
           <div class="stat-title">{status_label(status)}</div>
@@ -280,23 +280,17 @@
         {gettext("No addresses with this status.")}
       </p>
 
-      <div
-        :if={@total_pages > 1}
+      <.pagination_bar
         id="verification-pagination"
-        class="flex flex-wrap items-center justify-between gap-2 mt-4"
-      >
-        <.pagination_info
-          page={@page}
-          per_page={@per_page}
-          total_count={@total}
-          noun_plural={gettext("addresses")}
-        />
-        <.pagination_controls
-          page={@page}
-          total_pages={@total_pages}
-          build_url={&page_url(&1, @source, @crm_list_uuid, @role_uuids, @status_filter)}
-        />
-      </div>
+        page={@page}
+        total_pages={@total_pages}
+        total_count={@total}
+        per_page={@per_page}
+        auto={@auto_fit}
+        table_id="verification-table"
+        noun_plural={gettext("addresses")}
+        build_url={&url_state_path(assigns, page: &1)}
+      />
     </div>
   </div>
 </div>

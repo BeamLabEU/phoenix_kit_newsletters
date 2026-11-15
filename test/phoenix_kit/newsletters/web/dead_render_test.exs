@@ -37,6 +37,11 @@ defmodule PhoenixKit.Newsletters.Web.DeadRenderTest do
       assert html_response(get(conn, "/layouts"), 200) =~ "layouts-status-filter"
     end
 
+    test "a status that is not one still renders the list", %{conn: conn} do
+      assert html_response(get(conn, "/layouts", %{"status" => "nope"}), 200) =~
+               "layouts-status-filter"
+    end
+
     test "the new-layout editor renders", %{conn: conn} do
       assert html_response(get(conn, "/layouts/new"), 200) =~ ~s(id="layout-form")
     end
@@ -81,6 +86,39 @@ defmodule PhoenixKit.Newsletters.Web.DeadRenderTest do
 
       assert html =~ "verification-audience-form"
       refute html =~ "verification-unavailable"
+    end
+
+    test "a link with roles[] from before moves to comma-separated roles", %{conn: conn} do
+      Application.put_env(
+        :phoenix_kit_newsletters,
+        @engine_key,
+        PhoenixKitNewsletters.Test.FakeVerificationEngine
+      )
+
+      on_exit(fn -> Application.delete_env(:phoenix_kit_newsletters, @engine_key) end)
+      [a, b] = [Ecto.UUID.generate(), Ecto.UUID.generate()]
+
+      conn =
+        get(conn, "/verification", %{
+          "source" => "user_group",
+          "roles" => [a, b],
+          "status" => "valid",
+          "page" => "2",
+          "per_page" => "10",
+          "fit" => "true"
+        })
+
+      location = redirected_to(conn)
+      assert URI.parse(location).path == "/verification"
+
+      assert URI.decode_query(URI.parse(location).query) == %{
+               "source" => "user_group",
+               "roles" => "#{a},#{b}",
+               "status" => "valid",
+               "page" => "2",
+               "per_page" => "10",
+               "fit" => "true"
+             }
     end
 
     test "garbage query parameters still render", %{conn: conn} do
@@ -225,6 +263,35 @@ defmodule PhoenixKit.Newsletters.Web.DeadRenderTest do
 
       assert html =~ "1 failed delivery may have gone out"
       refute html =~ "Resend failed deliveries"
+    end
+
+    # UrlState and PageSize run their hooks only on a real request: the page size
+    # comes from the URL, and the footer's links keep it and the filter.
+    test "the list is paged at the size the URL asks for", %{conn: conn} do
+      for _ <- 1..11, do: broadcast(%{status: "sent"})
+
+      html =
+        html_response(get(conn, "/broadcasts", %{"status" => "sent", "per_page" => "10"}), 200)
+
+      assert html =~ ~s(id="broadcasts-pagination")
+      assert html =~ "Showing 1 to 10 of 11 broadcasts"
+      assert html =~ ~s(id="broadcasts-pagination-per-page")
+      assert [link | _] = Regex.run(~r{href="[^"]*page=2[^"]*"}, html)
+      assert link =~ "per_page=10"
+      assert link =~ "status=sent"
+    end
+
+    test "the deliveries are paged at the size the URL asks for", %{conn: conn} do
+      sent = broadcast(%{status: "sent"})
+      for _ <- 1..11, do: delivery(sent, %{status: "sent"})
+
+      html = html_response(get(conn, "/broadcasts/#{sent.uuid}", %{"per_page" => "10"}), 200)
+
+      assert html =~ ~s(id="deliveries-pagination")
+      assert html =~ "Showing 1 to 10 of 11 deliveries"
+      assert [link | _] = Regex.run(~r{href="[^"]*page=2[^"]*"}, html)
+      assert link =~ "/broadcasts/#{sent.uuid}?"
+      assert link =~ "per_page=10"
     end
 
     test "a layout link is applied once, not twice", %{conn: conn} do

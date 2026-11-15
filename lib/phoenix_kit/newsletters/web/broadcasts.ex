@@ -24,6 +24,20 @@ defmodule PhoenixKit.Newsletters.Web.Broadcasts do
   alias PhoenixKit.Settings
   alias PhoenixKit.Utils.Routes
 
+  # The status filter, the page and its size live in the query string, so a
+  # filtered page is a real URL. The size is the person's own, remembered across
+  # the admin's lists (`PhoenixKitWeb.PageSize`).
+  use PhoenixKitWeb.Live.UrlState,
+    params:
+      [
+        status_filter: [
+          default: "",
+          url_key: "status",
+          in: ["" | Broadcast.valid_statuses()]
+        ],
+        page: [default: 1, cast: :integer, min: 1]
+      ] ++ PhoenixKitWeb.PageSize.url_params()
+
   @impl true
   def mount(_params, _session, socket) do
     if Newsletters.enabled?() do
@@ -32,12 +46,12 @@ defmodule PhoenixKit.Newsletters.Web.Broadcasts do
         |> assign(:page_title, gettext("Newsletters"))
         |> assign(:page_subtitle, gettext("Create and manage email broadcasts"))
         |> assign(:project_title, Settings.get_project_title())
+        # :status_filter, :page and :per_page come from the URL, assigned by
+        # UrlState before mount: assigning them here would lose a shared link's.
         |> assign(:broadcasts, [])
-        |> assign(:status_filter, "")
-        |> assign(:page, 1)
-        |> assign(:per_page, Paging.per_page())
         |> assign(:total_count, 0)
         |> assign(:total_pages, 1)
+        |> PhoenixKitWeb.PageSize.mount()
 
       {:ok, socket}
     else
@@ -48,37 +62,39 @@ defmodule PhoenixKit.Newsletters.Web.Broadcasts do
     end
   end
 
+  # UrlState's own hook has already put the URL's state in the assigns, and
+  # judged it (a status that exists, a page and a size in bounds), by the time
+  # this runs: on the first render and on every patch.
   @impl true
-  def handle_params(params, _url, socket) do
-    status = status_param(params["status"])
+  def handle_params(_params, _url, socket) do
+    {:noreply, socket |> assign_tz() |> load_broadcasts()}
+  end
+
+  # The list loads in handle_params/3, which runs after every change too.
+  @impl true
+  def handle_url_state(_state, socket), do: socket
+
+  defp load_broadcasts(socket) do
+    %{status_filter: status, per_page: per_page, page: requested} = socket.assigns
     total = Newsletters.count_broadcasts(%{status: status})
-    {page, offset} = Paging.resolve(params["page"], total)
+    {page, offset} = Paging.resolve(requested, total, per_page)
 
-    broadcasts =
-      Newsletters.list_broadcasts(%{status: status, limit: Paging.per_page(), offset: offset})
+    socket =
+      socket
+      |> assign(
+        :broadcasts,
+        Newsletters.list_broadcasts(%{status: status, limit: per_page, offset: offset})
+      )
+      |> assign(:page, page)
+      |> assign(:total_count, total)
+      |> assign(:total_pages, Paging.total_pages(total, per_page))
 
-    {:noreply,
-     socket
-     |> assign_tz()
-     |> assign(:status_filter, status)
-     |> assign(:broadcasts, broadcasts)
-     |> assign(:page, page)
-     |> assign(:total_count, total)
-     |> assign(:total_pages, Paging.total_pages(total))}
-  end
-
-  # Only a status that exists: the rest would show nothing, or raise further down
-  # for a value that is not a string at all.
-  defp status_param(status) do
-    if status in Broadcast.valid_statuses(), do: status, else: ""
-  end
-
-  defp page_url(page, status) do
-    params = Enum.reject([status: status, page: page], fn {_k, v} -> v in ["", 1] end)
-
-    case URI.encode_query(params) do
-      "" -> Paths.broadcasts_index()
-      query -> Paths.broadcasts_index() <> "?" <> query
+    # A page past the end is clamped above. Replace the URL once, so a shared
+    # link does not keep a page the list does not have.
+    if page == requested do
+      socket
+    else
+      push_patch(socket, to: url_state_path(socket, page: page), replace: true)
     end
   end
 
@@ -95,12 +111,16 @@ defmodule PhoenixKit.Newsletters.Web.Broadcasts do
   end
 
   @impl true
-  # handle_params judges the value; only a string can go into the address.
+  # UrlState drops a status that does not exist; only a string gets that far.
   def handle_event("filter_status", %{"status" => status}, socket) when is_binary(status) do
-    {:noreply, push_patch(socket, to: page_url(1, status))}
+    {:noreply, push_url_state(socket, status_filter: status)}
   end
 
   def handle_event("filter_status", _params, socket), do: {:noreply, socket}
+
+  # Saved for the person and applied to every list; the page goes back to 1.
+  def handle_event("change_per_page", params, socket),
+    do: {:noreply, PhoenixKitWeb.PageSize.handle_change(params, socket)}
 
   attr(:status_filter, :string, required: true)
 

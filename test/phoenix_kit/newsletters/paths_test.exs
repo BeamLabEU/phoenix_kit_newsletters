@@ -14,13 +14,20 @@ defmodule PhoenixKit.Newsletters.PathsTest do
                ~r{/verification$}
     end
 
-    test "encodes scalars and lists" do
+    # Comma-separated, as the page reads them: repeated `roles[]` keys would not
+    # survive the page's own patches.
+    test "encodes scalars, and a list of roles as one comma-separated value" do
       path =
         Paths.verification_index(%{"source" => "user_group", "roles" => ["a", "b"], "page" => 2})
 
       query = path |> URI.parse() |> Map.fetch!(:query) |> Query.decode()
 
-      assert query == %{"source" => "user_group", "roles" => ["a", "b"], "page" => "2"}
+      assert query == %{"source" => "user_group", "roles" => "a,b", "page" => "2"}
+    end
+
+    test "leaves out an empty list of roles" do
+      assert Paths.verification_index(%{"source" => "user_group", "roles" => []}) =~
+               ~r{\?source=user_group$}
     end
   end
 end

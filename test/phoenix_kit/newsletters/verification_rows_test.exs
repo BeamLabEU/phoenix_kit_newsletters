@@ -113,16 +113,11 @@ defmodule PhoenixKit.Newsletters.VerificationRowsTest do
     end
   end
 
-  describe "parse_status/1 and parse_page/1" do
-    test "only known statuses and positive integers get through" do
+  describe "parse_status/1" do
+    test "only known statuses get through" do
       assert VerificationRows.parse_status("valid") == "valid"
       assert VerificationRows.parse_status("nope") == ""
       assert VerificationRows.parse_status(nil) == ""
-      assert VerificationRows.parse_page("3") == 3
-      assert VerificationRows.parse_page("0") == 1
-      assert VerificationRows.parse_page("-2") == 1
-      assert VerificationRows.parse_page("2x") == 1
-      assert VerificationRows.parse_page(nil) == 1
     end
   end
 

@@ -18,6 +18,7 @@ defmodule PhoenixKit.Newsletters.Web.PermissionsTest do
   alias PhoenixKit.Users.{Permissions, Roles}
   alias PhoenixKitCRM.Lists
   alias PhoenixKitNewsletters.Test.Repo
+  alias PhoenixKitNewsletters.Test.UrlStateHarness
 
   setup do
     Newsletters.enable_system()
@@ -187,8 +188,11 @@ defmodule PhoenixKit.Newsletters.Web.PermissionsTest do
     end
 
     defp details(scope, broadcast) do
-      {:ok, socket} = BroadcastDetails.mount(%{}, %{}, socket(scope))
-      {:noreply, socket} = BroadcastDetails.handle_params(%{"id" => broadcast.uuid}, "/", socket)
+      {:ok, socket} = UrlStateHarness.mount(BroadcastDetails, %{}, socket(scope))
+
+      {:noreply, socket} =
+        UrlStateHarness.handle_params(BroadcastDetails, %{"id" => broadcast.uuid}, "/", socket)
+
       socket
     end
 
@@ -241,7 +245,7 @@ defmodule PhoenixKit.Newsletters.Web.PermissionsTest do
 
   describe "Verification: newsletters.audiences" do
     test "mount redirects away without it" do
-      {:ok, s} = Verification.mount(%{}, %{}, socket(scope_with(["newsletters"])))
+      {:ok, s} = UrlStateHarness.mount(Verification, %{}, socket(scope_with(["newsletters"])))
       assert s.redirected
     end
 
@@ -259,12 +263,16 @@ defmodule PhoenixKit.Newsletters.Web.PermissionsTest do
 
     test "CRM lists are offered only with the crm key" do
       {:ok, s} =
-        Verification.mount(%{}, %{}, socket(scope_with(["newsletters", "newsletters.audiences"])))
+        UrlStateHarness.mount(
+          Verification,
+          %{},
+          socket(scope_with(["newsletters", "newsletters.audiences"]))
+        )
 
       refute s.redirected
       refute s.assigns.crm_available
 
-      {:ok, s} = Verification.mount(%{}, %{}, socket(full_scope()))
+      {:ok, s} = UrlStateHarness.mount(Verification, %{}, socket(full_scope()))
       assert s.assigns.crm_available
     end
   end

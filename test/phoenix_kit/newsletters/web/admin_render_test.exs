@@ -15,6 +15,7 @@ defmodule PhoenixKit.Newsletters.Web.AdminRenderTest do
   alias PhoenixKit.Newsletters.Web.Broadcasts
   alias PhoenixKit.Newsletters.Web.LayoutsIndex
   alias PhoenixKitNewsletters.Test.Repo
+  alias PhoenixKitNewsletters.Test.UrlStateHarness
 
   setup do
     PhoenixKit.Settings.update_boolean_setting("newsletters_enabled", true)
@@ -23,8 +24,15 @@ defmodule PhoenixKit.Newsletters.Web.AdminRenderTest do
 
   defp render_page(module, params) do
     socket = %Phoenix.LiveView.Socket{assigns: %{__changed__: %{}, flash: %{}}}
-    {:ok, socket} = module.mount(params, %{}, socket)
-    {:noreply, socket} = module.handle_params(params, "/", socket)
+
+    {:noreply, socket} =
+      if Code.ensure_loaded?(module) and function_exported?(module, :__phoenix_kit_url_state__, 0) do
+        {:ok, socket} = UrlStateHarness.mount(module, params, socket)
+        UrlStateHarness.handle_params(module, params, "/", socket)
+      else
+        {:ok, socket} = module.mount(params, %{}, socket)
+        module.handle_params(params, "/", socket)
+      end
 
     socket.assigns
     |> Map.merge(%{url_path: "/admin/newsletters", phoenix_kit_current_scope: nil})
