@@ -1,5 +1,20 @@
 # Changelog
 
+## 0.10.0 - 2026-11-15
+
+No migration. The admin lists now show 25 rows by default instead of 50, and the verification page writes its roles differently in the URL.
+
+### Changed
+
+- **The broadcasts, deliveries and verification lists remember how many rows to show.** Their footer is core's: how many rows are shown, the pages, and a picker for 10, 25, 50, 100 or Auto (as many as fit the screen). A choice is kept for the person and applies to every admin list that offers it, core's own included. The default is 25 rows, as on core's lists; it was 50.
+- **A list's filters, page and size are in its address**, so a filtered page can be bookmarked, shared and reloaded, and Back returns to the previous view. This covers the broadcasts, deliveries, verification and layouts lists. A page past the end moves to the last real page, and a value the list does not offer falls back to its default.
+- **The verification page writes its roles as one comma-separated value** (`roles=a,b`) instead of repeated `roles[]` keys, which did not survive a change of page size. An address in the old form moves once to the new one, keeping the audience, the filter, the page and the size.
+
+### Fixed
+
+- **A role unsubscribe left other accounts at the same inbox subscribed.** It opted out only the account the link was for, so a managed organization delivering to the same address kept receiving role broadcasts there. It now opts out every account delivering to that address, as "unsubscribe from all" already did.
+- **A crashed delivery job could store the email itself in Oban's job errors and logs.** The address in the error message was already masked, but the stack trace kept function arguments, which can hold the whole message: recipient, body and unsubscribe token. Arguments are now reduced to their count.
+
 ## 0.9.0 - 2026-11-15
 
 No migration. Requires PhoenixKit core 3.5.0 or later (`>= 3.5.0 and < 4.0.0`); hosts on core 2.x stay on 0.8.

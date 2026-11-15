@@ -1,7 +1,7 @@
 defmodule PhoenixKitNewsletters.MixProject do
   use Mix.Project
 
-  @version "0.9.0"
+  @version "0.10.0"
   @source_url "https://github.com/BeamLabEU/phoenix_kit_newsletters"
 
   def project do
