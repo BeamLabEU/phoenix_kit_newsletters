@@ -74,19 +74,31 @@ defmodule PhoenixKit.Newsletters.Workers.DeliveryWorker do
     deliver(job)
   catch
     kind, reason ->
-      stacktrace = __STACKTRACE__
-      banner = Exception.format_banner(kind, reason, stacktrace)
+      banner = Exception.format_banner(kind, reason, __STACKTRACE__)
+      stacktrace = redact_stacktrace(__STACKTRACE__)
       masked_banner = EmailVerification.mask_addresses(banner)
       record_crash(job, {:crashed, masked_banner})
 
       # Oban logs and stores the raised reason too, beyond our own error writer.
       # Keep the original exception when it contains no address; otherwise only
-      # the masked text may leave this worker, with the original stacktrace.
+      # the masked text may leave this worker.
       if masked_banner == banner do
         :erlang.raise(kind, reason, stacktrace)
       else
         reraise RuntimeError.exception(masked_banner), stacktrace
       end
+  end
+
+  # Argument lists can contain the whole email, including addresses and tokens.
+  # Keep function arities and source locations for debugging, never those values.
+  defp redact_stacktrace(stacktrace) do
+    Enum.map(stacktrace, fn
+      {module, function, args, location} when is_list(args) ->
+        {module, function, length(args), location}
+
+      frame ->
+        frame
+    end)
   end
 
   defp record_crash(%Oban.Job{attempt: attempt, max_attempts: max_attempts} = job, reason)

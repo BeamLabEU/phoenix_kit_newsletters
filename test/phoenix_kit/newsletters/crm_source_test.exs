@@ -157,15 +157,23 @@ defmodule PhoenixKit.Newsletters.CRMSourceTest do
 
   # No real duplicates can occur (the CITEXT unique index above), but the
   # result order should still be a stable, deterministic contract rather
-  # than "whatever Postgres feels like" — ordered by member uuid (UUIDv7,
-  # so this is also oldest-membership-first).
+  # than "whatever Postgres feels like" — ordered by member uuid. UUIDv7's
+  # random suffix does not promise creation order within one millisecond.
   test "sendable_recipients/1 returns members in a stable, deterministic order", %{list: list} do
     first = add_member(list, add_contact())
     second = add_member(list, add_contact())
 
+    first
+    |> Ecto.Changeset.change(uuid: "00000000-0000-7000-8000-000000000002")
+    |> RepoHelper.repo().update!()
+
+    second
+    |> Ecto.Changeset.change(uuid: "00000000-0000-7000-8000-000000000001")
+    |> RepoHelper.repo().update!()
+
     assert [%{contact_uuid: a}, %{contact_uuid: b}] = CRMSource.sendable_recipients(list.uuid)
-    assert a == first.contact_uuid
-    assert b == second.contact_uuid
+    assert a == second.contact_uuid
+    assert b == first.contact_uuid
   end
 
   test "get_contact/1 resolves a real contact and nil for an unknown/nil uuid" do

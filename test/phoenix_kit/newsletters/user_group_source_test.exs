@@ -493,6 +493,24 @@ defmodule PhoenixKit.Newsletters.UserGroupSourceTest do
 
       assert [%{email: ^shared}] = UserGroupSource.sendable_recipients([role.uuid])
     end
+
+    test "a role unsubscribe stops every account delivering to that inbox" do
+      role = create_role()
+      user = create_user() |> assign(role)
+      org = organization(contact_email: String.upcase(user.email)) |> assign(role)
+      other = organization(contact_email: "other@example.com") |> assign(role)
+
+      assert {:ok, _user} = UserGroupSource.record_opt_out(user)
+
+      for account <- [user, org] do
+        assert UserGroupSource.opted_out?(Repo.get!(User, account.uuid))
+        refute UserGroupSource.sendable_recipient?([role.uuid], account.uuid)
+      end
+
+      assert UserGroupSource.sendable_recipients([role.uuid]) == [
+               %{user_uuid: other.uuid, email: "other@example.com"}
+             ]
+    end
   end
 
   describe "opt_out_contact/2 and opt_in_contact/2" do

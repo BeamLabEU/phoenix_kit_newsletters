@@ -1013,6 +1013,16 @@ defmodule PhoenixKit.Newsletters.Workers.DeliveryWorkerTest do
     @describetag :requires_v158
     setup :set_swoosh_global
 
+    defmodule CrashingProvider do
+      @moduledoc false
+
+      def intercept_before_send(email, _opts) do
+        :erlang.raise(:error, RuntimeError.exception("Provider crashed"), [
+          {__MODULE__, :deliver, [email], []}
+        ])
+      end
+    end
+
     # A role uuid that cannot be cast raises in the recipient check, a real path
     # for a crafted row, and it runs after everything else has been read.
     defp doomed_delivery do
@@ -1073,6 +1083,35 @@ defmodule PhoenixKit.Newsletters.Workers.DeliveryWorkerTest do
       assert %Delivery{status: "failed", error: stored} = Repo.get!(Delivery, delivery.uuid)
       refute stored =~ address
       assert stored =~ "p***@example.com"
+    end
+
+    test "a crash also hides recipient addresses in stacktrace arguments" do
+      previous = Application.get_env(:phoenix_kit, :email_provider)
+      Application.put_env(:phoenix_kit, :email_provider, CrashingProvider)
+
+      on_exit(fn ->
+        if previous,
+          do: Application.put_env(:phoenix_kit, :email_provider, previous),
+          else: Application.delete_env(:phoenix_kit, :email_provider)
+      end)
+
+      user = create_user()
+      broadcast = create_broadcast(%{})
+      delivery = create_delivery(broadcast, user)
+
+      formatted =
+        try do
+          DeliveryWorker.perform(job_for(delivery))
+          flunk("expected the provider to raise")
+        rescue
+          error in RuntimeError -> Exception.format(:error, error, __STACKTRACE__)
+        end
+
+      assert formatted =~ "Provider crashed"
+      assert formatted =~ "CrashingProvider.deliver/1"
+      refute formatted =~ user.email
+      refute formatted =~ "token="
+      assert Repo.get!(Delivery, delivery.uuid).status == "pending"
     end
   end
 

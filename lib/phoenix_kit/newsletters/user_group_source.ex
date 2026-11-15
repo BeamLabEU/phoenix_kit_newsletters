@@ -213,9 +213,9 @@ defmodule PhoenixKit.Newsletters.UserGroupSource do
   places, not either/or:
 
     1. Always: `custom_fields["#{@opted_out_custom_field}"]` on the
-       user — the only opt-out state that exists at all when the CRM
-       module isn't installed, or this user has never been linked to a
-       contact.
+       user and every account delivering to the same address. Otherwise a
+       shared inbox would receive the next broadcast through another account.
+       This also works without CRM or a linked contact.
     2. Additionally, when CRM is installed and a contact is already
        linked to this user (`CRMSource.get_contact_by_user_uuid/1` —
        looks up an existing link only, never creates one): that
@@ -242,6 +242,11 @@ defmodule PhoenixKit.Newsletters.UserGroupSource do
   def record_opt_out(%User{} = user) do
     case set_custom_field_opted_out(user) do
       {:ok, updated_user} ->
+        with_accounts(
+          %{email: delivery_address(updated_user)},
+          &set_custom_field_opted_out/1
+        )
+
         maybe_opt_out_linked_contact(updated_user)
         {:ok, updated_user}
 
