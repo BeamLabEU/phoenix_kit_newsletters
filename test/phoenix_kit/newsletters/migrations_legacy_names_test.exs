@@ -35,7 +35,6 @@ defmodule PhoenixKitNewsletters.MigrationsLegacyNamesTest do
   alias PhoenixKitNewsletters.Test.Repo
 
   @moduletag :integration
-  @moduletag :requires_core_expected_schema
   @moduletag timeout: :timer.minutes(5)
 
   @app :phoenix_kit_newsletters

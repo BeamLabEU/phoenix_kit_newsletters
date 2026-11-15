@@ -139,17 +139,20 @@ defmodule PhoenixKit.Newsletters.UserGroupSourceTest do
            ]
   end
 
-  # The whole reason source_params stores uuids, not names (Broadcast's
-  # moduledoc): renaming a role must not touch who it resolves to. Uses
-  # a custom (non-system) role — Roles.update_role/2 doesn't protect the
-  # name of a system role either, but creating one here keeps the test
-  # from depending on/mutating shared seed data.
-  test "renaming a role after assignment does not change who it resolves to" do
+  # source_params stores uuids, not names (Broadcast's moduledoc), so what
+  # people call a role must not touch who it resolves to. Core keeps a
+  # role's `name` as a fixed key and refuses to change it; what can change
+  # is the label. Uses a custom (non-system) role so the test does not
+  # depend on or mutate shared seed data.
+  test "relabelling a role after assignment does not change who it resolves to" do
     role = create_role("Before")
     user = create_user() |> assign(role)
 
-    {:ok, renamed_role} = Roles.update_role(role, %{name: "After"})
-    assert renamed_role.uuid == role.uuid
+    assert {:error, %Ecto.Changeset{}} = Roles.update_role(role, %{name: "After"})
+
+    {:ok, relabelled_role} = Roles.update_role(role, %{label: "After"})
+    assert relabelled_role.uuid == role.uuid
+    assert relabelled_role.name == "Before"
 
     assert UserGroupSource.sendable_recipients([role.uuid]) == [
              %{user_uuid: user.uuid, email: user.email}

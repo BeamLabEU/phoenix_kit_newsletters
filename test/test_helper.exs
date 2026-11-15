@@ -106,20 +106,4 @@ exclude =
   if(repo_available, do: [], else: [:integration]) ++
     if v158_available, do: [], else: [:requires_v158]
 
-# The builds-alone test needs `PhoenixKit.TestSupport.ModuleChainCheck`, which
-# ships in the first core release after 2.64.1; against an older core it is
-# excluded.
-chain_check_exclude =
-  if Code.ensure_loaded?(PhoenixKit.TestSupport.ModuleChainCheck),
-    do: [],
-    else: [:requires_module_chain_check]
-
-ExUnit.start(exclude: chain_check_exclude ++ exclude)
-
-# The manifest test builds the module's tables with `ModuleChainCheck.build_alone/4`
-# and hands the manifest to repair (`PhoenixKit.Module.expected_schema/0`); both
-# arrive in the first core release after 2.64.1.
-unless Code.ensure_loaded?(PhoenixKit.TestSupport.ModuleChainCheck) and
-         function_exported?(PhoenixKit.TestSupport.ModuleChainCheck, :build_alone, 4) do
-  ExUnit.configure(exclude: [:requires_core_expected_schema | ExUnit.configuration()[:exclude]])
-end
+ExUnit.start(exclude: exclude)

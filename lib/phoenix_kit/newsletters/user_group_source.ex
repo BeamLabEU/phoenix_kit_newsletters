@@ -109,17 +109,13 @@ defmodule PhoenixKit.Newsletters.UserGroupSource do
   @doc """
   The address a user's mail goes to, or `nil` when there is none to reach.
 
-  Core's `User.delivery_email/1` since 3.3, which reads a managed organization's
-  `contact_email`; before that, every account's own address. `.invalid` is
-  reserved (RFC 2606) and core gives such accounts one on purpose, so it counts
-  as no address on any core.
+  Core's `User.delivery_email/1`, which reads a managed organization's
+  `contact_email`. `.invalid` is reserved (RFC 2606) and core gives such
+  accounts one on purpose, so it counts as no address.
   """
   @spec delivery_address(User.t()) :: String.t() | nil
   def delivery_address(%User{} = user) do
-    address =
-      if Code.ensure_loaded?(User) and function_exported?(User, :delivery_email, 1),
-        do: User.delivery_email(user),
-        else: user.email
+    address = User.delivery_email(user)
 
     if deliverable?(address), do: address
   end

@@ -59,15 +59,9 @@ defmodule PhoenixKitNewsletters.MixProject do
   defp deps do
     [
       # Core
-      # 2.48 is the first core with `PhoenixKit.Email.Layout.render_parts/2`,
-      # the header/footer a broadcast layout places as {{{header}}} and
-      # {{{footer}}}; 2.52 is the first whose `ExpectedSchema` manifest no
-      # longer declares `fk_newsletters_broadcasts_template` (#896), the FK
-      # migration V2 re-targets at the layouts table — see
-      # `PhoenixKitNewsletters.Migrations`' moduledoc ("Core's manifest").
-      # Floor 2.65.0: the first core with the `file_references/0` and `expected_schema/0`
-      # callbacks this module implements (`@impl`). The ceiling is open through core 3.x.
-      {:phoenix_kit, ">= 2.65.0 and < 4.0.0"},
+      # Floor 3.5.0 (the ecosystem-wide minimum), ceiling open through every
+      # core 3.x (see test/core_pin_conformance_test.exs).
+      {:phoenix_kit, ">= 3.5.0 and < 4.0.0"},
       # `PhoenixKit.Templates.Substitution` is called directly (the one
       # substitution pass a broadcast gets), so it is declared rather than
       # reached through core.

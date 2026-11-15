@@ -30,8 +30,8 @@ Most source lives under `lib/phoenix_kit/newsletters/`:
 - `migrations.ex`: `PhoenixKitNewsletters.Migrations` versioned chain;
   `expected_schema.ex`: generated manifest exposed through `expected_schema/0`.
 
-Dependency versions live in `mix.exs`. Keep core's range `>= 2.65.0 and
-< 4.0.0` (2.65 supplies the module callbacks). Do not narrow to one minor with a three-segment
+Dependency versions live in `mix.exs`. Keep core's range `>= 3.5.0 and
+< 4.0.0` (3.5.0 is the ecosystem-wide minimum). Do not narrow to one minor with a three-segment
 `~>` or commit a `path:` dependency (`CorePinConformanceTest`). Raise the floor
 only for a required core API/migration. `phoenix_kit_templates` is a direct
 dependency because rendering calls its substitution API.
