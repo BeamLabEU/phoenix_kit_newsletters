@@ -307,7 +307,8 @@ defmodule PhoenixKit.Newsletters.Workers.DeliveryWorker do
   # A throttled broadcast can run for days after its audience was resolved, so
   # the question that picked this recipient is asked again, last thing before the
   # provider call, against the source's current state: an opt-out, a removal from
-  # the list or role, a deactivation or a trashed contact all stop the mail here.
+  # the list or role, a deactivation or a trashed contact stops the mail here, and
+  # so does a role recipient whose address is no longer confirmed.
   # Blocked rather than left pending, so the broadcast still finishes, and with
   # no counter, because nothing bounced.
   defp guard_recipient_sendable(delivery, broadcast) do

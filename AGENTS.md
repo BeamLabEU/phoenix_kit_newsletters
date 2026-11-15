@@ -284,7 +284,8 @@ footer), with Branding logo/accent. Never rebuild core chrome here or read/write
 - **Recheck the recipient too** (`guard_recipient_sendable/2`, last before
   `send_email/7`): a throttled send runs for days. It asks the same source
   query that resolved the audience (`sendable_recipient?/2`), so an opt-out,
-  removal, deactivation or trashed contact stops the mail. Record `blocked`, no
+  removal, deactivation or trashed contact stops the mail. A role audience
+  stops the same way when the address is no longer confirmed. Record `blocked`, no
   counter, so the broadcast still finishes. No CRM means no consent to read: blocked.
 - Sending uses the enabled broadcast profile, else default profile, else
   legacy `PhoenixKit.Mailer.deliver_email/1`. Sender falls back to

@@ -151,8 +151,9 @@ defmodule PhoenixKit.Newsletters.UserGroupSource do
 
   @doc """
   Preflight breakdown across one or more roles, for the broadcast
-  editor's "N users: M sendable, K no email, L unsendable" summary —
-  same shape as `CRMSource.preflight/1`, plus `unconfirmed` and `stale_roles`.
+  editor's "N users: M sendable, K no email, U not confirmed, L
+  unsubscribed" summary — same shape as `CRMSource.preflight/1`, plus
+  `unconfirmed` and `stale_roles`.
   `unconfirmed` counts the users who would be sendable but for an address they
   never confirmed (see the moduledoc); `stale_roles` is how many of
   the given uuids no longer match any role at all (renamed roles are
@@ -380,11 +381,13 @@ defmodule PhoenixKit.Newsletters.UserGroupSource do
       not batch_contact_opted_out?(user, context.contacts_by_user_uuid)
   end
 
-  # Core's `Auth.unsolicited_mail_allowed?/1` (3.6), for a 3.5 floor: a managed
+  # Core's `Auth.unsolicited_mail_allowed?/1` (3.6), copied so the floor can stay
+  # at 3.5. Keep these clauses in step with that function: a managed
   # organization's address is set by its managers, and a site that does not ask
-  # for confirmation has no confirmed accounts to tell apart.
+  # for confirmation has no confirmed accounts to tell apart. `confirmed_at`
+  # matches any datetime struct, as core does, not only `DateTime`.
   defp confirmed?(%User{managed_by_members: true}, _required), do: true
-  defp confirmed?(%User{confirmed_at: %DateTime{}}, _required), do: true
+  defp confirmed?(%User{confirmed_at: %_{}}, _required), do: true
   defp confirmed?(%User{}, required), do: not required
 
   defp confirmation_required? do

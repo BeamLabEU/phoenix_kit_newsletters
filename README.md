@@ -101,13 +101,14 @@ from the schema by core's `V156`.
 `Broadcaster` orchestrates sending:
 
 1. Validates the source (a `crm_list` broadcast's list must be `active`)
-2. Resolves recipients once (deduplicated; opted-out, inactive and trashed excluded)
+2. Resolves recipients once (deduplicated; opted-out, inactive and trashed excluded). A role audience also skips an account that has not confirmed its address, unless the site does not require confirmation.
 3. In one transaction, checks the status on the locked row, renders Markdown to HTML, flips the broadcast to `sending`, inserts `Delivery` records in batches of 500 via `insert_all`, and enqueues one `DeliveryWorker` Oban job per delivery, paced by the send profile's rate limits. A failure part way leaves the broadcast as it was.
 
 `DeliveryWorker` sends individual emails and tracks delivery status. A throttled send can
 run for days, so just before each email it asks the audience again: a recipient who has
 since opted out, left the list or role, or been deactivated or trashed is recorded as
-`blocked` and gets nothing. A failed attempt is retried after 5, then 30 minutes.
+`blocked` and gets nothing. A role audience is blocked the same way when the address is no longer confirmed.
+A failed attempt is retried after 5, then 30 minutes.
 
 A broadcast can be cancelled while it is `scheduled` or `sending`, and only a draft can be
 edited.

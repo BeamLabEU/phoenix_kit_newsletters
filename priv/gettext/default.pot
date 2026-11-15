@@ -82,7 +82,7 @@ msgid "Newsletters module is not enabled"
 msgstr ""
 
 #: lib/phoenix_kit/newsletters/web/broadcast_details.html.heex:21
-#: lib/phoenix_kit/newsletters/web/broadcast_editor.html.heex:219
+#: lib/phoenix_kit/newsletters/web/broadcast_editor.html.heex:223
 #, elixir-autogen
 msgid "Cancel"
 msgstr ""
@@ -129,7 +129,7 @@ msgid "Scheduled"
 msgstr ""
 
 #: lib/phoenix_kit/newsletters/web/broadcast_details.html.heex:88
-#: lib/phoenix_kit/newsletters/web/broadcast_editor.html.heex:249
+#: lib/phoenix_kit/newsletters/web/broadcast_editor.html.heex:253
 #: lib/phoenix_kit/newsletters/web/status_label.ex:13
 #, elixir-autogen
 msgid "Sending"
@@ -286,38 +286,38 @@ msgstr ""
 msgid "Select a list..."
 msgstr ""
 
-#: lib/phoenix_kit/newsletters/web/broadcast_editor.html.heex:203
+#: lib/phoenix_kit/newsletters/web/broadcast_editor.html.heex:207
 #, elixir-autogen
 msgid "Content (Markdown)"
 msgstr ""
 
-#: lib/phoenix_kit/newsletters/web/broadcast_editor.html.heex:212
+#: lib/phoenix_kit/newsletters/web/broadcast_editor.html.heex:216
 #, elixir-autogen
 msgid "Write your broadcast content in Markdown..."
 msgstr ""
 
-#: lib/phoenix_kit/newsletters/web/broadcast_editor.html.heex:230
+#: lib/phoenix_kit/newsletters/web/broadcast_editor.html.heex:234
 #, elixir-autogen
 msgid "Save draft"
 msgstr ""
 
-#: lib/phoenix_kit/newsletters/web/broadcast_editor.html.heex:251
+#: lib/phoenix_kit/newsletters/web/broadcast_editor.html.heex:255
 #, elixir-autogen
 msgid "Send now"
 msgstr ""
 
-#: lib/phoenix_kit/newsletters/web/broadcast_editor.html.heex:273
+#: lib/phoenix_kit/newsletters/web/broadcast_editor.html.heex:277
 #, elixir-autogen
 msgid "Schedule"
 msgstr ""
 
-#: lib/phoenix_kit/newsletters/web/broadcast_editor.html.heex:289
+#: lib/phoenix_kit/newsletters/web/broadcast_editor.html.heex:293
 #: lib/phoenix_kit/newsletters/web/layout_editor.html.heex:175
 #, elixir-autogen
 msgid "Preview"
 msgstr ""
 
-#: lib/phoenix_kit/newsletters/web/broadcast_editor.html.heex:319
+#: lib/phoenix_kit/newsletters/web/broadcast_editor.html.heex:323
 #, elixir-autogen
 msgid "Preview will appear here as you type"
 msgstr ""
@@ -404,7 +404,7 @@ msgstr ""
 msgid "View"
 msgstr ""
 
-#: lib/phoenix_kit/newsletters/web/broadcast_editor.ex:839
+#: lib/phoenix_kit/newsletters/web/broadcast_editor.ex:844
 #: lib/phoenix_kit/newsletters/web/verification.html.heex:69
 #, elixir-autogen, elixir-format
 msgid "%{name} (%{count} member)"
@@ -485,7 +485,7 @@ msgstr ""
 msgid "Send to"
 msgstr ""
 
-#: lib/phoenix_kit/newsletters/web/broadcast_editor.ex:886
+#: lib/phoenix_kit/newsletters/web/broadcast_editor.ex:891
 #, elixir-autogen, elixir-format
 msgid "Sends at %{local} (%{tz}) · %{utc} UTC"
 msgstr ""
@@ -543,7 +543,7 @@ msgid "You've been unsubscribed from all newsletters."
 msgstr ""
 
 #: lib/phoenix_kit/newsletters/web/broadcast_details.html.heex:185
-#: lib/phoenix_kit/newsletters/web/broadcast_editor.html.heex:121
+#: lib/phoenix_kit/newsletters/web/broadcast_editor.html.heex:125
 #, elixir-autogen, elixir-format
 msgid "%{count} selected role no longer exists"
 msgid_plural "%{count} selected roles no longer exist"
@@ -588,40 +588,40 @@ msgstr ""
 msgid "Legacy list"
 msgstr ""
 
-#: lib/phoenix_kit/newsletters/web/broadcast_editor.ex:830
+#: lib/phoenix_kit/newsletters/web/broadcast_editor.ex:835
 #, elixir-autogen, elixir-format
 msgid "%{name} (no longer selectable)"
 msgstr ""
 
-#: lib/phoenix_kit/newsletters/web/broadcast_editor.html.heex:189
+#: lib/phoenix_kit/newsletters/web/broadcast_editor.html.heex:193
 #, elixir-autogen, elixir-format
 msgid "Add files"
 msgstr ""
 
 #: lib/phoenix_kit/newsletters/web/broadcast_details.html.heex:150
-#: lib/phoenix_kit/newsletters/web/broadcast_editor.html.heex:151
+#: lib/phoenix_kit/newsletters/web/broadcast_editor.html.heex:155
 #: lib/phoenix_kit/newsletters/web/form_errors.ex:56
 #, elixir-autogen, elixir-format
 msgid "Attachments"
 msgstr ""
 
-#: lib/phoenix_kit/newsletters/web/broadcast_editor.html.heex:194
+#: lib/phoenix_kit/newsletters/web/broadcast_editor.html.heex:198
 #, elixir-autogen, elixir-format
 msgid "Attachments total %{size} — large attachments can slow delivery."
 msgstr ""
 
-#: lib/phoenix_kit/newsletters/web/broadcast_editor.html.heex:179
+#: lib/phoenix_kit/newsletters/web/broadcast_editor.html.heex:183
 #, elixir-autogen, elixir-format
 msgid "Remove attachment"
 msgstr ""
 
 #: lib/phoenix_kit/newsletters/web/broadcast_details.html.heex:170
-#: lib/phoenix_kit/newsletters/web/broadcast_editor.html.heex:172
+#: lib/phoenix_kit/newsletters/web/broadcast_editor.html.heex:176
 #, elixir-autogen, elixir-format
 msgid "missing file"
 msgstr ""
 
-#: lib/phoenix_kit/newsletters/web/broadcast_editor.ex:851
+#: lib/phoenix_kit/newsletters/web/broadcast_editor.ex:856
 #, elixir-autogen, elixir-format
 msgid "%{name} (archived)"
 msgstr ""
@@ -706,7 +706,7 @@ msgstr ""
 msgid "Hello {{name}},"
 msgstr ""
 
-#: lib/phoenix_kit/newsletters/web/broadcast_editor.html.heex:292
+#: lib/phoenix_kit/newsletters/web/broadcast_editor.html.heex:296
 #, elixir-autogen, elixir-format
 msgid "Language"
 msgstr ""
@@ -716,7 +716,7 @@ msgstr ""
 msgid "Languages"
 msgstr ""
 
-#: lib/phoenix_kit/newsletters/web/broadcast_editor.html.heex:135
+#: lib/phoenix_kit/newsletters/web/broadcast_editor.html.heex:139
 #, elixir-autogen, elixir-format
 msgid "Layout"
 msgstr ""
@@ -746,7 +746,7 @@ msgstr ""
 msgid "Make default"
 msgstr ""
 
-#: lib/phoenix_kit/newsletters/web/broadcast_editor.html.heex:142
+#: lib/phoenix_kit/newsletters/web/broadcast_editor.html.heex:146
 #, elixir-autogen, elixir-format
 msgid "Manage layouts"
 msgstr ""
@@ -813,7 +813,7 @@ msgstr ""
 msgid "Save layout"
 msgstr ""
 
-#: lib/phoenix_kit/newsletters/web/broadcast_editor.html.heex:136
+#: lib/phoenix_kit/newsletters/web/broadcast_editor.html.heex:140
 #, elixir-autogen, elixir-format
 msgid "Standard email layout"
 msgstr ""
@@ -1430,13 +1430,6 @@ msgid_plural "%{count} members: %{sendable} sendable, %{no_email} no email, %{un
 msgstr[0] ""
 msgstr[1] ""
 
-#: lib/phoenix_kit/newsletters/web/broadcast_editor.html.heex:103
-#, elixir-autogen, elixir-format
-msgid "%{count} user: %{sendable} sendable, %{no_email} no email, %{unsendable} unsubscribed/opted-out"
-msgid_plural "%{count} users: %{sendable} sendable, %{no_email} no email, %{unsendable} unsubscribed/opted-out"
-msgstr[0] ""
-msgstr[1] ""
-
 #: lib/phoenix_kit/newsletters/web/broadcast_details.ex:241
 #, elixir-autogen, elixir-format
 msgid "A broadcast with status %{status} cannot go back to draft."
@@ -1538,7 +1531,7 @@ msgctxt "broadcast status"
 msgid "Sent"
 msgstr ""
 
-#: lib/phoenix_kit/newsletters/web/broadcast_editor.html.heex:113
+#: lib/phoenix_kit/newsletters/web/broadcast_editor.html.heex:117
 #, elixir-autogen, elixir-format
 msgid "%{count} user is left out: their email address is not confirmed"
 msgid_plural "%{count} users are left out: their email addresses are not confirmed"
@@ -1549,3 +1542,10 @@ msgstr[1] ""
 #, elixir-autogen, elixir-format
 msgid "addresses"
 msgstr ""
+
+#: lib/phoenix_kit/newsletters/web/broadcast_editor.html.heex:103
+#, elixir-autogen, elixir-format
+msgid "%{count} user: %{sendable} sendable, %{no_email} no email, %{unconfirmed} not confirmed, %{unsendable} unsubscribed/opted-out"
+msgid_plural "%{count} users: %{sendable} sendable, %{no_email} no email, %{unconfirmed} not confirmed, %{unsendable} unsubscribed/opted-out"
+msgstr[0] ""
+msgstr[1] ""

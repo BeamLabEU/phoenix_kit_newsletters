@@ -754,6 +754,11 @@ defmodule PhoenixKit.Newsletters.Web.BroadcastEditor do
     gettext("Validation failed: %{errors}", errors: FormErrors.summary(changeset))
   end
 
+  # A preflight from before this count existed has no key; treat that as none
+  # rather than crashing the open editor on the next render.
+  defp unconfirmed_count(%{unconfirmed: count}) when is_integer(count) and count >= 0, do: count
+  defp unconfirmed_count(_preflight), do: 0
+
   # Snapshots the name of each selected role alongside its uuid. Resolution
   # always goes through role_uuids; the snapshot is display-only (see
   # Broadcast.role_names_snapshot/1) and keeps the name, the role's fixed key

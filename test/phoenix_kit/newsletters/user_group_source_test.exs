@@ -26,6 +26,14 @@ defmodule PhoenixKit.Newsletters.UserGroupSourceTest do
   alias PhoenixKitNewsletters.Test.Repo
   alias PhoenixKitNewsletters.Test.Users, as: TestUsers
 
+  @confirmation_setting "require_email_confirmation"
+
+  defp drop_confirmation_cache do
+    if Process.whereis(PhoenixKit.Cache.Registry) do
+      PhoenixKit.Cache.invalidate_now(:settings, [@confirmation_setting])
+    end
+  end
+
   defp create_user(attrs \\ %{}) do
     base = %{email: "ug-user-#{System.unique_integer([:positive])}@example.com"}
 
@@ -302,16 +310,51 @@ defmodule PhoenixKit.Newsletters.UserGroupSourceTest do
       assert UserGroupSource.sendable_recipients([role.uuid]) == [
                %{user_uuid: organization.uuid, email: "office@example.com"}
              ]
+
+      assert UserGroupSource.sendable_recipient?([role.uuid], organization.uuid) ==
+               Auth.unsolicited_mail_allowed?(organization)
     end
 
+    test "follows core's rule for mail nobody asked for" do
+      role = create_role()
+
+      for user <- [create_user() |> assign(role), create_unconfirmed_user() |> assign(role)] do
+        assert UserGroupSource.sendable_recipient?([role.uuid], user.uuid) ==
+                 Auth.unsolicited_mail_allowed?(user)
+      end
+    end
+
+    test "an address that cannot be reached counts as no email, not also as unconfirmed" do
+      role = create_role()
+
+      create_unconfirmed_user()
+      |> Ecto.Changeset.change(
+        email: "ghost-#{System.unique_integer([:positive])}@service.invalid"
+      )
+      |> Repo.update!()
+      |> assign(role)
+
+      assert %{total: 1, sendable: 0, no_email: 1, unconfirmed: 0, unsendable: 0} =
+               UserGroupSource.preflight([role.uuid])
+    end
+
+    # The setting lives in a process cache. A sandbox rollback undoes the row
+    # and leaves the cached value, which would make later tests treat confirmation
+    # as optional. Drop it when the cache is running (this suite often has none).
     test "is mailed on a site that does not ask for confirmation" do
+      on_exit(fn -> drop_confirmation_cache() end)
+
       role = create_role()
       unconfirmed = create_unconfirmed_user() |> assign(role)
-      {:ok, _} = PhoenixKit.Settings.update_boolean_setting("require_email_confirmation", false)
+      {:ok, _} = PhoenixKit.Settings.update_boolean_setting(@confirmation_setting, false)
+      drop_confirmation_cache()
 
       assert UserGroupSource.sendable_recipients([role.uuid]) == [
                %{user_uuid: unconfirmed.uuid, email: unconfirmed.email}
              ]
+
+      assert UserGroupSource.sendable_recipient?([role.uuid], unconfirmed.uuid) ==
+               Auth.unsolicited_mail_allowed?(unconfirmed)
 
       assert %{sendable: 1, unconfirmed: 0} = UserGroupSource.preflight([role.uuid])
     end

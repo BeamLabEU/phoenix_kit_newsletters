@@ -101,19 +101,23 @@
           </div>
           <p :if={@preflight} class="text-xs text-base-content/60 mt-1">
             {ngettext(
-              "%{count} user: %{sendable} sendable, %{no_email} no email, %{unsendable} unsubscribed/opted-out",
-              "%{count} users: %{sendable} sendable, %{no_email} no email, %{unsendable} unsubscribed/opted-out",
+              "%{count} user: %{sendable} sendable, %{no_email} no email, %{unconfirmed} not confirmed, %{unsendable} unsubscribed/opted-out",
+              "%{count} users: %{sendable} sendable, %{no_email} no email, %{unconfirmed} not confirmed, %{unsendable} unsubscribed/opted-out",
               @preflight.total,
               sendable: @preflight.sendable,
               no_email: @preflight.no_email,
+              unconfirmed: unconfirmed_count(@preflight),
               unsendable: @preflight.unsendable
             )}
           </p>
-          <p :if={@preflight && @preflight.unconfirmed > 0} class="text-xs text-base-content/60 mt-1">
+          <p
+            :if={@preflight && unconfirmed_count(@preflight) > 0}
+            class="text-xs text-base-content/60 mt-1"
+          >
             {ngettext(
               "%{count} user is left out: their email address is not confirmed",
               "%{count} users are left out: their email addresses are not confirmed",
-              @preflight.unconfirmed
+              unconfirmed_count(@preflight)
             )}
           </p>
           <p :if={@preflight && @preflight.stale_roles > 0} class="text-xs text-warning mt-1">
