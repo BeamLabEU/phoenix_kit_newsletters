@@ -27,6 +27,7 @@ defmodule PhoenixKit.Newsletters.Web.BroadcastEditor do
   }
 
   alias PhoenixKit.Newsletters.Paths
+  alias PhoenixKit.Newsletters.Web.CSP
   alias PhoenixKit.Newsletters.Web.FormErrors
   alias PhoenixKit.Newsletters.Web.LanguageOptions
   alias PhoenixKit.Newsletters.Web.SendError

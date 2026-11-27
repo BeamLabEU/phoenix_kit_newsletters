@@ -178,7 +178,7 @@
           style="height: 640px;"
         >
           <%= if @preview_html != "" do %>
-            <iframe srcdoc={@preview_html} class="w-full h-full border-0" sandbox="allow-same-origin">
+            <iframe srcdoc={CSP.stamp_styles(@preview_html)} class="w-full h-full border-0" sandbox="allow-same-origin">
             </iframe>
           <% else %>
             <div class="flex items-center justify-center h-full text-base-content/40">
