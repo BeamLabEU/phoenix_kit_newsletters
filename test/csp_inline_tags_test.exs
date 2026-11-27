@@ -60,8 +60,14 @@ defmodule PhoenixKit.Newsletters.CSPInlineTagsTest do
     end
   end
 
-  # Core's module named in code in any way (call, hook, `{module, function}`, alias).
-  @direct_core ~r/PhoenixKitWeb\.CSP\b|\bPhoenixKitWeb\.\{[^}]*\bCSP\b/
+  # Core's module named in code: a call, hook or `{module, function}`, an alias group, or
+  # the name put together with `Module.concat`. It is matched against a whole file, since a
+  # group or a call may span lines.
+  @direct_core ~r/
+    PhoenixKitWeb\.CSP\b
+    | \bPhoenixKitWeb\.\{[^}]*\bCSP\b
+    | \b(?:safe_)?concat\(\s*\[?\s*:?"?(?:Elixir\.)?PhoenixKitWeb"?\s*,\s*:?"?CSP\b
+  /x
 
   # Only the helper names core's module: it is newer than the core floor, and a direct use
   # anywhere else would not compile or run against the floor.
@@ -69,12 +75,30 @@ defmodule PhoenixKit.Newsletters.CSPInlineTagsTest do
     offenders =
       for path <- Path.wildcard("lib/**/*.{ex,heex}"),
           path != "lib/phoenix_kit/newsletters/web/csp.ex",
-          {line, number} <- path |> File.read!() |> code_lines(),
-          not (line =~ ~r/^\s*#/),
-          line =~ @direct_core,
+          number <- path |> File.read!() |> direct_core_lines(),
           do: "#{path}:#{number}"
 
     assert offenders == [], Enum.join(offenders, "\n")
+  end
+
+  # The numbers of the lines where core's module is named, comments aside.
+  defp direct_core_lines(source) do
+    source = markup_source(source)
+
+    for [{start, _length}] <- Regex.scan(@direct_core, source, return: :index),
+        do: line_at(source, start)
+  end
+
+  test "the direct-use scan finds a name spread over lines or put together" do
+    assert direct_core_lines("alias PhoenixKitWeb.{\n  Endpoint,\n  CSP\n}\n") == [1]
+    assert direct_core_lines("x = 1\nm = Module.concat(PhoenixKitWeb, CSP)\n") == [2]
+    assert direct_core_lines("Module.concat([PhoenixKitWeb, CSP])") == [1]
+    assert direct_core_lines("Module.safe_concat(\n  PhoenixKitWeb,\n  :CSP\n)") == [1]
+    assert direct_core_lines(~s|Module.concat(["Elixir.PhoenixKitWeb", "CSP"])|) == [1]
+
+    assert direct_core_lines("# PhoenixKitWeb.CSP\n<%!--\n  PhoenixKitWeb.CSP\n--%>\n") == []
+    assert direct_core_lines("Module.concat(PhoenixKitWeb, CSPReport)") == []
+    assert direct_core_lines("alias PhoenixKitWeb.{\n  Endpoint\n}\nalias Web.CSP\n") == []
   end
 
   test "the direct-use pattern matches every form core's module can be named in" do
@@ -283,10 +307,13 @@ defmodule PhoenixKit.Newsletters.CSPInlineTagsTest do
     source = path |> File.read!() |> markup_source()
 
     for [{start, length}] <- Regex.scan(@tag_opening, source, return: :index, capture: :first) do
-      line = source |> binary_part(0, start) |> String.split("\n") |> length()
-      {binary_part(source, start, length), line}
+      {binary_part(source, start, length), line_at(source, start)}
     end
   end
+
+  # The line number of the byte at `offset`.
+  defp line_at(source, offset),
+    do: source |> binary_part(0, offset) |> String.split("\n") |> length()
 
   # The source with what is not markup blanked, line numbers kept: documentation, HEEx
   # comments and Elixir comment lines (a tag there is prose).
