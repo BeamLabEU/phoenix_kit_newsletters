@@ -60,19 +60,37 @@ defmodule PhoenixKit.Newsletters.CSPInlineTagsTest do
     end
   end
 
-  # Only the helper names core's module: it is newer than the core floor, and a direct call
-  # anywhere else would not compile against the floor.
-  test "PhoenixKitWeb.CSP is called through the feature-detecting helper only" do
+  # Core's module named in code in any way (call, hook, `{module, function}`, alias).
+  @direct_core ~r/PhoenixKitWeb\.CSP\b|\bPhoenixKitWeb\.\{[^}]*\bCSP\b/
+
+  # Only the helper names core's module: it is newer than the core floor, and a direct use
+  # anywhere else would not compile or run against the floor.
+  test "PhoenixKitWeb.CSP is used through the feature-detecting helper only" do
     offenders =
       for path <- Path.wildcard("lib/**/*.{ex,heex}"),
           path != "lib/phoenix_kit/newsletters/web/csp.ex",
           {line, number} <- path |> File.read!() |> code_lines(),
           not (line =~ ~r/^\s*#/),
-          line =~ ~r/PhoenixKitWeb\.CSP\.[a-z_]+\(/ or
-            line =~ ~r/on_mount\(?\s*PhoenixKitWeb\.CSP\b/,
+          line =~ @direct_core,
           do: "#{path}:#{number}"
 
     assert offenders == [], Enum.join(offenders, "\n")
+  end
+
+  test "the direct-use pattern matches every form core's module can be named in" do
+    for line <- [
+          "PhoenixKitWeb.CSP.nonce(:style)",
+          "on_mount PhoenixKitWeb.CSP",
+          "on_mount: [PhoenixKitWeb.CSP, MyHook] do",
+          "session: {PhoenixKitWeb.CSP, :live_session, []},",
+          "alias PhoenixKitWeb.CSP",
+          "alias PhoenixKitWeb.{CSP, Endpoint}"
+        ] do
+      assert line =~ @direct_core, line
+    end
+
+    refute "alias PhoenixKit.Newsletters.Web.CSP" =~ @direct_core
+    refute "alias PhoenixKitWeb.{CSPReport, Endpoint}" =~ @direct_core
   end
 
   # An `<iframe srcdoc>` document inherits the embedding page's policy, so a `<style>` in a
@@ -102,6 +120,30 @@ defmodule PhoenixKit.Newsletters.CSPInlineTagsTest do
           line =~ "stamp_styles",
           {path, number} not in previews,
           do: "#{path}:#{number}"
+
+    assert offenders == [], Enum.join(offenders, "\n")
+  end
+
+  # The stamp reads markup as a browser does, but is not one: a frame that runs no script
+  # is what keeps a shape it misreads from mattering.
+  test "every iframe srcdoc keeps a sandbox that runs no script" do
+    frames =
+      for path <- Path.wildcard("lib/**/*.{ex,heex}"),
+          path != "lib/phoenix_kit/newsletters/web/csp.ex",
+          [frame] <-
+            Regex.scan(
+              ~r/<iframe\b(?:=\{[^\n]*?\}(?=[\s>])|="[^"]*"|[^>])*>/,
+              path |> File.read!() |> markup_source()
+            ),
+          frame =~ "srcdoc=",
+          do: {path, frame}
+
+    assert length(frames) == length(srcdoc_lines())
+
+    offenders =
+      for {path, frame} <- frames,
+          not (frame =~ ~r/\ssandbox="[^"]*"/) or frame =~ "allow-scripts",
+          do: path
 
     assert offenders == [], Enum.join(offenders, "\n")
   end

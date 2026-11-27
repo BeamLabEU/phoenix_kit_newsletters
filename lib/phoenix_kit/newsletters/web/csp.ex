@@ -37,13 +37,6 @@ defmodule PhoenixKit.Newsletters.Web.CSP do
 
   @core PhoenixKitWeb.CSP
 
-  # A style element's opening tag: the name, then its attributes, a quoted value
-  # (which may hold a `>`) taken whole. The group around the name also keeps
-  # this line from reading as a tag to the inline-tag lint.
-  @style_tag ~r/<(style)(?=[\s\/>])((?:"[^"]*"|'[^']*'|[^'">])*)>/i
-  @quoted_value ~r/"[^"]*"|'[^']*'/
-  @nonce_attribute ~r/(?:^|[\s\/"'])nonce(?:$|[\s\/=])/i
-
   @type kind :: :script | :style
 
   @doc """
@@ -59,9 +52,15 @@ defmodule PhoenixKit.Newsletters.Web.CSP do
   end
 
   @doc """
-  `html` with the page's style nonce on every `<style>` element, for an
+  `html` with the page's style nonce on every `<style>` tag, for an
   `<iframe srcdoc>` preview. A tag that already has a nonce keeps its own.
   Without a nonce, `html` comes back as it is.
+
+  The nonce is written only where a browser reads a `<style>` tag: not in a
+  comment, an attribute's value or the text of a raw-text element, and never on
+  another element. This is a reading of the markup, not a parser (SVG's own
+  rules, for one, are not followed), so the preview frame's `sandbox` stays
+  without `allow-scripts`.
 
   Never for HTML that is sent, stored or cached.
   """
@@ -71,16 +70,53 @@ defmodule PhoenixKit.Newsletters.Web.CSP do
   def stamp_styles(html, nonce) when is_binary(nonce) and nonce != "" do
     attribute = ~s( nonce="#{Plug.HTML.html_escape(nonce)}")
 
-    Regex.replace(@style_tag, html, fn tag, name, attributes ->
-      if nonce?(attributes), do: tag, else: "<" <> name <> attribute <> attributes <> ">"
+    Regex.replace(token(), html, fn
+      token, opening, name, rest, close, content ->
+        # `close` is empty for a tag cut off by the end of the input.
+        if String.downcase(name) == "style" and close == ">" and not nonced?(rest <> close),
+          do: opening <> attribute <> rest <> close <> content,
+          else: token
     end)
   end
 
   def stamp_styles(html, _nonce), do: html
 
-  # Quoted values are emptied first: `title="a nonce=1"` is not a nonce.
-  defp nonce?(attributes) do
-    Regex.match?(@nonce_attribute, Regex.replace(@quoted_value, attributes, ~s("")))
+  # The markup is read one token at a time. In order:
+  #
+  #   * a comment;
+  #   * <plaintext>, whose text nothing ends;
+  #   * a raw-text element: `<name`, its attributes, `>`, its text;
+  #   * any other tag.
+  #
+  # A quote opens a value only after `=`, as in HTML: the one in `class=it's`
+  # must not swallow the tags after it. Whitespace is HTML's, which `\s` is not.
+  #
+  # Keep it linear: once its opener has matched, a token must not fail, so each
+  # end may also be the end of the input. One that failed there would be tried
+  # again from every later opener, in time growing with the square of the size.
+  #
+  # PCRE gives up on a token of a few million bytes (its match limit). The scan
+  # stops there: the styles from that token on stay unstamped, nothing is lost.
+  defp token do
+    ~r/
+      <!--(?:-?>|.*?(?:--!?>|\z))
+      | <plaintext(?=[ \t\n\f\r\/>]).*+
+      | (<(script|style|textarea|title|xmp|iframe|noembed|noframes)(?=[ \t\n\f\r\/>]))
+        ((?:=[ \t\n\f\r]*+(?:"[^"]*+"|'[^']*+')|[^>])*+)
+        (>|\z)
+        (.*?(?=<\/\2[ \t\n\f\r\/>]|\z))
+      | <[a-z\/!?](?:=[ \t\n\f\r]*+(?:"[^"]*+"|'[^']*+')|[^>])*+(?:>|\z)
+    /isx
+  end
+
+  # `rest` is the opening tag after its name. Each value is blanked first, so
+  # that only an attribute named `nonce` counts: `title="a nonce=1"` is not one.
+  # The space left behind keeps `media="print"nonce=x` two attributes.
+  defp nonced?(rest) do
+    names =
+      Regex.replace(~r/=[ \t\n\f\r]*(?:"[^"]*"|'[^']*'|[^ \t\n\f\r>]+)/, rest, "= ")
+
+    Regex.match?(~r/[ \t\n\f\r\/]nonce(?=[ \t\n\f\r=\/>])/i, names)
   end
 
   @doc "The `session:` of a live session of this package: the page's nonces."
