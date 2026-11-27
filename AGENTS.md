@@ -13,8 +13,8 @@ Core's scheduled-jobs worker calls `enabled?/0` and
 `process_scheduled_broadcasts/0` on its periodic tick.
 
 `PhoenixKit.Newsletters.Application` supervises **only** `AttachmentCache`,
-the ETS table owner (2 min TTL, 1 min sweep). Keep other processes out of this
-supervision tree; background email work goes through Oban, never bare `Task`s.
+the ETS table owner. Keep other processes out of this supervision tree;
+background email work goes through Oban, never bare `Task`s.
 
 Most source lives under `lib/phoenix_kit/newsletters/`:
 
@@ -30,11 +30,10 @@ Most source lives under `lib/phoenix_kit/newsletters/`:
 - `migrations.ex`: `PhoenixKitNewsletters.Migrations` versioned chain;
   `expected_schema.ex`: generated manifest exposed through `expected_schema/0`.
 
-Dependency versions live in `mix.exs`. Keep core's range `>= 3.5.0 and
-< 4.0.0` (ecosystem-wide minimum). Do not narrow to one minor with a
-three-segment `~>` or commit a `path:` dependency (`CorePinConformanceTest`).
-Raise the floor only for a required core API/migration. `phoenix_kit_templates` is a direct
-dependency because rendering calls its substitution API.
+Keep core's range `>= 3.5.0 and < 4.0.0` (ecosystem-wide minimum). Do not
+narrow to one minor with a three-segment `~>` (`CorePinConformanceTest`).
+Raise the floor only for a required core API/migration.
+`phoenix_kit_templates` is a direct dependency because rendering calls its substitution API.
 
 CRM (`PhoenixKitCRM.*`) and core's Emails module are runtime soft dependencies:
 guard references with `Code.ensure_loaded?/1` and call through `apply/3`
@@ -60,9 +59,7 @@ mix test
 mix format && mix precommit  # before every commit
 ```
 
-`precommit`: warnings-as-errors compile, `deps.unlock --check-unused`,
-`hex.audit`, `quality.ci` (format check, strict Credo, Dialyzer).
-`mix quality` formats first.
+`mix quality` formats first; `precommit`'s steps are in `mix.exs` aliases.
 
 Deps come from Hex (no `pk_dep/3`). To test local core, use
 `{:phoenix_kit, path: "../phoenix_kit", override: true}` and `mix deps.get`,
@@ -133,6 +130,15 @@ then revert **both** `mix.exs` and `mix.lock` before committing.
 - Store UTC; display in `Web.Timezone.viewer_tz/1` (profile `user_timezone` →
   setting `time_zone` → `"0"`) through `Timezone.format_datetime/2`, in the
   site's date/time formats. Label zones with `Settings.get_timezone_label/1`.
+
+## Content-Security-Policy
+
+Pages work under a host nonce policy: no inline event handlers; an inline
+`<style>`/`<script>` takes `Web.CSP.nonce/1` (never call core's CSP module
+directly). An `<iframe srcdoc>` inherits the policy, so previews pass it through
+`CSP.stamp_styles/1` in that attribute only: sent or stored HTML gets no nonce.
+A `live_session` here takes `CSP.live_session/1` and `on_mount`. Guard:
+`test/csp_inline_tags_test.exs`.
 
 ## Permissions
 
@@ -464,22 +470,18 @@ installs (core 3.0 no longer creates module tables).
   endpoint. No reachable DB excludes `:integration`; the attachments probe
   excludes `:requires_v158` when absent.
 - `PhoenixKitNewsletters.DataCase` tags integration tests, checks out sandbox
-  and supplies `errors_on/1` and `TestScopes` (`full_scope`, `scope_with`,
-  `enable_crm`). Hand-built admin sockets need `phoenix_kit_current_scope`;
-  registry registration matters because `Scope.can?/2` checks module state.
+  and supplies `errors_on/1` and `TestScopes`. Hand-built admin sockets need
+  `phoenix_kit_current_scope`; registry registration matters because `Scope.can?/2` checks module state.
 - LiveView tests call lifecycle/events directly (UrlState ones via
   `Test.UrlStateHarness`); controller tests use cookie sessions and
   `fetch_flash`. Both miss browser-render failures. Add every new LiveView to
-  `test/support/dead_render_router.ex` and cover it in `web/dead_render_test.exs`; never use a content `:layout`
-  assign (see Web conventions). Its endpoint has no parser, so pass params to
-  `get/3`: a query string in the path is ignored.
+  `test/support/dead_render_router.ex` and cover it in `web/dead_render_test.exs`. Its
+  endpoint has no parser, so pass params to `get/3`: a query string in the path is ignored.
 - Verification tests use `test/support/fake_verification_engine.ex` via
   application config, scripted answers and call messages. Keep it aligned
   with the behaviour. Drive async starts via `start_via_event/1`; the fake
   finds the test owner through `$callers` from the async task.
-- `config/test.exs` supplies host Repo, encryption secret, Swoosh test adapter
-  and a raw endpoint secret for `Phoenix.Token` without a running endpoint.
-  Pure unit tests and statement-only `migrations_test.exs` need no Postgres;
+- Pure unit tests and statement-only `migrations_test.exs` need no Postgres;
   real-DDL migration tests do.
   Worker helpers marked `@doc false` provide direct unit-test seams.
 

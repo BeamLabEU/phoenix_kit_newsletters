@@ -1,0 +1,335 @@
+defmodule PhoenixKit.Newsletters.CSPInlineTagsTest do
+  @moduledoc """
+  The pages of this module work under a host Content-Security-Policy that allows inline code
+  by nonce only (`script-src 'self' 'nonce-…'`): an inline `<style>` / `<script>` carries the
+  page's nonce (`PhoenixKit.Newsletters.Web.CSP.nonce/1`), there is no inline event handler at
+  all (no nonce can cover an attribute), and every `<iframe srcdoc>` preview goes through
+  `CSP.stamp_styles/1`, because the frame inherits the page's policy.
+
+  Modelled on core's `test/phoenix_kit_web/csp_inline_tags_test.exs`.
+  """
+  use ExUnit.Case, async: true
+
+  @doc_heredoc ~r/@(?:moduledoc|doc|typedoc|shortdoc)\s+(?:~[sS])?"""\n.*?\n\s*"""/s
+
+  # The module's prebuilt JS (what `js_sources/0` declares), scanned for markup it builds.
+  # This module declares and ships none.
+  @bundles []
+
+  @tag_opening ~r/<(script|style)(?=[ \t\n\f\r\/>])[^>]*>/is
+
+  # Exempt: a colocated hook (`<script :type={Phoenix.LiveView.ColocatedHook}>`) is taken out
+  # of the template by the compiler and is never rendered as an inline tag.
+  test "no inline <script> or <style> in lib/ is written without a nonce" do
+    offenders =
+      for path <- Path.wildcard("lib/**/*.{ex,heex}"),
+          {opening, number} <- tag_openings(path),
+          not String.contains?(opening, "src="),
+          not String.contains?(opening, "ColocatedHook"),
+          not (opening =~ "CSP.nonce("),
+          do: "#{path}:#{number}"
+
+    assert offenders == [],
+           "inline tags without a nonce (feature-detect `PhoenixKitWeb.CSP.nonce/1`, " <>
+             "see AGENTS.md, \"Content-Security-Policy\"):\n" <> Enum.join(offenders, "\n")
+  end
+
+  # `nonce={…}` is HEEx. In a plain string it is rendered as written, a literal attribute
+  # the browser cannot match.
+  test "a `nonce={…}` attribute in an .ex file sits inside a ~H template" do
+    offenders =
+      for path <- Path.wildcard("lib/**/*.ex"),
+          lines = path |> File.read!() |> code_lines(),
+          {line, number} <- lines,
+          line =~ "nonce={PhoenixKit.Newsletters.Web.CSP",
+          not in_heex?(lines, number),
+          do: "#{path}:#{number}"
+
+    assert offenders == [], Enum.join(offenders, "\n")
+  end
+
+  # The nearest heredoc opener above the line is a `~H`.
+  defp in_heex?(lines, number) do
+    lines
+    |> Enum.take(number - 1)
+    |> Enum.reverse()
+    |> Enum.find(fn {line, _} -> line =~ ~s(""") end)
+    |> case do
+      {opener, _} -> opener =~ ~s(~H""")
+      nil -> false
+    end
+  end
+
+  # Core's module named in code: a call, hook or `{module, function}`, an alias group, or
+  # the name put together with `Module.concat`. It is matched against a whole file, since a
+  # group or a call may span lines.
+  @direct_core ~r/
+    PhoenixKitWeb\.CSP\b
+    | \bPhoenixKitWeb\.\{[^}]*\bCSP\b
+    | \b(?:safe_)?concat\(\s*\[?\s*:?"?(?:Elixir\.)?PhoenixKitWeb"?\s*,\s*:?"?CSP\b
+  /x
+
+  # Only the helper names core's module: it is newer than the core floor, and a direct use
+  # anywhere else would not compile or run against the floor.
+  test "PhoenixKitWeb.CSP is used through the feature-detecting helper only" do
+    offenders =
+      for path <- Path.wildcard("lib/**/*.{ex,heex}"),
+          path != "lib/phoenix_kit/newsletters/web/csp.ex",
+          number <- path |> File.read!() |> direct_core_lines(),
+          do: "#{path}:#{number}"
+
+    assert offenders == [], Enum.join(offenders, "\n")
+  end
+
+  # The numbers of the lines where core's module is named, comments aside.
+  defp direct_core_lines(source) do
+    source = markup_source(source)
+
+    for [{start, _length}] <- Regex.scan(@direct_core, source, return: :index),
+        do: line_at(source, start)
+  end
+
+  test "the direct-use scan finds a name spread over lines or put together" do
+    assert direct_core_lines("alias PhoenixKitWeb.{\n  Endpoint,\n  CSP\n}\n") == [1]
+    assert direct_core_lines("x = 1\nm = Module.concat(PhoenixKitWeb, CSP)\n") == [2]
+    assert direct_core_lines("Module.concat([PhoenixKitWeb, CSP])") == [1]
+    assert direct_core_lines("Module.safe_concat(\n  PhoenixKitWeb,\n  :CSP\n)") == [1]
+    assert direct_core_lines(~s|Module.concat(["Elixir.PhoenixKitWeb", "CSP"])|) == [1]
+
+    assert direct_core_lines("# PhoenixKitWeb.CSP\n<%!--\n  PhoenixKitWeb.CSP\n--%>\n") == []
+    assert direct_core_lines("Module.concat(PhoenixKitWeb, CSPReport)") == []
+    assert direct_core_lines("alias PhoenixKitWeb.{\n  Endpoint\n}\nalias Web.CSP\n") == []
+  end
+
+  test "the direct-use pattern matches every form core's module can be named in" do
+    for line <- [
+          "PhoenixKitWeb.CSP.nonce(:style)",
+          "on_mount PhoenixKitWeb.CSP",
+          "on_mount: [PhoenixKitWeb.CSP, MyHook] do",
+          "session: {PhoenixKitWeb.CSP, :live_session, []},",
+          "alias PhoenixKitWeb.CSP",
+          "alias PhoenixKitWeb.{CSP, Endpoint}"
+        ] do
+      assert line =~ @direct_core, line
+    end
+
+    refute "alias PhoenixKit.Newsletters.Web.CSP" =~ @direct_core
+    refute "alias PhoenixKitWeb.{CSPReport, Endpoint}" =~ @direct_core
+  end
+
+  # An `<iframe srcdoc>` document inherits the embedding page's policy, so a `<style>` in a
+  # previewed e-mail is refused unless it carries the page's nonce.
+  test "every iframe srcdoc in lib/ goes through CSP.stamp_styles/1" do
+    previews = srcdoc_lines()
+
+    assert previews != []
+
+    offenders =
+      for {path, line, number} <- previews,
+          not (line =~ "srcdoc={CSP.stamp_styles("),
+          do: "#{path}:#{number}"
+
+    assert offenders == [], Enum.join(offenders, "\n")
+  end
+
+  # The nonce belongs to one response. HTML that is sent, stored or cached never gets it, so
+  # the stamp is applied in the preview's attribute and nowhere else.
+  test "CSP.stamp_styles/1 is used for iframe previews only" do
+    previews = for {path, _line, number} <- srcdoc_lines(), do: {path, number}
+
+    offenders =
+      for path <- Path.wildcard("lib/**/*.{ex,heex}"),
+          path != "lib/phoenix_kit/newsletters/web/csp.ex",
+          {line, number} <- path |> File.read!() |> code_lines(),
+          line =~ "stamp_styles",
+          {path, number} not in previews,
+          do: "#{path}:#{number}"
+
+    assert offenders == [], Enum.join(offenders, "\n")
+  end
+
+  # The stamp reads markup as a browser does, but is not one: a frame that runs no script
+  # is what keeps a shape it misreads from mattering.
+  test "every iframe srcdoc keeps a sandbox that runs no script" do
+    frames =
+      for path <- Path.wildcard("lib/**/*.{ex,heex}"),
+          path != "lib/phoenix_kit/newsletters/web/csp.ex",
+          [frame] <-
+            Regex.scan(
+              ~r/<iframe\b(?:=\{[^\n]*?\}(?=[\s>])|="[^"]*"|[^>])*>/,
+              path |> File.read!() |> markup_source()
+            ),
+          frame =~ "srcdoc=",
+          do: {path, frame}
+
+    assert length(frames) == length(srcdoc_lines())
+
+    offenders =
+      for {path, frame} <- frames,
+          not (frame =~ ~r/\ssandbox="[^"]*"/) or frame =~ "allow-scripts",
+          do: path
+
+    assert offenders == [], Enum.join(offenders, "\n")
+  end
+
+  defp srcdoc_lines do
+    for path <- Path.wildcard("lib/**/*.{ex,heex}"),
+        path != "lib/phoenix_kit/newsletters/web/csp.ex",
+        {line, number} <-
+          path |> File.read!() |> markup_source() |> String.split("\n") |> Enum.with_index(1),
+        line =~ ~r/\bsrcdoc\s*=/,
+        do: {path, line, number}
+  end
+
+  describe "PhoenixKit.Newsletters.Web.CSP" do
+    alias PhoenixKit.Newsletters.Web.CSP
+
+    # The core floor has no `PhoenixKitWeb.CSP`: no nonce, no attribute, no crash. A core
+    # that has it answers the nonce of the current page, and none outside one.
+    test "nonce/1 answers nil when no page nonce is set, on either core" do
+      assert CSP.nonce(:style) == nil
+      assert CSP.nonce(:script) == nil
+    end
+
+    test "on_mount/4 continues with the socket untouched when the session has no nonces" do
+      socket = %Phoenix.LiveView.Socket{}
+      assert CSP.on_mount(:default, %{}, %{}, socket) == {:cont, socket}
+      assert CSP.nonce(:style) == nil
+    end
+
+    test "on_mount/4 restores the session's nonces when core has nonce support" do
+      socket = %Phoenix.LiveView.Socket{}
+      session = %{"phoenix_kit_csp_nonces" => %{"script" => "s-nonce", "style" => "t-nonce"}}
+
+      assert CSP.on_mount(:default, %{}, session, socket) == {:cont, socket}
+
+      if Code.ensure_loaded?(PhoenixKitWeb.CSP) do
+        assert CSP.nonce(:style) == "t-nonce"
+        assert CSP.nonce(:script) == "s-nonce"
+      else
+        assert CSP.nonce(:style) == nil
+      end
+    end
+  end
+
+  # `onclick="…"`, `onclick='…'`, `onclick={…}`, and the same with spaces around `=` for the
+  # events a browser knows (a bare `on\w+ =` would also match Elixir like `only = "x"`).
+  @events ~w(click dblclick change input submit reset invalid select focus blur focusin focusout
+             keydown keyup keypress load error scroll wheel resize toggle contextmenu copy cut
+             paste drop) ++
+            ~w(mousedown mouseup mouseover mouseout mousemove mouseenter mouseleave) ++
+            ~w(touchstart touchend touchmove pointerdown pointerup pointermove) ++
+            ~w(dragstart dragend dragover dragenter dragleave animationend transitionend)
+  @handler Regex.compile!(
+             "\\son(?!ly=)[a-z]+=[\"'{]|\\son(?:#{Enum.join(@events, "|")})\\s*=\\s*[\"'{]"
+           )
+  @js_url ~r/\b(?:href|src|action|formaction)\s*=\s*["'{]\s*["']?\s*javascript:/i
+
+  test "no markup in lib/ carries an inline event handler" do
+    offenders =
+      for path <- Path.wildcard("lib/**/*.{ex,heex}"),
+          {line, number} <- path |> File.read!() |> code_lines(),
+          not (line =~ ~r/^\s*(#|iex>|\.\.\.>)/),
+          line =~ @handler or line =~ @js_url,
+          do: "#{path}:#{number}"
+
+    assert offenders == [],
+           "inline handlers (no nonce covers them; use a `phx-` binding or a hook in the " <>
+             "module's bundle):\n" <> Enum.join(offenders, "\n")
+  end
+
+  test "the handler pattern matches what it is meant to" do
+    assert ~s[<ul onclick="x()">] =~ @handler
+    assert ~s(<div onclick={@x}>) =~ @handler
+    assert ~s(<img onerror = 'x'>) =~ @handler
+    assert ~s[<a href="javascript:void(0)">] =~ @js_url
+    refute ~s(<button phx-click="go">) =~ @handler
+    refute ~s(<.table only={@only}>) =~ @handler
+    refute ~s(only = "x") =~ @handler
+  end
+
+  test "the bundle builds no markup with an inline event handler" do
+    offenders =
+      for {path, line, number} <- bundle_lines(),
+          line =~ ~r/\son[a-z]+=\\?["']/ or line =~ ~r/javascript:/i,
+          do: "#{path}:#{number}"
+
+    assert offenders == [], Enum.join(offenders, "\n")
+  end
+
+  # A `<style>` / `<script>` the bundle creates is checked against the page's policy like any
+  # other: it is stamped with the page's nonce (core's `PhoenixKitInternals.adoptStyle`, when
+  # there) before it is inserted, and never written as a string for `innerHTML`. No `eval`
+  # either: `script-src` without 'unsafe-eval' blocks it.
+  test "the bundle creates no unstamped <style>/<script>, and evaluates no strings" do
+    lines = bundle_lines()
+
+    offenders =
+      for {{path, line, number}, index} <- Enum.with_index(lines),
+          next = lines |> Enum.slice(index + 1, 6) |> Enum.map(&elem(&1, 1)),
+          problem = bundle_problem(line, next),
+          do: "#{path}:#{number} #{problem}"
+
+    assert offenders == [], Enum.join(offenders, "\n")
+  end
+
+  defp bundle_problem(line, next_lines) do
+    cond do
+      line =~ ~r/createElement\(["'](?:style|script)["']\)/ and
+          not Enum.any?(next_lines, &(&1 =~ "adoptStyle")) ->
+        "creates a <style>/<script> that is not stamped in the next lines"
+
+      line =~ ~r/["'`]<(?:style|script)\b/ ->
+        "builds a <style>/<script> tag as a string"
+
+      line =~ ~r/\beval\(|new Function\(/ ->
+        "evaluates a string"
+
+      true ->
+        nil
+    end
+  end
+
+  test "the scanned bundle is the only JavaScript the module ships" do
+    assert Enum.sort(Path.wildcard("{lib,priv}/**/*.{js,ts}")) == Enum.sort(@bundles)
+  end
+
+  # The bundles' lines without their comment lines.
+  defp bundle_lines do
+    for path <- @bundles,
+        {line, number} <- path |> File.read!() |> String.split("\n") |> Enum.with_index(1),
+        not (line =~ ~r{^\s*(//|\*|/\*)}),
+        do: {path, line, number}
+  end
+
+  # Every opening `<script …>` / `<style …>` of the file with the line it starts on.
+  defp tag_openings(path) do
+    source = path |> File.read!() |> markup_source()
+
+    for [{start, length}] <- Regex.scan(@tag_opening, source, return: :index, capture: :first) do
+      {binary_part(source, start, length), line_at(source, start)}
+    end
+  end
+
+  # The line number of the byte at `offset`.
+  defp line_at(source, offset),
+    do: source |> binary_part(0, offset) |> String.split("\n") |> length()
+
+  # The source with what is not markup blanked, line numbers kept: documentation, HEEx
+  # comments and Elixir comment lines (a tag there is prose).
+  defp markup_source(source) do
+    blank = fn text -> String.replace(text, ~r/[^\n]/, "") end
+
+    source
+    |> then(&Regex.replace(@doc_heredoc, &1, blank))
+    |> then(&Regex.replace(~r/<%!--.*?--%>/s, &1, blank))
+    |> then(&Regex.replace(~r/^[ \t]*#[^\n]*$/m, &1, ""))
+  end
+
+  defp code_lines(source) do
+    @doc_heredoc
+    |> Regex.replace(source, fn doc -> String.replace(doc, ~r/[^\n]/, "") end)
+    |> String.split("\n")
+    |> Enum.with_index(1)
+  end
+end

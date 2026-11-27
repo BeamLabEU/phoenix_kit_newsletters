@@ -311,7 +311,7 @@
         >
           <%= if @preview_html != "" do %>
             <iframe
-              srcdoc={@preview_html}
+              srcdoc={CSP.stamp_styles(@preview_html)}
               class="w-full h-full border-0"
               sandbox="allow-same-origin"
             >

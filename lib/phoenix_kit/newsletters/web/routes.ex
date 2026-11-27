@@ -11,6 +11,7 @@ defmodule PhoenixKit.Newsletters.Web.Routes do
   signed token with no login at all (spec §7).
   """
 
+  alias PhoenixKit.Newsletters.Web.CSP
   alias PhoenixKit.Newsletters.Web.PreferenceCenterLive
   alias PhoenixKit.Newsletters.Web.UnsubscribeController
   alias PhoenixKitWeb.Users.Auth
@@ -53,8 +54,11 @@ defmodule PhoenixKit.Newsletters.Web.Routes do
         # e.g. login) — it populates @phoenix_kit_current_scope when a
         # session exists but never requires one. The LiveView itself
         # branches on token vs. authenticated scope vs. neither.
+        # The CSP session and hook keep the host's nonce after the socket
+        # connects, for the tags core's auth page writes (see `Web.CSP`).
         live_session :phoenix_kit_newsletters_preferences,
-          on_mount: [{unquote(Auth), :phoenix_kit_mount_current_scope}] do
+          session: {unquote(CSP), :live_session, []},
+          on_mount: [unquote(CSP), {unquote(Auth), :phoenix_kit_mount_current_scope}] do
           live("/newsletters/preferences", unquote(PreferenceCenterLive), :index)
 
           # Core's sidebar puts a locale in a dashboard tab's path on a

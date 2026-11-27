@@ -30,6 +30,7 @@ defmodule PhoenixKit.Newsletters.Web.LayoutEditor do
   alias PhoenixKit.Newsletters.Layouts
   alias PhoenixKit.Newsletters.Paths
   alias PhoenixKit.Newsletters.Render
+  alias PhoenixKit.Newsletters.Web.CSP
   alias PhoenixKit.Newsletters.Web.FormErrors
   alias PhoenixKit.Newsletters.Web.LanguageOptions
   alias PhoenixKit.Settings
