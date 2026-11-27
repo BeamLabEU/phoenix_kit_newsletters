@@ -37,6 +37,10 @@ defmodule PhoenixKit.Newsletters.Web.CSPTest do
             ~s(<style nonce="other">),
             ~s(<style media="print" NONCE='other'>),
             ~s(<style media="print"nonce=other>),
+            ~s(<style data-a='x'nonce="y">),
+            ~s(<style/nonce=own>),
+            ~s(<style\nnonce = "own">),
+            ~s(<style/= nonce>),
             ~s(<style nonce>)
           ] do
         assert CSP.stamp_styles(html, "n0nce") == html
@@ -48,6 +52,20 @@ defmodule PhoenixKit.Newsletters.Web.CSPTest do
 
       assert CSP.stamp_styles(html, "n0nce") ==
                ~s(<style nonce="n0nce" title="a nonce=1 > b" data-nonce="2">)
+    end
+
+    # A = where a name begins is part of that name, quotes and all.
+    test "does not take a value or a name after a bare = for a nonce" do
+      for attributes <- [
+            "\t= title='a nonce=1'",
+            ~s( title="x"data-nonce="y"),
+            ~s( a=b="x"nonce),
+            ~s( ="x"nonce),
+            ~s( a="1"="x"nonce)
+          ] do
+        assert CSP.stamp_styles("<style#{attributes}>a{}</style>", "n0nce") ==
+                 ~s(<style nonce="n0nce"#{attributes}>a{}</style>)
+      end
     end
 
     test "never touches a <script>, a similar tag name or an inline style attribute" do
@@ -78,7 +96,7 @@ defmodule PhoenixKit.Newsletters.Web.CSPTest do
     end
 
     test "leaves the text of the other raw-text elements as it was" do
-      for element <- ~w(xmp iframe noembed noframes) do
+      for element <- ~w(xmp noembed noframes) do
         html = "<#{element}><style></#{element}>"
 
         assert CSP.stamp_styles(html <> "<style></style>", "n0nce") ==
@@ -88,6 +106,128 @@ defmodule PhoenixKit.Newsletters.Web.CSPTest do
       # Nothing ends <plaintext>.
       html = "<plaintext></plaintext><style>a{}</style>"
       assert CSP.stamp_styles(html, "n0nce") == html
+    end
+
+    # No markup makes a script element without this text, so none can ever be
+    # given the nonce, however the rest is read.
+    test "leaves a message containing <script wholly unstamped" do
+      trap_ = ~s|<script z='">' <style src=//e/a.js>|
+
+      for html <- [
+            "<style>a{}</style><script></script>",
+            "<SCRIPT>x()</SCRIPT><style>a{}</style>",
+            "<ScRiPt src=x.js></ScRiPt><style></style>",
+            "<svg><script></script></svg><style></style>",
+            ~s(<svg><![CDATA[><a x="]]>) <> trap_,
+            ~s(<script><!--<script></script><a x="</script>) <> trap_,
+            ~s(<!x a="><script z='">' <style src=//e/a.js>),
+            # Wherever the text is: this is not a reading of the markup.
+            "<!-- <script> --><style></style>",
+            ~s(<img alt="<script>"><style></style>)
+          ] do
+        assert CSP.stamp_styles(html, "n0nce") == html
+      end
+    end
+
+    # Foreign content and embedded documents follow rules of their own.
+    test "leaves a message with svg, math or an embedded document unstamped" do
+      for html <- [
+            # A script in the nested document, written as character references.
+            ~s(<svg><![CDATA[><a x="]]><iframe srcdoc='&lt;script z=">" <style src=//e/a.js>'>),
+            # A <link> in this one.
+            ~s(<svg><![CDATA[><a x="]]><link rel=stylesheet z='">' <style href=//e/a.css>),
+            "<SVG></SVG><style></style>",
+            "<style></style><math></math>",
+            "<IFrame></IFrame><style></style>",
+            "<frameset><frame></frameset><style></style>",
+            "<object></object><style></style>",
+            "<embed src=x><style></style>",
+            ~s(<img alt="<svg>"><style></style>)
+          ] do
+        assert CSP.stamp_styles(html, "n0nce") == html
+      end
+    end
+
+    # Parsers by the older rules ignore a raw-text element's tag inside <select>,
+    # and after <template><col> a browser drops it.
+    test "leaves a message with a select or a template unstamped" do
+      for html <- [
+            ~s(<select><xmp></select><link rel=stylesheet z='</xmp>' <style href=//e/a.css>),
+            "<style></style><SELECT></SELECT>",
+            ~s(<template><col><style></stylex></table></template><link z='</style>' <style href=u>),
+            ~s(<template><col><xmp></xmpx></table></template><link z='</xmp>' <style href=u>),
+            "<style></style><TEMPLATE></TEMPLATE>"
+          ] do
+        assert CSP.stamp_styles(html, "n0nce") == html
+      end
+    end
+
+    test "stamps a message that only speaks of those tags" do
+      for before <- [
+            "<p>&lt;svg&gt; &lt;iframe&gt; < object> svg math embed select template</p>",
+            "<noscript>script</noscript><p>&lt;script&gt; < script></p>"
+          ] do
+        assert CSP.stamp_styles(before <> "<style>a{}</style>", "n0nce") ==
+                 before <> ~s(<style nonce="n0nce">a{}</style>)
+      end
+    end
+
+    # In each of the next two, a browser reads `<style href=…>` as attributes of
+    # the <link>: a nonce written there would be the link's.
+    @link ~s|<link z='">' <style href=//e/a.css>|
+
+    # `<!x`, `<?` and the like are comments to a browser, ended by the first >.
+    test "ends a bogus comment at the first >, quotes or not" do
+      for opener <- [
+            ~s(<!x a=">),
+            ~s(<?x a=">),
+            ~s(</ a=">),
+            ~s(</1 a=">),
+            ~s(<!DOCTYPE a=">),
+            ~s(<![CDATA[ a=">)
+          ] do
+        assert CSP.stamp_styles(opener <> @link, "n0nce") == opener <> @link
+
+        assert CSP.stamp_styles(opener <> "<style>a{}</style>", "n0nce") ==
+                 opener <> ~s(<style nonce="n0nce">a{}</style>)
+      end
+
+      single = ~s(<!x a='>) <> ~s|<link z="'>" <style href=//e/a.css>|
+      assert CSP.stamp_styles(single, "n0nce") == single
+    end
+
+    # A = where a name begins is part of the name, and so is a quote after it.
+    test "opens a quoted value only where a tag has a value" do
+      for tag <- [
+            ~s(<a =">),
+            ~s(<a=">),
+            ~s(<a/=">),
+            ~s(<a b="1"=">),
+            ~s(</a =">)
+          ] do
+        assert CSP.stamp_styles(tag <> @link, "n0nce") == tag <> @link
+      end
+
+      # The same in a raw-text element's tag, which must still end at its >.
+      before = ~s(<textarea =">x</textarea><i q='">'></i>)
+
+      assert CSP.stamp_styles(before <> "<style>a{}</style>", "n0nce") ==
+               before <> ~s(<style nonce="n0nce">a{}</style>)
+    end
+
+    # A browser drops a tag whose quoted value is never closed, all it holds
+    # included.
+    test "reads an unclosed quoted value to the end" do
+      for html <- [~s(<a x="><style>a{}</style>), ~s(<xmp x='><style></style>)] do
+        assert CSP.stamp_styles(html, "n0nce") == html
+      end
+    end
+
+    test "copes with an unclosed tag or quote after a <style>" do
+      for rest <- ["<a", ~s(<a x="abc), "<a x='abc>", "<textarea>", "</"] do
+        assert CSP.stamp_styles("<style></style>" <> rest, "n0nce") ==
+                 ~s(<style nonce="n0nce"></style>) <> rest
+      end
     end
 
     test "leaves the text of a <style> as it was" do
@@ -127,7 +267,15 @@ defmodule PhoenixKit.Newsletters.Web.CSPTest do
 
     # As in a browser, what is not closed runs to the end of the document.
     test "reads what is cut off at the end as a browser does" do
-      for html <- ["<!-- <style>a{}</style>", "<style", ~s(<style media="print")] do
+      for html <- [
+            "<!-- <style>a{}</style>",
+            "<!-- x> <style>a{}</style>",
+            "<!--[if mso]> <style>a{}</style>",
+            "<style",
+            "<style ",
+            ~s(<style media="print"),
+            "<p><style media=print"
+          ] do
         assert CSP.stamp_styles(html, "n0nce") == html
       end
 
@@ -140,7 +288,6 @@ defmodule PhoenixKit.Newsletters.Web.CSPTest do
       for before <- [
             "<!--#{big}-->",
             ~s(<img src="data:image/png;base64,#{big}">),
-            "<script>#{big}</script>",
             "<style>#{big}</style>"
           ] do
         assert CSP.stamp_styles(before <> "<style>b{}</style>", "n0nce") =~
@@ -157,7 +304,10 @@ defmodule PhoenixKit.Newsletters.Web.CSPTest do
             unmatched_quote: String.duplicate("<style ", 5_000) <> ~s(">),
             tags: String.duplicate("<a", 8_000) <> ~s( x=">"),
             comments: String.duplicate("<!-- a>", 5_000),
-            conditional_comments: String.duplicate("<!--[if mso]>", 4_000)
+            conditional_comments: String.duplicate("<!--[if mso]>", 4_000),
+            bogus_comments: String.duplicate("<!x", 8_000),
+            quotes: String.duplicate(~s(<a x=">), 5_000),
+            stray_equals: "<a " <> String.duplicate(~s(=" ), 10_000)
           ] do
         {microseconds, _stamped} = :timer.tc(fn -> CSP.stamp_styles(html, "n0nce") end)
 
